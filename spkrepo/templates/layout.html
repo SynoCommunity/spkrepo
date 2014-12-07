@@ -1,0 +1,105 @@
+{% set message_categories_bootstrap = {'error': 'danger'} %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% block meta %}
+    <meta name="description" content="Synology Package Repository">
+    {% endblock %}
+    <title>{% block title %}Spkrepo{% endblock %}</title>
+
+    <!-- Bootstrap core CSS -->
+    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+
+    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!--[if lt IE 9]>
+      <script src="{{ url_for('static', filename='js/html5shiv.min.js') }}"></script>
+      <script src="{{ url_for('static', filename='js/respond.min.js') }}"></script>
+    <![endif]-->
+
+    <!-- spkrepo -->
+    <link href="{{ url_for('static', filename='css/spkrepo.css') }}" rel="stylesheet">
+    {% block link %}{% endblock %}
+  </head>
+
+  <body>
+    <div class="navbar navbar-default navbar-static-top" role="navigation">
+      <div class="container">
+        <div class="navbar-header">
+          <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+          <a class="navbar-brand" href="{{ url_for('frontend.index') }}">{% block navbar_brand %}Spkrepo{% endblock %}</a>
+        </div>
+        <div class="collapse navbar-collapse">
+          <ul class="nav navbar-nav">
+            {%- for endpoint, caption in [
+              ('frontend.index', 'Home'),
+              ('frontend.packages', 'Packages')
+            ] %}
+            <li{% if endpoint == request.endpoint %} class="active"{% endif %}>
+              <a href="{{ url_for(endpoint) }}">{{ caption }}</a>
+            </li>
+            {% endfor %}
+          </ul>
+          <ul class="nav navbar-nav navbar-right">
+            {% if current_user.is_authenticated() %}
+              {% if current_user.has_role('developer') or current_user.has_role('package_admin') or
+                    current_user.has_role('admin') %}
+              {% set right_nav = [
+                ('admin.index', 'Admin'),
+                ('frontend.profile', 'Profile'),
+                ('security.logout', 'Logout')
+              ] %}
+              {% else %}
+              {% set right_nav = [
+                ('frontend.profile', 'Profile'),
+                ('security.logout', 'Logout')
+              ] %}
+              {% endif %}
+            {% else %}
+            {% set right_nav = [
+              ('security.register', 'Register'),
+              ('security.login', 'Login')
+            ] %}
+            {% endif %}
+            {%- for endpoint, caption in right_nav %}
+            <li{% if endpoint == request.endpoint %} class="active"{% endif %}>
+              <a href="{{ url_for(endpoint) }}">{{ caption }}</a>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+    {% for category, message in get_flashed_messages(with_categories=True) %}
+      <div class="alert alert-{{ message_categories_bootstrap.get(category, category) }} alert-dismissable">
+        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+        {{ message }}
+      </div>
+    {% endfor %}
+    {% block content %}{% endblock %}
+    </div>
+
+    <footer class="footer" role="contentinfo">
+      <div class="container">
+        <p>Powered by <a href="https://github.com/Diaoul/spkrepo">spkrepo</a>.</p>
+        <p>Developed by <a href="https://github.com/Diaoul">Antoine Bertin</a>.</p>
+        <p>Code licensed under <a href="https://github.com/Diaoul/spkrepo/blob/master/LICENSE" target="_blank">MIT</a>.</p>
+      </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/jquery-2.1.1.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/jquery.dotdotdot.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/spkrepo.js') }}"></script>
+    {% block script %}{% endblock %}
+  </body>
+</html>

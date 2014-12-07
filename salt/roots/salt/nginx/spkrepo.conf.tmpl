@@ -1,0 +1,33 @@
+upstream {{ pillar['name'] }} {
+    server                         unix:///run/uwsgi/app/{{ pillar['name'] }}/socket;
+}
+
+server {
+    listen                         80;
+    server_name                    {{ pillar['server_name'] }};
+    client_max_body_size           128M;
+    root                           {{ pillar['app_path'] }}/spkrepo;
+
+    location /static {
+        etag                       on;
+        expires                    1d;
+        access_log                 off;
+        log_not_found              off;
+    }
+
+    location /data {
+        alias                      {{ pillar['data_path'] }};
+        location ~* \.(jpg|png)$ {
+            etag                   on;
+            expires                1d;
+            access_log             off;
+            log_not_found          off;
+        }
+    }
+
+    location / {
+        include                    uwsgi_params;
+        uwsgi_pass                 {{ pillar['name'] }};
+    }
+}
+

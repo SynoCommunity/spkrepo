@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Profile - {{ super() }}{% endblock %}
+{% import '_wtfhelpers.html' as wtf %}
+{% block content %}
+<h1>{{ current_user.username }}</h1>
+<h2>Security</h2>
+<ul>
+  <li><a href="{{ url_for('security.change_password') }}">Change password</a></li>
+  <li><a href="{{ url_for('security.forgot_password') }}">I forgot my password</a></li>
+</ul>
+{% if current_user.roles %}
+<h2>Permissions</h2>
+<ul>
+{% for role in current_user.roles %}
+  <li>{{ role.description }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+{% if current_user.has_role('developer') %}
+<h2>Api</h2>
+<p>You have permission to push packages to the repository. Use the following API key to publish packages:</p>
+{{ wtf.quick_form(generate_api_key_form, button_map={'submit': 'primary'}, api_key={'readonly': True}) }}
+{% endif %}
+{% endblock %}

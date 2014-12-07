@@ -1,0 +1,18 @@
+language: python
+
+python:
+  - 3.3
+  - 3.4
+
+install:
+  - sudo add-apt-repository ppa:travis-ci/sqlite3 -y
+  - sudo apt-get update -q
+  - sudo apt-get install sqlite3
+  - pip install -r requirements.txt
+  - pip install coverage coveralls
+
+script:
+  - coverage run --source=spkrepo setup.py test
+
+after_success:
+  - coveralls

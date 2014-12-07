@@ -1,0 +1,150 @@
+{% macro form_errors(form, hiddens=True) %}
+  {%- if form.errors %}
+    {%- for fieldname, errors in form.errors.items() %}
+      {%- if form[fieldname]|is_hidden_field and hiddens or
+             form[fieldname]|is_hidden_field and hiddens != 'only' %}
+        {%- for error in errors %}
+          <p class="error">{{error}}</p>
+        {%- endfor %}
+      {%- endif %}
+    {%- endfor %}
+  {%- endif %}
+{%- endmacro %}
+
+{% macro _hz_form_wrap(horizontal_columns, form_type, add_group=False) %}
+{% if form_type == "horizontal" %}
+  {% if add_group %}<div class="form-group">{% endif %}
+  <div class="col-{{horizontal_columns[0]}}-offset-{{horizontal_columns[1]}}
+              col-{{horizontal_columns[0]}}-{{horizontal_columns[2]}}
+             ">
+{% endif %}
+{{caller()}}
+
+{% if form_type == "horizontal" %}
+  {% if add_group %}</div>{% endif %}
+  </div>
+{% endif %}
+{% endmacro %}
+
+{% macro form_field(field,
+                    form_type="basic",
+                    horizontal_columns=('lg', 2, 10),
+                    button_map={}) %}
+{% if field.widget.input_type == 'checkbox' %}
+  {% call _hz_form_wrap(horizontal_columns, form_type, True) %}
+    <div class="checkbox">
+      <label>
+        {{field()|safe}} {{field.label.text|safe}}
+      </label>
+    </div>
+  {% endcall %}
+{%- elif field.type == 'RadioField' -%}
+  {# note: A cleaner solution would be rendering depending on the widget,
+     this is just a hack for now, until I can think of something better #}
+  {% call _hz_form_wrap(horizontal_columns, form_type, True) %}
+    {% for item in field -%}
+      <div class="radio">
+        <label>
+          {{item|safe}} {{item.label.text|safe}}
+        </label>
+      </div>
+    {% endfor %}
+  {% endcall %}
+{%- elif field.type == 'SubmitField' -%}
+  {# note: same issue as above - should check widget, not field type #}
+  {% call _hz_form_wrap(horizontal_columns, form_type, True) %}
+    {{field(class='btn btn-%s' % button_map.get(field.name, 'default'))}}
+  {% endcall %}
+{%- elif field.type == 'FormField' -%}
+{# note: FormFields are tricky to get right and complex setups requiring
+   these are probably beyond the scope of what this macro tries to do.
+   the code below ensures that things don't break horribly if we run into
+   one, but does not try too hard to get things pretty. #}
+  <fieldset>
+    <legend>{{field.label}}</legend>
+    {%- for subfield in field %}
+      {% if not subfield|is_hidden_field -%}
+        {{ form_field(subfield,
+                      form_type=form_type,
+                      horizontal_columns=horizontal_columns,
+                      button_map=button_map) }}
+      {%- endif %}
+    {%- endfor %}
+  </fieldset>
+{% else -%}
+  <div class="form-group {% if field.errors %} has-error{% endif %}">
+      {%- if form_type == "inline" %}
+        {{field.label(class="sr-only")|safe}}
+        {{field(class="form-control", placeholder=field.description, **kwargs)|safe}}
+      {% elif form_type == "horizontal" %}
+        {{field.label(class="control-label " + (
+          " col-%s-%s" % horizontal_columns[0:2]
+        ))|safe}}
+        <div class=" col-{{horizontal_columns[0]}}-{{horizontal_columns[2]}}">
+          {{field(class="form-control", **kwargs)|safe}}
+        </div>
+        {%- if field.errors %}
+          {%- for error in field.errors %}
+            {% call _hz_form_wrap(horizontal_columns, form_type) %}
+              <p class="help-block">{{error}}</p>
+            {% endcall %}
+          {%- endfor %}
+        {%- elif field.description -%}
+          {% call _hz_form_wrap(horizontal_columns, form_type) %}
+            <p class="help-block">{{field.description|safe}}</p>
+          {% endcall %}
+        {%- endif %}
+      {%- else -%}
+        {{field.label(class="control-label")|safe}}
+        {{field(class="form-control", **kwargs)|safe}}
+
+        {%- if field.errors %}
+          {%- for error in field.errors %}
+            <p class="help-block">{{error}}</p>
+          {%- endfor %}
+        {%- elif field.description -%}
+          <p class="help-block">{{field.description|safe}}</p>
+        {%- endif %}
+      {%- endif %}
+  </div>
+{% endif %}
+{% endmacro %}
+
+{# valid form types are "basic", "inline" and "horizontal" #}
+{% macro quick_form(form,
+                    action="",
+                    method="post",
+                    extra_classes=None,
+                    role="form",
+                    form_type="basic",
+                    horizontal_columns=('lg', 2, 10),
+                    enctype=None,
+                    button_map={},
+                    field_order=None) %}
+<form
+  {%- if action %} action="{{action}}"{% endif -%}
+  {%- if method %} method="{{method}}"{% endif %}
+  class="form
+    {%- if extra_classes %} {{extra_classes}}{% endif -%}
+    {%- if form_type == "horizontal" %} form-horizontal
+    {%- elif form_type == "inline" %} form-inline
+    {%- endif -%}
+  "
+  {%- if enctype %} enctype="{{enctype}}"{% endif -%}
+  {%- if role %} role="{{role}}"{% endif -%}
+  >
+  {{ form.hidden_tag() }}
+  {{ form_errors(form, hiddens='only') }}
+
+  {%- for field in form|sort_fields(field_names=field_order or []) %}
+    {% if not field|is_hidden_field -%}
+      {{ form_field(field,
+                    form_type=form_type,
+                    horizontal_columns=horizontal_columns,
+                    button_map=button_map,
+                    **kwargs.get(field.name, {})) }}
+    {%- endif %}
+  {%- endfor %}
+
+</form>
+{%- endmacro %}

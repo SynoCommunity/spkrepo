@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% import '_wtfhelpers.html' as wtf %}
+{% block content %}
+<h1>Resend confirmation instructions</h1>
+{{ wtf.quick_form(send_confirmation_form, button_map={'submit': 'primary'}) }}
+{% endblock %}

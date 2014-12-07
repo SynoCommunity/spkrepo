@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Packages - {{ super() }}{% endblock %}
+{% block content %}
+<div id="packages">
+  {% for version_row in versions | batch(3) %}
+  <div class="row package-row">
+    {% for version in version_row %}
+    <div class="col-md-4">
+      <div class="media">
+        <a class="media-left" href="{{ url_for('frontend.package', name=version.package.name) }}">
+          <img src="{{ url_for('nas.data', path=version.icons['72'].path) }}" alt="Icon">
+        </a>
+        <div class="media-body">
+          <h4 class="media-heading">{{ version.displaynames['enu'].displayname }}
+            <small>v{{ version.version_string }}
+              {% if version.report_url %}<span class="label label-danger">beta</span>{% endif %}
+            </small>
+          </h4>
+          <div class="ellipsis package-description">
+            <p>{{ version.descriptions['enu'].description }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

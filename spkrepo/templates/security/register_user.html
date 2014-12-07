@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% import '_wtfhelpers.html' as wtf %}
+{% block content %}
+<h1>Register</h1>
+{{ wtf.quick_form(register_user_form, field_order=['username'], button_map={'submit': 'primary'}) }}
+{% endblock %}

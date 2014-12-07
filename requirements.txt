@@ -1,0 +1,2 @@
+-e git+https://github.com/Diaoul/flask-login.git@0.2.11-fix-session-creation#egg=Flask-Login
+-e .

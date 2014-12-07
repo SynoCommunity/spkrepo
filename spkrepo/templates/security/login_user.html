@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% import '_wtfhelpers.html' as wtf %}
+{% block content %}
+<h1>Login</h1>
+{{ wtf.quick_form(login_user_form, button_map={'submit': 'primary'}) }}
+<p><a href="{{ url_for('security.forgot_password') }}">I forgot my password</a></p>
+{% endblock %}

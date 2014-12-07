@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}{{ package.versions[-1].displaynames['enu'].displayname }} Package - {{ super() }}{% endblock %}
+{% block content %}
+{# TODO: Improve this template #}
+<div class="row">
+  <div class="media">
+    <a class="media-left" href="#">
+      <img src="{{ url_for('nas.data', path=package.versions[-1].icons['72'].path) }}" alt="Icon">
+    </a>
+    <div class="media-body">
+      <h1 class="media-heading">{{ package.versions[-1].displaynames['enu'].displayname }}
+        <small>v{{ package.versions[-1].version_string }}
+          {% if package.versions[-1].report_url %}<span class="label label-danger">beta</span>{% endif %}
+        </small>
+      </h1>
+      <p>{{ package.versions[-1].descriptions['enu'].description }}</p>
+      <dl>
+        <dt>Architectures</dt>
+        <dd>
+          {% for build in package.versions[-1].builds %}
+          {% for arch in build.architectures %}
+          <span class="label label-default">{{ arch.code }}</span>
+          {% endfor %}
+          {% endfor %}
+        </dd>
+        <dt>Author</dt>
+        <dd>{{ package.author.username }}</dd>
+      </dl>
+    </div>
+  </div>
+</div>
+{% endblock %}
