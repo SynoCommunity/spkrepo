@@ -4,13 +4,13 @@ import os
 import shutil
 
 from flask import flash, url_for, redirect, abort, current_app
-from flask.ext.admin import AdminIndexView, expose
-from flask.ext.admin.actions import action
-from flask.ext.admin.contrib.sqla import ModelView
-from flask.ext.admin.contrib.sqla.form import get_form
-from flask.ext.admin.contrib.sqla.tools import get_query_for_ids
-from flask.ext.admin.form import ImageUploadField
-from flask.ext.security import current_user
+from flask_admin import AdminIndexView, expose
+from flask_admin.actions import action
+from flask_admin.contrib.sqla import ModelView
+from flask_admin.contrib.sqla.form import get_form
+from flask_admin.contrib.sqla.tools import get_query_for_ids
+from flask_admin.form import ImageUploadField
+from flask_security import current_user
 from markupsafe import Markup
 from wtforms import PasswordField
 from wtforms.validators import Regexp

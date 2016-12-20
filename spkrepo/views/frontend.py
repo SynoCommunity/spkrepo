@@ -3,9 +3,9 @@ import hashlib
 import os
 
 from flask import Blueprint, render_template, redirect, url_for, abort
-from flask.ext.security import current_user, login_required, ConfirmRegisterForm
-from flask.ext.security.forms import ChangePasswordForm
-from flask.ext.wtf import Form
+from flask_security import current_user, login_required, ConfirmRegisterForm
+from flask_security.forms import ChangePasswordForm
+from flask_wtf import FlaskForm
 from wtforms import ValidationError, StringField, SubmitField
 from wtforms.validators import InputRequired, Length
 
@@ -21,7 +21,7 @@ def index():
     return render_template('frontend/index.html')
 
 
-class GenerateApiKeyForm(Form):
+class GenerateApiKeyForm(FlaskForm):
     """Form for generating an API key"""
     api_key = StringField('API Key')
     submit = SubmitField('Generate API Key')
