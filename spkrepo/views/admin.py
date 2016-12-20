@@ -27,7 +27,7 @@ class UserView(ModelView):
 
     # Permissions
     def is_accessible(self):
-        return current_user.is_authenticated() and current_user.has_role('admin')
+        return current_user.is_authenticated and current_user.has_role('admin')
 
     can_create = False
 
@@ -73,7 +73,7 @@ class ArchitectureView(ModelView):
 
     # Permissions
     def is_accessible(self):
-        return current_user.is_authenticated() and current_user.has_role('package_admin')
+        return current_user.is_authenticated and current_user.has_role('package_admin')
 
     can_edit = False
 
@@ -87,7 +87,7 @@ class FirmwareView(ModelView):
 
     # Permissions
     def is_accessible(self):
-        return current_user.is_authenticated() and current_user.has_role('package_admin')
+        return current_user.is_authenticated and current_user.has_role('package_admin')
 
     can_edit = False
 
@@ -121,7 +121,7 @@ class ScreenshotView(ModelView):
 
     # Permissions
     def is_accessible(self):
-        return current_user.is_authenticated() and current_user.has_role('package_admin')
+        return current_user.is_authenticated and current_user.has_role('package_admin')
 
     # View
     def _display(view, context, model, name):
@@ -144,7 +144,7 @@ class PackageView(ModelView):
 
     # Permissions
     def is_accessible(self):
-        return current_user.is_authenticated() and current_user.has_role('package_admin')
+        return current_user.is_authenticated and current_user.has_role('package_admin')
 
     @property
     def can_create(self):
@@ -197,7 +197,7 @@ class VersionView(ModelView):
 
     # Permissions
     def is_accessible(self):
-        return current_user.is_authenticated() and any(map(current_user.has_role, ('developer', 'package_admin')))
+        return current_user.is_authenticated and any(map(current_user.has_role, ('developer', 'package_admin')))
 
     can_create = False
 
@@ -372,7 +372,7 @@ class BuildView(ModelView):
 
     # Permissions
     def is_accessible(self):
-        return current_user.is_authenticated() and any(map(current_user.has_role, ('developer', 'package_admin')))
+        return current_user.is_authenticated and any(map(current_user.has_role, ('developer', 'package_admin')))
 
     can_create = False
 
