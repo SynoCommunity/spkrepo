@@ -41,9 +41,8 @@ class SPKParseTestCase(BaseTestCase):
         self.assertEqual(build.version.maintainer_url, spk.info['maintainer_url'])
         self.assertEqual(build.version.package.name, spk.info['package'])
         self.assertEqual(build.version.report_url, spk.info['report_url'])
-        self.assertEqual(build.version.conf_dependencies is not None or build.version.conf_conflicts is not None or \
-                         build.version.conf_privilege is not None or build.version.conf_resource is not None,
-                             spk.info['support_conf_folder'])
+        self.assertEqual(build.version.conf_dependencies is not None or build.version.conf_conflicts is not None or build.version.conf_privilege is not None,
+                         spk.info['support_conf_folder'])
         self.assertEqual(build.version.version_string, spk.info['version'])
 
         # icons
@@ -221,7 +220,7 @@ class SPKParseTestCase(BaseTestCase):
             with self.assertRaises(SPKParseError) as cm:
                 SPK(f)
         self.assertEqual('Wrong conf/resource encoding', str(cm.exception))
-		
+
     def test_empty_conf_folder(self):
         build = BuildFactory.build(version__conf_dependencies=None, version__conf_conflicts=None)
         info = create_info(build)
