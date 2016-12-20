@@ -59,6 +59,8 @@ class SPK(object):
         self.stream = stream
         self.conf_dependencies = None
         self.conf_conflicts = None
+        self.conf_privilege = None
+        self.conf_resource = None
 
         self.stream.seek(0)
         try:
@@ -152,6 +154,23 @@ class SPK(object):
                             raise SPKParseError('Wrong conf/PKG_CONX encoding')
                         self.conf_conflicts = json.dumps({s: {k: v for k, v in c.items(s)} for s in c.sections()})
                     if self.conf_dependencies is None and self.conf_conflicts is None:
+                        raise SPKParseError('Empty conf folder')
+                    if 'conf/privilege' in names:
+                        c = ConfigParser()
+                        try:
+                            c.read_string(spk.extractfile('conf/privilege').read().decode('utf-8'))
+                        except UnicodeDecodeError:
+                            raise SPKParseError('Wrong conf/privilege encoding')
+                        self.conf_privilege = json.dumps({s: {k: v for k, v in c.items(s)} for s in c.sections()})
+                    if 'conf/resource' in names:
+                        c = ConfigParser()
+                        try:
+                            c.read_string(spk.extractfile('conf/resource').read().decode('utf-8'))
+                        except UnicodeDecodeError:
+                            raise SPKParseError('Wrong conf/resource encoding')
+                        self.conf_resource = json.dumps({s: {k: v for k, v in c.items(s)} for s in c.sections()})
+                    if self.conf_dependencies is None and self.conf_conflicts is None and \
+                        self.conf_privilege is None and self.conf_resource is None:
                         raise SPKParseError('Empty conf folder')
 
                 # verify checksum

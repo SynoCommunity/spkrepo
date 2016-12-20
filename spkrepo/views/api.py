@@ -136,6 +136,8 @@ class Packages(Resource):
                               conf_dependencies=spk.conf_dependencies,
                               conflicts=spk.info.get('install_conflict_packages'),
                               conf_conflicts=spk.conf_conflicts,
+                              conf_privilege=spk.conf_privilege,
+                              conf_resource=spk.conf_resource,
                               install_wizard='install' in spk.wizards, upgrade_wizard='upgrade' in spk.wizards,
                               startable=spk.info.get('startable'), license=spk.license)
 

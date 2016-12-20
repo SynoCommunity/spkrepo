@@ -363,6 +363,8 @@ class Version(db.Model):
     conf_dependencies = db.Column(db.Unicode(255))
     conflicts = db.Column(db.Unicode(255))
     conf_conflicts = db.Column(db.Unicode(255))
+    conf_privilege = db.Column(db.Unicode(255))
+    conf_resource = db.Column(db.Unicode(255))
     install_wizard = db.Column(db.Boolean)
     upgrade_wizard = db.Column(db.Boolean)
     startable = db.Column(db.Boolean)

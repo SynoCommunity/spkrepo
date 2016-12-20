@@ -110,6 +110,18 @@ class CatalogTestCase(BaseTestCase):
         else:
             self.assertNotIn('conf_conxpkgs', entry)
 
+        # conf_privilege
+        if build.version.conf_privilege:
+            self.assertEqual(entry['conf_privilege'], build.version.conf_privilege)
+        else:
+            self.assertNotIn('conf_privilege', entry)
+
+        # conf_resource
+        if build.version.conf_resource:
+            self.assertEqual(entry['conf_resource'], build.version.conf_resource)
+        else:
+            self.assertNotIn('conf_resource', entry)
+
     def test_missing_data_arch(self):
         self.assert400(self.client.post(url_for('nas.catalog'), data=dict(build='1594', language='enu')))
 
