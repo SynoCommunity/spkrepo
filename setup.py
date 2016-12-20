@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 
 tests_require = ['Flask-Testing',
-                 'factory-boy', 'fake-factory',
+                 'factory-boy', 'Faker',
                  'lxml', 'urltools',
                  'coveralls']
 
