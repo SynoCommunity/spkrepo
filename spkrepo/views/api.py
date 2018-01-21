@@ -20,7 +20,7 @@ from ..utils import SPK
 api = Blueprint('api', __name__)
 
 # regexes
-firmware_re = re.compile(r'^(?P<version>\d\.\d)-(?P<build>\d{3,4})$')
+firmware_re = re.compile(r'^(?P<version>\d\.\d)-(?P<build>\d{3,6})$')
 version_re = re.compile(r'^(?P<upstream_version>.*)-(?P<version>\d+)$')
 
 
