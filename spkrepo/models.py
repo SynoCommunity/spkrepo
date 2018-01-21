@@ -148,7 +148,7 @@ class Screenshot(db.Model):
     # Columns
     id = db.Column(db.Integer, primary_key=True)
     package_id = db.Column(db.Integer, db.ForeignKey('package.id'), nullable=False)
-    path = db.Column(db.Unicode(100), nullable=False)
+    path = db.Column(db.Unicode(200), nullable=False)
 
     # Relationhips
     package = db.relationship('Package', back_populates='screenshots')
