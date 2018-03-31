@@ -168,8 +168,12 @@ def depopulate():
 @manager.command
 def clean():
     """Clean data path"""
-    shutil.rmtree(os.path.join(current_app.config['DATA_PATH']))
-    os.mkdir(current_app.config['DATA_PATH'])
+    # do not remove and recreate the path since it may be a docker volume
+    for root, dirs, files in os.walk(os.path.join(current_app.config['DATA_PATH']), topdown=False):
+        for name in files:
+            os.remove(os.path.join(root, name))
+        for name in dirs:
+            os.rmdir(os.path.join(root, name))
 
 
 @manager.command
