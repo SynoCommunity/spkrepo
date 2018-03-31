@@ -3,7 +3,7 @@ import io
 import json
 import tarfile
 from unittest import TestSuite, TestLoader
-from unittest.mock import Mock
+from mock import Mock
 
 from spkrepo.exceptions import SPKParseError
 from spkrepo.models import Architecture
@@ -41,8 +41,9 @@ class SPKParseTestCase(BaseTestCase):
         self.assertEqual(build.version.maintainer_url, spk.info['maintainer_url'])
         self.assertEqual(build.version.package.name, spk.info['package'])
         self.assertEqual(build.version.report_url, spk.info['report_url'])
-        self.assertEqual(build.version.conf_dependencies is not None or build.version.conf_conflicts is not None,
-                         spk.info['support_conf_folder'])
+        self.assertEqual(build.version.conf_dependencies is not None or build.version.conf_conflicts is not None or \
+                         build.version.conf_privilege is not None or build.version.conf_resource is not None,
+                             spk.info['support_conf_folder'])
         self.assertEqual(build.version.version_string, spk.info['version'])
 
         # icons
@@ -185,7 +186,7 @@ class SPKParseTestCase(BaseTestCase):
         self.assertEqual('Invalid SPK', str(cm.exception))
 
     def test_missing_conf_folder(self):
-        build = BuildFactory.build(version__conf_dependencies=None, version__conf_conflicts=None)
+        build = BuildFactory.build(version__conf_dependencies=None, version__conf_conflicts=None, version__conf_privilege=None, version__conf_resource=None)
         info = create_info(build)
         info['support_conf_folder'] = 'yes'
         with create_spk(build, info=info, with_conf=False) as f:
@@ -207,6 +208,20 @@ class SPKParseTestCase(BaseTestCase):
                 SPK(f)
         self.assertEqual('Wrong conf/PKG_CONX encoding', str(cm.exception))
 
+    def test_wrong_conf_privilege_encoding(self):
+        build = BuildFactory.build(version__conf_privilege=json.dumps({'déçu': {'run-as': '<run-as>'}}))
+        with create_spk(build, conf_privilege_encoding='latin-1') as f:
+            with self.assertRaises(SPKParseError) as cm:
+                SPK(f)
+        self.assertEqual('Wrong conf/privilege encoding', str(cm.exception))
+
+    def test_wrong_conf_resource_encoding(self):
+        build = BuildFactory.build(version__conf_resource=json.dumps({'déçu': {'<resource-id>': '<specification>'}}))
+        with create_spk(build, conf_resource_encoding='latin-1') as f:
+            with self.assertRaises(SPKParseError) as cm:
+                SPK(f)
+        self.assertEqual('Wrong conf/resource encoding', str(cm.exception))
+		
     def test_empty_conf_folder(self):
         build = BuildFactory.build(version__conf_dependencies=None, version__conf_conflicts=None)
         info = create_info(build)

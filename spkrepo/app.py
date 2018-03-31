@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import jinja2
 from flask import Flask
-from flask.ext.admin import Admin
+from flask_admin import Admin
 from wtforms import HiddenField
 
 from . import config as default_config

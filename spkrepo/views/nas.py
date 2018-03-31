@@ -106,6 +106,10 @@ def get_catalog(arch, build, language, beta):
             entry['conf_deppkgs'] = b.version.conf_dependencies
         if b.version.conf_conflicts:
             entry['conf_conxpkgs'] = b.version.conf_conflicts
+        if b.version.conf_privilege:
+            entry['conf_privilege'] = b.version.conf_privilege
+        if b.version.conf_resource:
+            entry['conf_resource'] = b.version.conf_resource
         entries.append(entry)
 
     # DSM 5.1
