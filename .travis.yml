@@ -1,7 +1,13 @@
+
+branches:
+  only:
+    - master
+    - fix_build_errors
+
 language: python
 
 python:
-  - 3.3
+  - 2.7
   - 3.4
 
 install:
