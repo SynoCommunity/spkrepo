@@ -48,7 +48,7 @@
             {% endfor %}
           </ul>
           <ul class="nav navbar-nav navbar-right">
-            {% if current_user.is_authenticated() %}
+            {% if current_user.is_authenticated %}
               {% if current_user.has_role('developer') or current_user.has_role('package_admin') or
                     current_user.has_role('admin') %}
               {% set right_nav = [

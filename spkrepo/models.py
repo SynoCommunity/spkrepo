@@ -5,8 +5,8 @@ import shutil
 from datetime import datetime, timedelta
 
 from flask import current_app
-from flask.ext.security import UserMixin, RoleMixin, SQLAlchemyUserDatastore
-from flask.ext.sqlalchemy import before_models_committed, models_committed
+from flask_security import UserMixin, RoleMixin, SQLAlchemyUserDatastore
+from flask_sqlalchemy import before_models_committed, models_committed
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.collections import attribute_mapped_collection
 
@@ -35,7 +35,7 @@ class User(db.Model, UserMixin):
     active = db.Column(db.Boolean(), nullable=False)
     confirmed_at = db.Column(db.DateTime())
 
-    # Relationhips
+    # Relationships
     roles = db.relationship('Role', secondary='user_role', back_populates='users', lazy=False)
     authored_packages = db.relationship('Package', back_populates='author')
     maintained_packages = db.relationship('Package', secondary='package_user_maintainer',
@@ -56,7 +56,7 @@ class Role(db.Model, RoleMixin):
     name = db.Column(db.Unicode(50), unique=True, nullable=False)
     description = db.Column(db.Unicode(255))
 
-    # Relationhips
+    # Relationships
     users = db.relationship('User', secondary='user_role', back_populates='roles')
 
     @classmethod
@@ -80,7 +80,7 @@ class Architecture(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.Unicode(20), unique=True, nullable=False)
 
-    # Relationhips
+    # Relationships
     builds = db.relationship('Build', secondary='build_architecture', back_populates='architectures')
 
     # Other
@@ -150,7 +150,7 @@ class Screenshot(db.Model):
     package_id = db.Column(db.Integer, db.ForeignKey('package.id'), nullable=False)
     path = db.Column(db.Unicode(200), nullable=False)
 
-    # Relationhips
+    # Relationships
     package = db.relationship('Package', back_populates='screenshots')
 
     def save(self, stream):
@@ -184,7 +184,7 @@ class Icon(db.Model):
     # Constraints
     __table_args__ = (db.UniqueConstraint(version_id, size),)
 
-    # Relationhips
+    # Relationships
     version = db.relationship('Version', back_populates='icons')
 
     def save(self, stream):
@@ -232,7 +232,7 @@ class DisplayName(db.Model):
     language_id = db.Column(db.Integer, db.ForeignKey('language.id'), nullable=False)
     displayname = db.Column(db.Unicode(50), nullable=False)
 
-    # Relationhips
+    # Relationships
     language = db.relationship('Language')
 
     # Constraints
@@ -253,7 +253,7 @@ class Description(db.Model):
     language_id = db.Column(db.Integer, db.ForeignKey('language.id'), nullable=False)
     description = db.Column(db.UnicodeText, nullable=False)
 
-    # Relationhips
+    # Relationships
     language = db.relationship('Language')
 
     # Constraints
@@ -363,13 +363,15 @@ class Version(db.Model):
     conf_dependencies = db.Column(db.Unicode(255))
     conflicts = db.Column(db.Unicode(255))
     conf_conflicts = db.Column(db.Unicode(255))
+    conf_privilege = db.Column(db.Unicode(255))
+    conf_resource = db.Column(db.Unicode(255))	
     install_wizard = db.Column(db.Boolean)
     upgrade_wizard = db.Column(db.Boolean)
     startable = db.Column(db.Boolean)
     license = db.Column(db.UnicodeText)
     insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
 
-    # Relationhips
+    # Relationships
     package = db.relationship('Package', back_populates='versions', lazy=False)
     service_dependencies = db.relationship('Service', secondary='version_service_dependency')
     displaynames = db.relationship('DisplayName', cascade='all, delete-orphan',
@@ -440,7 +442,7 @@ class Package(db.Model):
                                                              Download.date >= datetime.now() - timedelta(days=90))).
                                                correlate_except(Download), deferred=True)
 
-    # Relationhips
+    # Relationships
     versions = db.relationship('Version', back_populates='package', cascade='all, delete-orphan',
                                cascade_backrefs=False, order_by='Version.version')
     screenshots = db.relationship('Screenshot', back_populates='package', cascade='all, delete-orphan')

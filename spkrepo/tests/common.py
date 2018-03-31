@@ -20,7 +20,7 @@ import factory.alchemy
 import faker
 from factory.alchemy import SQLAlchemyModelFactory
 from flask import url_for, current_app
-from flask.ext.testing import TestCase
+from flask_testing import TestCase
 
 from spkrepo import create_app
 from spkrepo.ext import db
@@ -457,7 +457,7 @@ def create_image(text, width=640, height=480):
 def create_spk(build, info=None, signature=None, with_checksum=False, with_package_icons=True, with_info_icons=False,
                with_info=True, with_package=True, with_scripts=True, with_conf=False, info_encoding='utf-8',
                license_encoding='utf-8', signature_encoding='ascii', conf_dependencies_encoding='utf-8',
-               conf_conflicts_encoding='utf-8'):
+               conf_conflicts_encoding='utf-8', conf_privilege_encoding='utf-8', conf_resource_encoding='utf-8'):
     """
     Create a valid SPK file
 
@@ -478,12 +478,14 @@ def create_spk(build, info=None, signature=None, with_checksum=False, with_packa
     :param signature_encoding: encoding for the syno_signature.asc file
     :param conf_dependencies_encoding: encoding for the conf/PKG_DEPS file
     :param conf_conflicts_encoding: encoding for the conf/PKG_CONX file
+    :param conf_privilege_encoding: encoding for the conf/privilege file
+    :param conf_resource_encoding: encoding for the conf/resource file	
     :return: the created SPK stream
     """
     # generate an info if none is given
     info = info or create_info(build)
 
-    # open strucutre
+    # open structure
     spk_stream = io.BytesIO()
     spk = tarfile.TarFile(fileobj=spk_stream, mode='w')
 
@@ -506,7 +508,7 @@ def create_spk(build, info=None, signature=None, with_checksum=False, with_packa
         spk.addfile(signature_tarinfo, fileobj=signature_stream)
 
     # conf
-    if with_conf or build.version.conf_dependencies is not None or build.version.conf_conflicts is not None:
+    if with_conf or build.version.conf_dependencies is not None or build.version.conf_conflicts or build.version.conf_privilege is not None:
         conf_folder_tarinfo = tarfile.TarInfo('conf')
         conf_folder_tarinfo.type = tarfile.DIRTYPE
         conf_folder_tarinfo.mode = 0o755
@@ -529,6 +531,28 @@ def create_spk(build, info=None, signature=None, with_checksum=False, with_packa
             conf_stream = io.StringIO()
             config.write(conf_stream)
             conf_stream_bytes = io.BytesIO(conf_stream.getvalue().encode(conf_conflicts_encoding))
+            conf_stream_bytes.seek(0, io.SEEK_END)
+            conf_tarinfo.size = conf_stream_bytes.tell()
+            conf_stream_bytes.seek(0)
+            spk.addfile(conf_tarinfo, fileobj=conf_stream_bytes)
+        if build.version.conf_privilege is not None:
+            conf_tarinfo = tarfile.TarInfo('conf/privilege')
+            config = ConfigParser()
+            config.read_dict(json.loads(build.version.conf_privilege))
+            conf_stream = io.StringIO()
+            config.write(conf_stream)
+            conf_stream_bytes = io.BytesIO(conf_stream.getvalue().encode(conf_privilege_encoding))
+            conf_stream_bytes.seek(0, io.SEEK_END)
+            conf_tarinfo.size = conf_stream_bytes.tell()
+            conf_stream_bytes.seek(0)
+            spk.addfile(conf_tarinfo, fileobj=conf_stream_bytes)
+        if build.version.conf_resource is not None:
+            conf_tarinfo = tarfile.TarInfo('conf/resource')
+            config = ConfigParser()
+            config.read_dict(json.loads(build.version.conf_resource))
+            conf_stream = io.StringIO()
+            config.write(conf_stream)
+            conf_stream_bytes = io.BytesIO(conf_stream.getvalue().encode(conf_resource_encoding))
             conf_stream_bytes.seek(0, io.SEEK_END)
             conf_tarinfo.size = conf_stream_bytes.tell()
             conf_stream_bytes.seek(0)
@@ -622,7 +646,7 @@ def create_spk(build, info=None, signature=None, with_checksum=False, with_packa
         info_stream.seek(0)
         spk.addfile(info_tarinfo, fileobj=info_stream)
 
-    # close strucutre
+    # close structure
     spk.close()
     spk_stream.seek(0)
 

@@ -4,13 +4,13 @@ import os
 import shutil
 
 from flask import flash, url_for, redirect, abort, current_app
-from flask.ext.admin import AdminIndexView, expose
-from flask.ext.admin.actions import action
-from flask.ext.admin.contrib.sqla import ModelView
-from flask.ext.admin.contrib.sqla.form import get_form
-from flask.ext.admin.contrib.sqla.tools import get_query_for_ids
-from flask.ext.admin.form import ImageUploadField
-from flask.ext.security import current_user
+from flask_admin import AdminIndexView, expose
+from flask_admin.actions import action
+from flask_admin.contrib.sqla import ModelView
+from flask_admin.contrib.sqla.form import get_form
+from flask_admin.contrib.sqla.tools import get_query_for_ids
+from flask_admin.form import ImageUploadField
+from flask_security import current_user
 from markupsafe import Markup
 from wtforms import PasswordField
 from wtforms.validators import Regexp
@@ -27,7 +27,7 @@ class UserView(ModelView):
 
     # Permissions
     def is_accessible(self):
-        return current_user.is_authenticated() and current_user.has_role('admin')
+        return current_user.is_authenticated and current_user.has_role('admin')
 
     can_create = False
 
@@ -73,7 +73,7 @@ class ArchitectureView(ModelView):
 
     # Permissions
     def is_accessible(self):
-        return current_user.is_authenticated() and current_user.has_role('package_admin')
+        return current_user.is_authenticated and current_user.has_role('package_admin')
 
     can_edit = False
 
@@ -87,7 +87,7 @@ class FirmwareView(ModelView):
 
     # Permissions
     def is_accessible(self):
-        return current_user.is_authenticated() and current_user.has_role('package_admin')
+        return current_user.is_authenticated and current_user.has_role('package_admin')
 
     can_edit = False
 
@@ -103,17 +103,6 @@ def screenshot_namegen(obj, file_data):
     return os.path.join(obj.package.name, pattern % (i, ext))
 
 
-# TODO: Not necessary with Flask-Admin>1.0.8, see https://github.com/mrjoes/flask-admin/pull/705
-class SpkrepoImageUploadField(ImageUploadField):
-    def _get_path(self, filename):
-        if not self.base_path:  # pragma: no cover
-            raise ValueError('FileUploadField field requires base_path to be set.')
-
-        if callable(self.base_path):
-            return os.path.join(self.base_path(), filename)
-        return os.path.join(self.base_path, filename)  # pragma: no cover
-
-
 class ScreenshotView(ModelView):
     """View for :class:`~spkrepo.models.Screenshot`"""
     def __init__(self, **kwargs):
@@ -121,7 +110,7 @@ class ScreenshotView(ModelView):
 
     # Permissions
     def is_accessible(self):
-        return current_user.is_authenticated() and current_user.has_role('package_admin')
+        return current_user.is_authenticated and current_user.has_role('package_admin')
 
     # View
     def _display(view, context, model, name):
@@ -132,7 +121,7 @@ class ScreenshotView(ModelView):
     column_filters = ('package.name',)
 
     # Form
-    form_overrides = {'path': SpkrepoImageUploadField}
+    form_overrides = {'path': ImageUploadField}
     form_args = {'path': {'label': 'Screenshot', 'namegen': screenshot_namegen,
                           'base_path': lambda: current_app.config['DATA_PATH']}}
 
@@ -144,7 +133,7 @@ class PackageView(ModelView):
 
     # Permissions
     def is_accessible(self):
-        return current_user.is_authenticated() and current_user.has_role('package_admin')
+        return current_user.is_authenticated and current_user.has_role('package_admin')
 
     @property
     def can_create(self):
@@ -197,7 +186,7 @@ class VersionView(ModelView):
 
     # Permissions
     def is_accessible(self):
-        return current_user.is_authenticated() and any(map(current_user.has_role, ('developer', 'package_admin')))
+        return current_user.is_authenticated and any(map(current_user.has_role, ('developer', 'package_admin')))
 
     can_create = False
 
@@ -372,7 +361,7 @@ class BuildView(ModelView):
 
     # Permissions
     def is_accessible(self):
-        return current_user.is_authenticated() and any(map(current_user.has_role, ('developer', 'package_admin')))
+        return current_user.is_authenticated and any(map(current_user.has_role, ('developer', 'package_admin')))
 
     can_create = False
 

@@ -6,9 +6,9 @@ import shutil
 from functools import wraps
 
 from flask import _request_ctx_stack, Blueprint, current_app, request
-from flask.ext.principal import identity_changed, Identity
-from flask.ext.restful import Api, Resource, abort
-from flask.ext.security import current_user
+from flask_principal import identity_changed, Identity
+from flask_restful import Api, Resource, abort
+from flask_security import current_user
 
 from ..exceptions import SPKParseError, SPKSignError
 from ..ext import db
@@ -136,6 +136,8 @@ class Packages(Resource):
                               conf_dependencies=spk.conf_dependencies,
                               conflicts=spk.info.get('install_conflict_packages'),
                               conf_conflicts=spk.conf_conflicts,
+                              conf_privilege=spk.conf_privilege,
+                              conf_resource=spk.conf_resource,
                               install_wizard='install' in spk.wizards, upgrade_wizard='upgrade' in spk.wizards,
                               startable=spk.info.get('startable'), license=spk.license)
 

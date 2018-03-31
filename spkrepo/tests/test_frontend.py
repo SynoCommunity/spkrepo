@@ -2,7 +2,7 @@
 from unittest import TestSuite, TestLoader
 
 from flask import url_for
-from flask.ext.security import url_for_security
+from flask_security import url_for_security
 from lxml.html import fromstring
 
 from spkrepo.ext import db

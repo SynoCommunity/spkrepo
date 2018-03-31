@@ -3,19 +3,24 @@ from setuptools import setup, find_packages
 
 
 tests_require = ['Flask-Testing',
-                 'factory-boy', 'fake-factory',
-                 'lxml', 'urltools',
+                 'factory-boy', 'Faker',
+                 'lxml', 'urltools', 'mock', 
                  'coveralls']
 
 install_requires = ['Flask',
                     'Flask-SQLAlchemy',
-                    'Flask-Security',
-                    'Flask-Admin==1.0.8', 'Pillow',
+                    'Flask-Security', 'passlib', 
+                    'Flask-Babelex',
+                    'Flask-WTF', 'Flask-Mail', 'configparser', 
+                    'Flask-Principal',
+                    'Flask-Admin==1.0.8', 'sqlalchemy<1.2',  # ValueError: too many values to unpack (until flask-admin is fixed)
+                    'Pillow', 
                     'Flask-RESTful',
+                    'Flask-Login',
                     'Flask-Cache', 'redis',
-                    'python-gnupg', 'requests',
+                    'python-gnupg', 'requests', 'click', 
                     'Flask-Migrate', 'alembic>=0.7.0',
-                    'Flask-Script',
+                    'Flask-Script', 'factory', 'Text-Unidecode', 'ipaddress', 
                     'Flask-DebugToolbar']
 
 dev_requires = ['sphinx', 'sphinx_rtd_theme']
