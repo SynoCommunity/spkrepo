@@ -103,6 +103,17 @@ def screenshot_namegen(obj, file_data):
     return os.path.join(obj.package.name, pattern % (i, ext))
 
 
+# TODO: Not necessary with Flask-Admin>1.0.8, see https://github.com/mrjoes/flask-admin/pull/705
+class SpkrepoImageUploadField(ImageUploadField):
+    def _get_path(self, filename):
+        if not self.base_path:  # pragma: no cover
+            raise ValueError('FileUploadField field requires base_path to be set.')
+
+        if callable(self.base_path):
+            return os.path.join(self.base_path(), filename)
+        return os.path.join(self.base_path, filename)  # pragma: no cover
+
+        
 class ScreenshotView(ModelView):
     """View for :class:`~spkrepo.models.Screenshot`"""
     def __init__(self, **kwargs):
@@ -121,7 +132,7 @@ class ScreenshotView(ModelView):
     column_filters = ('package.name',)
 
     # Form
-    form_overrides = {'path': ImageUploadField}
+    form_overrides = {'path': SpkrepoImageUploadField}
     form_args = {'path': {'label': 'Screenshot', 'namegen': screenshot_namegen,
                           'base_path': lambda: current_app.config['DATA_PATH']}}
 

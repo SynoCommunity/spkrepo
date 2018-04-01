@@ -11,7 +11,10 @@ from spkrepo.tests.common import BaseTestCase, BuildFactory, PackageFactory, cre
 
 class IndexTestCase(BaseTestCase):
     def test_anonymous(self):
-        self.assert403(self.client.get(url_for('admin.index')))
+        self.assert302(self.client.get(url_for('admin.index'), follow_redirects=False))
+
+    def test_anonymous_redirects_to_login(self):
+        self.assertRedirectsTo(self.client.get(url_for('admin.index')),url_for('security.login'))
 
     def test_user(self):
         with self.logged_user():
