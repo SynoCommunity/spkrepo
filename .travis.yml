@@ -9,6 +9,7 @@ language: python
 python:
   - 3.3
   - 3.4
+  - 3.5
 
 install:
   - sudo add-apt-repository ppa:travis-ci/sqlite3 -y
