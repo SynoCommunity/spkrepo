@@ -25,6 +25,7 @@ SECURITY_PASSWORD_SALT = 'password-salt'
 # SQLAlchemy
 SQLALCHEMY_ECHO = True
 SQLALCHEMY_DATABASE_URI = 'sqlite:///%s/spkrepo.db' % DATA_PATH
+SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 # Restful
 HTTP_BASIC_AUTH_REALM = 'spkrepo'

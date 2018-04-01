@@ -20,10 +20,10 @@ install_requires = ['Flask',
                     'Flask-Cache', 'redis',
                     'python-gnupg', 'requests', 'click', 
                     'Flask-Migrate', 'alembic>=0.7.0',
-                    'Flask-Script', 'factory', 'Text-Unidecode', 'ipaddress', 
+                    'Flask-Script', 'Text-Unidecode', 'ipaddress',
                     'Flask-DebugToolbar']
 
-dev_requires = ['sphinx', 'sphinx_rtd_theme']
+dev_requires = ['sphinx', 'sphinx-rtd-theme']
 
 
 setup(

@@ -347,6 +347,17 @@ class BaseTestCase(TestCase):
 
         self.assertStatus(response, 302, message)
 
+    def assertRedirectsTo(self, response, location, message=None):
+        """
+        Check if response is a redirect
+
+        :param response: Flask response
+        :param location: the redirect location
+        :param message: Message to display on test failure
+        """
+
+        self.assertRedirects(response, location, message)
+
     def assert409(self, response, message=None):
         """
         Check if response status code is 409
@@ -479,7 +490,7 @@ def create_spk(build, info=None, signature=None, with_checksum=False, with_packa
     :param conf_dependencies_encoding: encoding for the conf/PKG_DEPS file
     :param conf_conflicts_encoding: encoding for the conf/PKG_CONX file
     :param conf_privilege_encoding: encoding for the conf/privilege file
-    :param conf_resource_encoding: encoding for the conf/resource file	
+    :param conf_resource_encoding: encoding for the conf/resource file
     :return: the created SPK stream
     """
     # generate an info if none is given
@@ -639,7 +650,8 @@ def create_spk(build, info=None, signature=None, with_checksum=False, with_packa
         if isinstance(info, io.BytesIO):
             info_stream = info
         else:
-            info_stream = io.BytesIO('\n'.join(['%s="%s"' % (k, v) for k, v in info.items()]).encode(info_encoding))
+            b = '\n'.join(['%s="%s"' % (k, v) for k, v in info.items()]).encode(info_encoding)
+            info_stream = io.BytesIO(b)
         info_tarinfo = tarfile.TarInfo('INFO')
         info_stream.seek(0, io.SEEK_END)
         info_tarinfo.size = info_stream.tell()
