@@ -156,19 +156,6 @@ class SPK(object):
                             raise SPKParseError('Wrong conf/PKG_CONX encoding')
                         self.conf_conflicts = json.dumps({s: {k: v for k, v in c.items(s)} for s in c.sections()})
                     if 'conf/privilege' in names:
-                        try:
-                            self.conf_privilege = spk.extractfile('conf/privilege').read().decode('utf-8').strip()
-                        except UnicodeDecodeError:
-                            raise SPKParseError('Wrong conf/privilege encoding')
-                    if 'conf/resource' in names:
-                        try:
-                            self.conf_resource = spk.extractfile('conf/resource').read().decode('utf-8').strip()
-                        except UnicodeDecodeError:
-                            raise SPKParseError('Wrong conf/resource encoding')
-                    if self.conf_dependencies is None and self.conf_conflicts is None and \
-                        self.conf_privilege is None and self.conf_resource is None:
-                        raise SPKParseError('Empty conf folder')
-                    if 'conf/privilege' in names:
                         c = ConfigParser()
                         try:
                             c.read_string(spk.extractfile('conf/privilege').read().decode('utf-8'))
