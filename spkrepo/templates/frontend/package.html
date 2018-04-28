@@ -25,8 +25,41 @@
         </dd>
         <dt>Author</dt>
         <dd>{{ package.author.username }}</dd>
+        <dt>Changelog</dt>
+        <ul>
+        {% for version in package.versions %}
+          <li>{{ version.version_string }}</li>
+          <p>{{ version.changelog }}</p>
+        {% endfor %}
+        </ul>
       </dl>
+      <form id="download" >
+        <select id="file" name="path">File
+          {% for version in package.versions %}
+          {% for build in version.builds %}
+          {% for arch in build.architectures %}
+          {% if package.versions[-1].version_string == version.version_string %}
+          <option value="{{ build.path }}" selected>{{ version.version_string }} - {{ arch.code }}</option>
+          {% else %}
+          <option value="{{ build.path }}">{{ version.version_string }} - {{ arch.code }}</option>
+          {% endif %}
+          {% endfor %}
+          {% endfor %}
+          {% endfor %}
+        </select>
+        <input type="submit" value="Download">
+      </form>
     </div>
   </div>
 </div>
+<script>
+  var downloadForm = document.getElementById('download')
+  downloadForm.addEventListener('submit', function(e) {
+    if (e.preventDefault) e.preventDefault()
+    var file = document.getElementById('file')
+    document.location = "https://packages.synocommunity.com/"+encodeURI(file.value)
+    // e.g. https://packages.synocommunity.com/nano/3/nano.v3.f6931%5Bipq806x%5D.spk
+    // https://packages.synocommunity.com/ package name / revision version / package name . v revision version . f firmware version of toolchain [architecture].spk
+  }, false)
+</script>
 {% endblock %}
