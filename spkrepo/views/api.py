@@ -100,7 +100,10 @@ class Packages(Resource):
             architectures.append(architecture)
 
         # Firmware
-        match = firmware_re.match(spk.info['firmware'])
+        input_firmware = spk.info.get('firmware')
+        if input_firmware is None:
+            input_firmware = spk.info.get('os_min_ver')
+        match = firmware_re.match(input_firmware)
         if not match:
             abort(422, message='Invalid firmware')
         firmware = Firmware.find(int(match.group('build')))
