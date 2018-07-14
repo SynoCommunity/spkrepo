@@ -130,6 +130,9 @@ class Packages(Resource):
         version = {v.version: v for v in package.versions}.get(int(match.group('version')))
         if version is None:
             create_version = True
+            version_startable = True
+            if spk.info.get('startable') == 'no' or spk.info.get('ctl_stop') == 'no':
+                version_startable = False
             version = Version(package=package, upstream_version=match.group('upstream_version'),
                               version=int(match.group('version')), changelog=spk.info.get('changelog'),
                               report_url=spk.info.get('report_url'), distributor=spk.info.get('distributor'),
@@ -142,7 +145,7 @@ class Packages(Resource):
                               conf_privilege=spk.conf_privilege,
                               conf_resource=spk.conf_resource,
                               install_wizard='install' in spk.wizards, upgrade_wizard='upgrade' in spk.wizards,
-                              startable=spk.info.get('startable'), license=spk.license)
+                              startable=version_startable, license=spk.license)
 
             for key, value in spk.info.items():
                 if key == 'install_dep_services':
