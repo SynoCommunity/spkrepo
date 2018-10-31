@@ -36,7 +36,7 @@ class SPK(object):
     package_re = re.compile(r'^[\w-]+$')
 
     #: Regex for a wizard filename
-    wizard_filename_re = re.compile(r'^WIZARD_UIFILES/(?P<process>install|upgrade|uninstall)_uifile(?:_[a-z]{3})?$')
+    wizard_filename_re = re.compile(r'^WIZARD_UIFILES/(?P<process>install|upgrade|uninstall)_uifile(?:_[a-z]{3})?(?:\.sh)?$')
 
     #: Regex for icons in INFO
     icon_info_re = re.compile(r'^package_icon(?:_(?P<size>120|256))?$')
