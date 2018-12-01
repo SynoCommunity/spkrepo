@@ -21,7 +21,7 @@ class SPK(object):
     :param fileobj stream: SPK file stream
     """
     #: Required keys in the INFO file
-    REQUIRED_INFO = {'package', 'version', 'arch', 'firmware', 'displayname', 'description'}
+    REQUIRED_INFO = {'package', 'version', 'arch', 'displayname', 'description'}
 
     #: Boolean INFO keys
     BOOLEAN_INFO = set(['startable', 'support_conf_folder'])
