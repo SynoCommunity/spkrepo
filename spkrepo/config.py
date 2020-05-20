@@ -5,7 +5,7 @@ import os.path
 DEBUG = True
 TESTING = False
 SECRET_KEY = 'secret-key'
-MAX_CONTENT_LENGTH = 128 * 1024 * 1024
+MAX_CONTENT_LENGTH = 170 * 1024 * 1024
 
 # Application
 DATA_PATH = os.path.realpath('data')
