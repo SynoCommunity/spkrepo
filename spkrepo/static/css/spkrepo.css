@@ -51,3 +51,9 @@
 .package-description {
     height: 100px;
 }
+
+.fastly-logo {
+    width: auto;
+    height: 45px;
+    vertical-align: middle;
+}
