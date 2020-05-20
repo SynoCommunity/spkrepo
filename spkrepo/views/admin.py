@@ -127,7 +127,7 @@ class ScreenshotView(ModelView):
     def _display(view, context, model, name):
         return Markup('<img src="%s" alt="screenshot" height="100" width="100">' % url_for('nas.data', path=model.path))
     column_formatters = {'path': _display}
-    column_sortable_list = (('package', Package.name),)
+    column_sortable_list = (('package', 'package.name'),)
     column_default_sort = (Package.name, True)
     column_filters = ('package.name',)
 
@@ -183,7 +183,7 @@ class PackageView(ModelView):
 
     # View
     column_list = ('name', 'author', 'maintainers', 'insert_date')
-    column_sortable_list = (('name', Package.name), ('author', User.username), ('insert_date', Package.insert_date))
+    column_sortable_list = (('name', 'name'), ('author', 'author.username'), ('insert_date', 'insert_date'))
 
     # Form
     form_columns = ('name', 'author', 'maintainers')
@@ -227,10 +227,10 @@ class VersionView(ModelView):
     column_labels = {'version_string': 'Version', 'dependencies': 'Dependencies',
                      'service_dependencies': 'Services'}
     column_filters = ('package.name', 'version', 'upstream_version')
-    column_sortable_list = (('package', Package.name), ('upstream_version', Version.upstream_version),
-                            ('version', Version.version), ('insert_date', Version.insert_date),
-                            ('install_wizard', Version.install_wizard), ('upgrade_wizard', Version.upgrade_wizard),
-                            ('startable', Version.startable))
+    column_sortable_list = (('package', 'package.name'), ('upstream_version', 'upstream_version'),
+                            ('version', 'version'), ('insert_date', 'insert_date'),
+                            ('install_wizard', 'install_wizard'), ('upgrade_wizard', 'upgrade_wizard'),
+                            ('startable', 'startable'))
     # TODO: Add beta and all_builds_active with Flask-Admin>1.0.8
     column_default_sort = (Version.insert_date, True)
 
@@ -397,10 +397,10 @@ class BuildView(ModelView):
                      'version.version': 'Version'}
     column_filters = ('version.package.name', 'version.upstream_version', 'version.version',
                       'publisher.username')
-    column_sortable_list = (('version.upstream_version', Version.upstream_version),
-                            ('version.version', Version.version),
-                            ('firmware', Firmware.build), ('publisher', User.username),
-                            ('insert_date', Build.insert_date), ('active', Build.active))
+    column_sortable_list = (('version.upstream_version', 'version.upstream_version'),
+                            ('version.version', 'version.version'),
+                            ('firmware', 'firmware.build'), ('publisher', 'publisher.username'),
+                            ('insert_date', 'insert_date'), ('active', 'active'))
     # TODO: Add version.package with Flask-Admin>1.0.8
     column_default_sort = (Build.insert_date, True)
 
