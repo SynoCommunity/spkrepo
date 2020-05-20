@@ -130,9 +130,11 @@ class Packages(Resource):
         version = {v.version: v for v in package.versions}.get(int(match.group('version')))
         if version is None:
             create_version = True
-            version_startable = True
-            if spk.info.get('startable') == 'no' or spk.info.get('ctl_stop') == 'no':
+            version_startable = None
+            if spk.info.get('startable') is False or spk.info.get('ctl_stop') is False:
                 version_startable = False
+            elif spk.info.get('startable') is True or spk.info.get('ctl_stop') is True:
+                version_startable = True
             version = Version(package=package, upstream_version=match.group('upstream_version'),
                               version=int(match.group('version')), changelog=spk.info.get('changelog'),
                               report_url=spk.info.get('report_url'), distributor=spk.info.get('distributor'),

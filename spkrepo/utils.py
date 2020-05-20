@@ -24,7 +24,7 @@ class SPK(object):
     REQUIRED_INFO = {'package', 'version', 'arch', 'displayname', 'description'}
 
     #: Boolean INFO keys
-    BOOLEAN_INFO = set(['startable', 'support_conf_folder'])
+    BOOLEAN_INFO = set(['ctl_stop', 'startable', 'support_conf_folder'])
 
     #: Signature filename
     SIGNATURE_FILENAME = 'syno_signature.asc'
