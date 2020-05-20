@@ -32,7 +32,7 @@ setup(
     license='MIT',
     url='https://github.com/Diaoul/spkrepo',
     description='Synology Package Repository',
-    long_description=open('README.rst').read() + '\n\n' + open('HISTORY.rst').read(),
+    long_description=open('README.md').read(),
     author='Antoine Bertin',
     author_email='diaoulael@gmail.com',
     packages=find_packages(),
