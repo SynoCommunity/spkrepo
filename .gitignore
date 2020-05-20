@@ -37,6 +37,9 @@ pip-log.txt
 # Pycharm
 .idea
 
+# VSCode
+.vscode/
+
 # Sphinx
 docs/_build
 
