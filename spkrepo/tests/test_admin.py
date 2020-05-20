@@ -35,30 +35,30 @@ class IndexTestCase(BaseTestCase):
 
 class UserTestCase(BaseTestCase):
     def test_anonymous(self):
-        self.assert403(self.client.get(url_for('userview.index_view')))
+        self.assert403(self.client.get(url_for('user.index_view')))
 
     def test_user(self):
         with self.logged_user():
-            self.assert403(self.client.get(url_for('userview.index_view')))
+            self.assert403(self.client.get(url_for('user.index_view')))
 
     def test_developer(self):
         with self.logged_user('developer'):
-            self.assert403(self.client.get(url_for('userview.index_view')))
+            self.assert403(self.client.get(url_for('user.index_view')))
 
     def test_package_admin(self):
         with self.logged_user('package_admin'):
-            self.assert403(self.client.get(url_for('userview.index_view')))
+            self.assert403(self.client.get(url_for('user.index_view')))
 
     def test_admin(self):
         with self.logged_user('admin'):
-            self.assert200(self.client.get(url_for('userview.index_view')))
+            self.assert200(self.client.get(url_for('user.index_view')))
 
     def test_action_activate_one(self):
         with self.logged_user('admin'):
             user = self.create_user()
             user.active = False
             db.session.commit()
-            response = self.client.post(url_for('userview.action_view'), follow_redirects=True,
+            response = self.client.post(url_for('user.action_view'), follow_redirects=True,
                                         data=dict(action='activate', rowid=[user.id]))
             self.assert200(response)
             self.assertIn('User was successfully activated.', response.data.decode(response.charset))
@@ -71,7 +71,7 @@ class UserTestCase(BaseTestCase):
             user2 = self.create_user()
             user2.active = False
             db.session.commit()
-            response = self.client.post(url_for('userview.action_view'), follow_redirects=True,
+            response = self.client.post(url_for('user.action_view'), follow_redirects=True,
                                         data=dict(action='activate', rowid=[user1.id, user2.id]))
             self.assert200(response)
             self.assertIn('2 users were successfully activated.', response.data.decode(response.charset))
@@ -83,7 +83,7 @@ class UserTestCase(BaseTestCase):
             user = self.create_user()
             user.active = True
             db.session.commit()
-            response = self.client.post(url_for('userview.action_view'), follow_redirects=True,
+            response = self.client.post(url_for('user.action_view'), follow_redirects=True,
                                         data=dict(action='deactivate', rowid=[user.id]))
             self.assert200(response)
             self.assertIn('User was successfully deactivated.', response.data.decode(response.charset))
@@ -96,7 +96,7 @@ class UserTestCase(BaseTestCase):
             user2 = self.create_user()
             user2.active = True
             db.session.commit()
-            response = self.client.post(url_for('userview.action_view'), follow_redirects=True,
+            response = self.client.post(url_for('user.action_view'), follow_redirects=True,
                                         data=dict(action='deactivate', rowid=[user1.id, user2.id]))
             self.assert200(response)
             self.assertIn('2 users were successfully deactivated.', response.data.decode(response.charset))
@@ -106,28 +106,28 @@ class UserTestCase(BaseTestCase):
 
 class PackageTestCase(BaseTestCase):
     def test_anonymous(self):
-        self.assert403(self.client.get(url_for('packageview.index_view')))
+        self.assert403(self.client.get(url_for('package.index_view')))
 
     def test_user(self):
         with self.logged_user():
-            self.assert403(self.client.get(url_for('packageview.index_view')))
+            self.assert403(self.client.get(url_for('package.index_view')))
 
     def test_developer(self):
         with self.logged_user('developer'):
-            self.assert403(self.client.get(url_for('packageview.index_view')))
+            self.assert403(self.client.get(url_for('package.index_view')))
 
     def test_package_admin(self):
         with self.logged_user('package_admin'):
-            self.assert200(self.client.get(url_for('packageview.index_view')))
+            self.assert200(self.client.get(url_for('package.index_view')))
 
     def test_admin(self):
         with self.logged_user('admin'):
-            self.assert403(self.client.get(url_for('packageview.index_view')))
+            self.assert403(self.client.get(url_for('package.index_view')))
 
     def test_on_model_create(self):
         self.assertEqual(len(Package.query.all()), 0)
         with self.logged_user('package_admin'):
-            self.client.post(url_for('packageview.create_view'), data=dict(name='test'))
+            self.client.post(url_for('package.create_view'), data=dict(name='test'))
         self.assertEqual(len(Package.query.all()), 1)
         package = Package.query.one()
         package_path = os.path.join(current_app.config['DATA_PATH'], package.name)
@@ -140,30 +140,30 @@ class PackageTestCase(BaseTestCase):
         package_path = os.path.join(current_app.config['DATA_PATH'], package.name)
         self.assertTrue(os.path.exists(package_path))
         with self.logged_user('package_admin', 'admin'):
-            self.client.post(url_for('packageview.delete_view', id=str(package.id)))
+            self.client.post(url_for('package.delete_view', id=str(package.id)))
         self.assertEqual(len(Package.query.all()), 0)
         self.assertTrue(not os.path.exists(package_path))
 
 
 class VersionTestCase(BaseTestCase):
     def test_anonymous(self):
-        self.assert403(self.client.get(url_for('versionview.index_view')))
+        self.assert403(self.client.get(url_for('version.index_view')))
 
     def test_user(self):
         with self.logged_user():
-            self.assert403(self.client.get(url_for('versionview.index_view')))
+            self.assert403(self.client.get(url_for('version.index_view')))
 
     def test_developer(self):
         with self.logged_user('developer'):
-            self.assert200(self.client.get(url_for('versionview.index_view')))
+            self.assert200(self.client.get(url_for('version.index_view')))
 
     def test_package_admin(self):
         with self.logged_user('package_admin'):
-            self.assert200(self.client.get(url_for('versionview.index_view')))
+            self.assert200(self.client.get(url_for('version.index_view')))
 
     def test_admin(self):
         with self.logged_user('admin'):
-            self.assert403(self.client.get(url_for('versionview.index_view')))
+            self.assert403(self.client.get(url_for('version.index_view')))
 
     def test_on_model_delete(self):
         version = VersionFactory()
@@ -172,36 +172,36 @@ class VersionTestCase(BaseTestCase):
         version_path = os.path.join(current_app.config['DATA_PATH'], version.package.name, str(version.version))
         self.assertTrue(os.path.exists(version_path))
         with self.logged_user('package_admin', 'admin'):
-            self.client.post(url_for('versionview.delete_view', id=str(version.id)))
+            self.client.post(url_for('version.delete_view', id=str(version.id)))
         self.assertEqual(len(Version.query.all()), 0)
         self.assertTrue(not os.path.exists(version_path))
 
 
 class BuildTestCase(BaseTestCase):
     def test_anonymous(self):
-        self.assert403(self.client.get(url_for('buildview.index_view')))
+        self.assert403(self.client.get(url_for('build.index_view')))
 
     def test_user(self):
         with self.logged_user():
-            self.assert403(self.client.get(url_for('buildview.index_view')))
+            self.assert403(self.client.get(url_for('build.index_view')))
 
     def test_developer(self):
         with self.logged_user('developer'):
-            self.assert200(self.client.get(url_for('buildview.index_view')))
+            self.assert200(self.client.get(url_for('build.index_view')))
 
     def test_package_admin(self):
         with self.logged_user('package_admin'):
-            self.assert200(self.client.get(url_for('buildview.index_view')))
+            self.assert200(self.client.get(url_for('build.index_view')))
 
     def test_admin(self):
         with self.logged_user('admin'):
-            self.assert403(self.client.get(url_for('buildview.index_view')))
+            self.assert403(self.client.get(url_for('build.index_view')))
 
     def test_action_activate_one(self):
         with self.logged_user('package_admin'):
             build = BuildFactory(active=False)
             db.session.commit()
-            response = self.client.post(url_for('buildview.action_view'), follow_redirects=True,
+            response = self.client.post(url_for('build.action_view'), follow_redirects=True,
                                         data=dict(action='activate', rowid=[build.id]))
             self.assert200(response)
             self.assertIn('Build was successfully activated.', response.data.decode(response.charset))
@@ -212,7 +212,7 @@ class BuildTestCase(BaseTestCase):
             build1 = BuildFactory(active=False)
             build2 = BuildFactory(active=False)
             db.session.commit()
-            response = self.client.post(url_for('buildview.action_view'), follow_redirects=True,
+            response = self.client.post(url_for('build.action_view'), follow_redirects=True,
                                         data=dict(action='activate', rowid=[build1.id, build2.id]))
             self.assert200(response)
             self.assertIn('2 builds were successfully activated.', response.data.decode(response.charset))
@@ -223,7 +223,7 @@ class BuildTestCase(BaseTestCase):
         with self.logged_user('package_admin'):
             build = BuildFactory(active=True)
             db.session.commit()
-            response = self.client.post(url_for('buildview.action_view'), follow_redirects=True,
+            response = self.client.post(url_for('build.action_view'), follow_redirects=True,
                                         data=dict(action='deactivate', rowid=[build.id]))
             self.assert200(response)
             self.assertIn('Build was successfully deactivated.', response.data.decode(response.charset))
@@ -234,7 +234,7 @@ class BuildTestCase(BaseTestCase):
             build1 = BuildFactory(active=True)
             build2 = BuildFactory(active=True)
             db.session.commit()
-            response = self.client.post(url_for('buildview.action_view'), follow_redirects=True,
+            response = self.client.post(url_for('build.action_view'), follow_redirects=True,
                                         data=dict(action='deactivate', rowid=[build1.id, build2.id]))
             self.assert200(response)
             self.assertIn('2 builds were successfully deactivated.', response.data.decode(response.charset))
@@ -244,30 +244,30 @@ class BuildTestCase(BaseTestCase):
 
 class ScreenshotTestCase(BaseTestCase):
     def test_anonymous(self):
-        self.assert403(self.client.get(url_for('screenshotview.index_view')))
+        self.assert403(self.client.get(url_for('screenshot.index_view')))
 
     def test_user(self):
         with self.logged_user():
-            self.assert403(self.client.get(url_for('screenshotview.index_view')))
+            self.assert403(self.client.get(url_for('screenshot.index_view')))
 
     def test_developer(self):
         with self.logged_user('developer'):
-            self.assert403(self.client.get(url_for('screenshotview.index_view')))
+            self.assert403(self.client.get(url_for('screenshot.index_view')))
 
     def test_package_admin(self):
         with self.logged_user('package_admin'):
-            self.assert200(self.client.get(url_for('screenshotview.index_view')))
+            self.assert200(self.client.get(url_for('screenshot.index_view')))
 
     def test_admin(self):
         with self.logged_user('admin'):
-            self.assert403(self.client.get(url_for('screenshotview.index_view')))
+            self.assert403(self.client.get(url_for('screenshot.index_view')))
 
     def test_create(self):
         package = PackageFactory(add_screenshot=False)
         db.session.commit()
         self.assertEqual(len(package.screenshots), 0)
         with self.logged_user('package_admin'):
-            response = self.client.post(url_for('screenshotview.create_view'),
+            response = self.client.post(url_for('screenshot.create_view'),
                                         data=dict(package=str(package.id),
                                                   path=(create_image('Test', 1280, 1024), 'test.png')))
         self.assertEqual(len(package.screenshots), 1)
