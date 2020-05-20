@@ -29,7 +29,7 @@ def is_valid_language(language):
 @cache.memoize(timeout=600)
 def get_catalog(arch, build, language, beta):
     # latest version per package
-    latest_version = db.session.query(Version.package_id, db.func.max(Version.version).label('latest_version'))
+    latest_version = db.session.query(Version.package_id, db.func.max(Version.version).label('latest_version')).select_from(Version)
     if not beta:
         latest_version = latest_version.filter(Version.report_url.is_(None))
     latest_version = (latest_version.
@@ -41,6 +41,7 @@ def get_catalog(arch, build, language, beta):
     # latest firmware on given version
     latest_firmware = (db.session.query(Version.package_id, latest_version.c.latest_version,
                                         db.func.max(Firmware.build).label('latest_firmware')).
+                       select_from(Version).
                        join(Build).filter(Build.active).
                        join(Build.architectures).filter(Architecture.code.in_(['noarch', arch])).
                        join(Build.firmware).filter(Firmware.build <= build).
