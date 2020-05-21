@@ -113,7 +113,7 @@ class SpkrepoImageUploadField(ImageUploadField):
             return os.path.join(self.base_path(), filename)
         return os.path.join(self.base_path, filename)  # pragma: no cover
 
-        
+
 class ScreenshotView(ModelView):
     """View for :class:`~spkrepo.models.Screenshot`"""
     def __init__(self, **kwargs):

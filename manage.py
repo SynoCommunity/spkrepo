@@ -9,7 +9,7 @@ from unittest import TextTestRunner
 from flask import Flask, current_app
 from flask_migrate import MigrateCommand
 from flask_script import Manager, Option
-from flask_security.script import (CreateUserCommand, DeactivateUserCommand, ActivateUserCommand, 
+from flask_security.script import (CreateUserCommand, DeactivateUserCommand, ActivateUserCommand,
                                    CreateRoleCommand, RemoveRoleCommand, AddRoleCommand, commit)
 from flask_security.utils import encrypt_password
 

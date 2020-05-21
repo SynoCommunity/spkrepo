@@ -1,3 +1,0 @@
-base:
-  'vagrant.spkrepo':
-    - vagrant

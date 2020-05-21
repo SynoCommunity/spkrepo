@@ -1,5 +1,0 @@
-include LICENSE README.rst HISTORY.rst requirements.txt manage.py wsgi.py
-recursive-include spkrepo/templates *
-recursive-include spkrepo/static *
-recursive-include migrations *
-recursive-exclude migrations *.pyc
