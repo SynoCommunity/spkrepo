@@ -34,5 +34,8 @@ MIGRATE_DIRECTORY = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "migrations")
 )
 
+# Cache
+CACHE_TYPE = "null"
+
 # Debug Toolbar
 DEBUG_TB_INTERCEPT_REDIRECTS = False
