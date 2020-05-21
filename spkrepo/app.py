@@ -5,34 +5,45 @@ from flask_admin import Admin
 from wtforms import HiddenField
 
 from . import config as default_config
-from .ext import db, security, migrate, mail, cache, debug_toolbar
+from .ext import cache, db, debug_toolbar, mail, migrate, security
 from .models import user_datastore
-from .views import (SpkrepoConfirmRegisterForm, api, frontend, nas, IndexView, UserView, ArchitectureView,
-                    FirmwareView, ScreenshotView, PackageView, BuildView, VersionView)
+from .views import (
+    ArchitectureView,
+    BuildView,
+    FirmwareView,
+    IndexView,
+    PackageView,
+    ScreenshotView,
+    SpkrepoConfirmRegisterForm,
+    UserView,
+    VersionView,
+    api,
+    frontend,
+    nas,
+)
 
 
 def create_app(config=None, register_blueprints=True, init_admin=True):
     """Create a Flask app"""
-    app = Flask('spkrepo')
+    app = Flask("spkrepo")
 
     # Configuration
     app.config.from_object(default_config)
-    app.config.from_envvar('SPKREPO_CONFIG', silent=True)
+    app.config.from_envvar("SPKREPO_CONFIG", silent=True)
     if config is not None:
         app.config.from_object(config)
 
     # Extra template path
-    if app.config['TEMPLATE_PATH'] is not None:
-        app.jinja_loader = jinja2.ChoiceLoader([
-            jinja2.FileSystemLoader(app.config['TEMPLATE_PATH']),
-            app.jinja_loader
-        ])
+    if app.config["TEMPLATE_PATH"] is not None:
+        app.jinja_loader = jinja2.ChoiceLoader(
+            [jinja2.FileSystemLoader(app.config["TEMPLATE_PATH"]), app.jinja_loader]
+        )
 
     # Blueprints
     if register_blueprints:
         app.register_blueprint(frontend)
-        app.register_blueprint(api, url_prefix='/api')
-        app.register_blueprint(nas, url_prefix='/nas')
+        app.register_blueprint(api, url_prefix="/api")
+        app.register_blueprint(nas, url_prefix="/nas")
 
     # Admin
     if init_admin:
@@ -50,10 +61,12 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
     db.init_app(app)
 
     # Security
-    security.init_app(app, user_datastore, confirm_register_form=SpkrepoConfirmRegisterForm)
+    security.init_app(
+        app, user_datastore, confirm_register_form=SpkrepoConfirmRegisterForm
+    )
 
     # Migrate
-    migrate.init_app(app, db, directory=app.config['MIGRATE_DIRECTORY'])
+    migrate.init_app(app, db, directory=app.config["MIGRATE_DIRECTORY"])
 
     # Mail
     mail.init_app(app)
