@@ -26,6 +26,9 @@ pip-log.txt
 # Mr Developer
 .mr.developer.cfg
 
+# poetry
+venv
+
 # Pydev
 .project
 .pydevproject
@@ -47,3 +50,6 @@ docs/_build
 .vagrant/
 env/
 data/
+
+# config
+config.py
