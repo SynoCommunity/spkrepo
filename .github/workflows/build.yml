@@ -7,8 +7,21 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
+  Lint:
+    runs-on: ubuntu-latest
 
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.8
+      - name: Linting
+        run: |
+          pip install pre-commit
+          pre-commit run --all-files
+  Test:
+    needs: Linting
     runs-on: ubuntu-latest
 
     steps:
@@ -17,10 +30,23 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: 3.8
+    - name: Install and set up Poetry
+      run: |
+        curl -fsS -o get-poetry.py https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py
+        python get-poetry.py --preview -y
+        source $HOME/.poetry/env
+        poetry config virtualenvs.in-project true
+    - name: Set up cache
+      uses: actions/cache@v1
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install -r dev-requirements.txt
+        source $HOME/.poetry/env
+        poetry install
     - name: Test
       run: |
-        python manage.py test
+        source $HOME/.poetry/env
+        poetry run pytest -q tests
+        poetry install
