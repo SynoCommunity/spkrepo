@@ -7,21 +7,23 @@ on:
     branches: [ master ]
 
 jobs:
-  Lint:
+  pre-commit:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v2
-      - name: Set up Python 3.8
-        uses: actions/setup-python@v1
-        with:
-          python-version: 3.8
-      - name: Linting
-        run: |
-          pip install pre-commit
-          pre-commit run --all-files
-  Test:
-    needs: Lint
+    - uses: actions/checkout@v1
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+    - name: Set PY
+      run: echo "::set-env name=PY::$(python -c 'import hashlib, sys;print(hashlib.sha256(sys.version.encode()+sys.executable.encode()).hexdigest())')"
+    - uses: actions/cache@v1
+      with:
+        path: ~/.cache/pre-commit
+        key: pre-commit|${{ env.PY }}|${{ hashFiles('.pre-commit-config.yaml') }}
+    - uses: pre-commit/action@v1.1.0
+  
+  test:
+    needs: pre-commit
     runs-on: ubuntu-latest
 
     steps:
