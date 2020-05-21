@@ -21,7 +21,7 @@ jobs:
           pip install pre-commit
           pre-commit run --all-files
   Test:
-    needs: Linting
+    needs: Lint
     runs-on: ubuntu-latest
 
     steps:
