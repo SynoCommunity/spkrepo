@@ -7,6 +7,7 @@ authors = ["Antoine Bertin <diaoulael@gmail.com>"]
 readme = "README.md"
 repository = "https://github.com/SynoCommunity/spkrepo"
 keywords = ["synology", "package", "repository"]
+homepage = "https://synocommunity.com"
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Web Environment",
