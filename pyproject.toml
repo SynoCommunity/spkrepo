@@ -48,3 +48,11 @@ lxml = "^4.5.1"
 urltools = "^0.3.2"
 mock = "^4.0.2"
 pre-commit = "^2.4.0"
+
+[tool.isort]
+line_length = 88
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+known_first_party = "spkrepo"
