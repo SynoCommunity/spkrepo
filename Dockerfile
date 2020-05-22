@@ -7,6 +7,7 @@ RUN apk update \
     && apk add postgresql-dev \
     && apk add zlib-dev \
     && apk add jpeg-dev \
+    && apk add libffi-dev \
     && apk add gnupg
 
 RUN pip install --no-cache-dir gunicorn psycopg2 redis
