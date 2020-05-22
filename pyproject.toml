@@ -7,6 +7,18 @@ authors = ["Antoine Bertin <diaoulael@gmail.com>"]
 readme = "README.md"
 repository = "https://github.com/SynoCommunity/spkrepo"
 keywords = ["synology", "package", "repository"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Web Environment",
+    "Framework :: Flask",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.8",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
+    "Topic :: System :: Archiving :: Packaging",
+]
 
 [tool.poetry.dependencies]
 python = "^3.7"
