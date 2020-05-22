@@ -9,8 +9,7 @@ Synology Package Repository
 ## Development
 ### Installation
 
-1. Create a virtualenv and install dev-requirements.txt. You may need to install development packages on your
-   distribution.
+1. Install dependencies with `poetry install`
 2. Create the tables with `python manage.py db create`
 3. Populate the database with some fake packages with `python manage.py db populate`
 4. Add an user with `python manage.py user create -u Admin -e admin@admin.adm -p adminadmin`
