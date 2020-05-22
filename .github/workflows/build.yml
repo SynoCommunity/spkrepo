@@ -50,4 +50,4 @@ jobs:
     - name: Test
       run: |
         source $HOME/.poetry/env
-        python manage.py test
+        poetry run pytest
