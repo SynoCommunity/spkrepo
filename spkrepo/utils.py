@@ -185,27 +185,23 @@ class SPK(object):
                             {s: {k: v for k, v in c.items(s)} for s in c.sections()}
                         )
                     if "conf/privilege" in names:
-                        c = ConfigParser()
                         try:
-                            c.read_string(
+                            self.conf_privilege = json.loads(
                                 spk.extractfile("conf/privilege").read().decode("utf-8")
                             )
                         except UnicodeDecodeError:
                             raise SPKParseError("Wrong conf/privilege encoding")
-                        self.conf_privilege = json.dumps(
-                            {s: {k: v for k, v in c.items(s)} for s in c.sections()}
-                        )
+                        except ValueError:
+                            raise SPKParseError("Invalid JSON conf/privilege")
                     if "conf/resource" in names:
-                        c = ConfigParser()
                         try:
-                            c.read_string(
+                            self.conf_resource = json.loads(
                                 spk.extractfile("conf/resource").read().decode("utf-8")
                             )
                         except UnicodeDecodeError:
                             raise SPKParseError("Wrong conf/resource encoding")
-                        self.conf_resource = json.dumps(
-                            {s: {k: v for k, v in c.items(s)} for s in c.sections()}
-                        )
+                        except ValueError:
+                            raise SPKParseError("Invalid JSON conf/resource")
                     if (
                         self.conf_dependencies is None
                         and self.conf_conflicts is None
