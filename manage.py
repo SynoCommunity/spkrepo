@@ -22,6 +22,7 @@ from flask_security.utils import encrypt_password
 from spkrepo import create_app
 from spkrepo.ext import db
 from spkrepo.models import Architecture, Package, user_datastore
+from spkrepo.utils import populate_db
 
 manager = Manager(create_app)
 manager.add_option("-c", "--config", dest="config", required=False)
@@ -101,8 +102,6 @@ def drop():
 @MigrateCommand.command
 def create():
     """Create Database"""
-    from spkrepo.tests.common import populate_db
-
     db.create_all()
     populate_db()
     db.session.commit()

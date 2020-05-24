@@ -39,6 +39,7 @@ from spkrepo.models import (
     User,
     Version,
 )
+from spkrepo.utils import populate_db
 
 fake = faker.Faker()
 
@@ -303,42 +304,6 @@ class DownloadFactory(SQLAlchemyModelFactory):
     ip_address = factory.LazyAttribute(lambda x: fake.ipv4())
     user_agent = factory.LazyAttribute(lambda x: fake.user_agent())
     date = factory.LazyAttribute(lambda x: fake.date_time_this_month())
-
-
-def populate_db():
-    """Populate the database"""
-    db.session.execute(
-        Architecture.__table__.insert().values(
-            [
-                {"code": "noarch"},
-                {"code": "cedarview"},
-                {"code": "88f628x"},
-                {"code": "qoriq"},
-            ]
-        )
-    )
-    db.session.execute(
-        Firmware.__table__.insert().values(
-            [{"version": "3.1", "build": 1594}, {"version": "5.0", "build": 4458}]
-        )
-    )
-    db.session.execute(
-        Language.__table__.insert().values(
-            [{"code": "enu", "name": "English"}, {"code": "fre", "name": "French"}]
-        )
-    )
-    db.session.execute(
-        Role.__table__.insert().values(
-            [
-                {"name": "admin", "description": "Administrator"},
-                {"name": "package_admin", "description": "Package Administrator"},
-                {"name": "developer", "description": "Developer"},
-            ]
-        )
-    )
-    db.session.execute(
-        Service.__table__.insert().values([{"code": "apache-web"}, {"code": "mysql"}])
-    )
 
 
 # Base test case
