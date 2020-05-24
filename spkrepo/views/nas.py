@@ -89,16 +89,14 @@ def get_catalog(arch, build, language, beta):
         Build.query.options(
             db.joinedload(Build.architectures),
             db.joinedload(Build.firmware),
-            db.joinedload_all(Build.version, Version.package),
-            db.joinedload_all(Build.version, Version.service_dependencies),
-            db.joinedload_all(Build.version, Version.icons),
-            db.joinedload_all(
-                Build.version, Version.displaynames, DisplayName.language
-            ),
-            db.joinedload_all(
-                Build.version, Version.descriptions, Description.language
-            ),
-            db.joinedload_all(Build.version, Version.package, Package.screenshots),
+            db.joinedload(Build.version).joinedload(Version.package),
+            db.joinedload(Build.version).joinedload(Version.service_dependencies),
+            db.joinedload(Build.version).joinedload(Version.icons),
+            db.joinedload(Build.version)
+            .joinedload(Version.displaynames)
+            .joinedload(DisplayName.language),
+            db.joinedload(Build.version, Version.descriptions, Description.language),
+            db.joinedload(Build.version, Version.package, Package.screenshots),
         )
         .join(Build.architectures)
         .filter(Architecture.code.in_(["noarch", arch]))

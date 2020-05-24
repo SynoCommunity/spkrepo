@@ -78,8 +78,8 @@ def packages():
         .options(
             db.joinedload(Version.package),
             db.joinedload(Version.icons),
-            db.joinedload_all(Version.displaynames, DisplayName.language),
-            db.joinedload_all(Version.descriptions, Description.language),
+            db.joinedload(Version.displaynames).joinedload(DisplayName.language),
+            db.joinedload(Version.descriptions).joinedload(Description.language),
         )
         .join(
             latest_version,
