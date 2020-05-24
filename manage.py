@@ -4,7 +4,6 @@ import json
 import os
 import re
 import shutil
-from unittest import TextTestRunner
 
 from flask import current_app
 from flask_migrate import MigrateCommand
@@ -270,14 +269,6 @@ def clean():
             os.remove(os.path.join(root, name))
         for name in dirs:
             os.rmdir(os.path.join(root, name))
-
-
-@manager.command
-def test():
-    """Test spkrepo"""
-    from spkrepo.tests import suite
-
-    TextTestRunner(verbosity=2).run(suite)
 
 
 if __name__ == "__main__":
