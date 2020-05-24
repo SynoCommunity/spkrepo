@@ -17,6 +17,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+HEALTHCHECK --interval=1m --timeout=5s \
+  CMD curl -f http://localhost:8000/ || exit 1
 VOLUME [ "/data" ]
 EXPOSE 8000
 CMD [ "gunicorn", "-b", "0.0.0.0:8000", "-w", "5", "wsgi:app" ]
