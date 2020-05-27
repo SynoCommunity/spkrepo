@@ -124,7 +124,9 @@ def get_catalog(arch, build, language, beta):
             "desc": b.version.descriptions.get(
                 language, b.version.descriptions["enu"]
             ).description,
-            "link": url_for(".data", path=b.path, arch=arch, build=build),
+            "link": url_for(
+                ".data", path=b.path, arch=arch, build=build, _external=True
+            ),
             "thumbnail": [
                 url_for(".data", path=icon.path, _external=True)
                 for icon in b.version.icons.values()
