@@ -264,7 +264,9 @@ class SPKParseTestCase(BaseTestCase):
 
     def test_wrong_conf_privilege_encoding(self):
         build = BuildFactory.build(
-            version__conf_privilege=json.dumps({"déçu": {"run-as": "<run-as>"}})
+            version__conf_privilege=json.dumps(
+                {"déçu": {"run-as": "<run-as>"}}, ensure_ascii=False
+            )
         )
         with create_spk(build, conf_privilege_encoding="latin-1") as f:
             with self.assertRaises(SPKParseError) as cm:
@@ -274,7 +276,7 @@ class SPKParseTestCase(BaseTestCase):
     def test_wrong_conf_resource_encoding(self):
         build = BuildFactory.build(
             version__conf_resource=json.dumps(
-                {"déçu": {"<resource-id>": "<specification>"}}
+                {"déçu": {"<resource-id>": "<specification>"}}, ensure_ascii=False
             )
         )
         with create_spk(build, conf_resource_encoding="latin-1") as f:
@@ -282,9 +284,30 @@ class SPKParseTestCase(BaseTestCase):
                 SPK(f)
         self.assertEqual("Wrong conf/resource encoding", str(cm.exception))
 
+    def test_post_conf_privilege_invalid_json(self):
+        build = BuildFactory.build(version__conf_privilege='{"invalid": "json}')
+        with create_spk(build) as f:
+            with self.assertRaises(SPKParseError) as cm:
+                SPK(f)
+        self.assertEqual(
+            "File conf/privilege is not valid JSON", str(cm.exception),
+        )
+
+    def test_post_conf_resource_invalid_json(self):
+        build = BuildFactory.build(version__conf_resource='{"invalid": "json}')
+        with create_spk(build) as f:
+            with self.assertRaises(SPKParseError) as cm:
+                SPK(f)
+        self.assertEqual(
+            "File conf/resource is not valid JSON", str(cm.exception),
+        )
+
     def test_empty_conf_folder(self):
         build = BuildFactory.build(
-            version__conf_dependencies=None, version__conf_conflicts=None
+            version__conf_dependencies=None,
+            version__conf_conflicts=None,
+            version__conf_privilege=None,
+            version__conf_resource=None,
         )
         info = create_info(build)
         info["support_conf_folder"] = "yes"

@@ -187,27 +187,33 @@ class SPK(object):
                             {s: {k: v for k, v in c.items(s)} for s in c.sections()}
                         )
                     if "conf/privilege" in names:
-                        c = ConfigParser()
                         try:
-                            c.read_string(
+                            conf_privilege = (
                                 spk.extractfile("conf/privilege").read().decode("utf-8")
                             )
                         except UnicodeDecodeError:
                             raise SPKParseError("Wrong conf/privilege encoding")
-                        self.conf_privilege = json.dumps(
-                            {s: {k: v for k, v in c.items(s)} for s in c.sections()}
-                        )
-                    if "conf/resource" in names:
-                        c = ConfigParser()
+
                         try:
-                            c.read_string(
+                            json.loads(conf_privilege)
+                        except json.JSONDecodeError:
+                            raise SPKParseError("File conf/privilege is not valid JSON")
+
+                        self.conf_privilege = conf_privilege
+                    if "conf/resource" in names:
+                        try:
+                            conf_resource = (
                                 spk.extractfile("conf/resource").read().decode("utf-8")
                             )
                         except UnicodeDecodeError:
                             raise SPKParseError("Wrong conf/resource encoding")
-                        self.conf_resource = json.dumps(
-                            {s: {k: v for k, v in c.items(s)} for s in c.sections()}
-                        )
+
+                        try:
+                            json.loads(conf_resource)
+                        except json.JSONDecodeError:
+                            raise SPKParseError("File conf/resource is not valid JSON")
+
+                        self.conf_resource = conf_resource
                     if (
                         self.conf_dependencies is None
                         and self.conf_conflicts is None

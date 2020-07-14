@@ -184,6 +184,20 @@ class VersionFactory(SQLAlchemyModelFactory):
     conf_conflicts = factory.LazyAttribute(
         lambda x: json.dumps({fake.word(): {"dsm_min_ver": "5.0-4300"}})
     )
+    conf_privilege = factory.LazyAttribute(
+        lambda x: json.dumps({"defaults": {"run-as": "root"}})
+    )
+    conf_resource = factory.LazyAttribute(
+        lambda x: json.dumps(
+            {
+                "usr-local-linker": {
+                    "lib": ["lib/foo"],
+                    "bin": ["bin/foo"],
+                    "etc": ["etc/foo"],
+                }
+            }
+        )
+    )
     install_wizard = False
     upgrade_wizard = False
     startable = None
@@ -620,8 +634,9 @@ def create_spk(
     if (
         with_conf
         or build.version.conf_dependencies is not None
-        or build.version.conf_conflicts
+        or build.version.conf_conflicts is not None
         or build.version.conf_privilege is not None
+        or build.version.conf_resource is not None
     ):
         conf_folder_tarinfo = tarfile.TarInfo("conf")
         conf_folder_tarinfo.type = tarfile.DIRTYPE
@@ -655,12 +670,8 @@ def create_spk(
             spk.addfile(conf_tarinfo, fileobj=conf_stream_bytes)
         if build.version.conf_privilege is not None:
             conf_tarinfo = tarfile.TarInfo("conf/privilege")
-            config = ConfigParser()
-            config.read_dict(json.loads(build.version.conf_privilege))
-            conf_stream = io.StringIO()
-            config.write(conf_stream)
             conf_stream_bytes = io.BytesIO(
-                conf_stream.getvalue().encode(conf_privilege_encoding)
+                build.version.conf_privilege.encode(conf_privilege_encoding)
             )
             conf_stream_bytes.seek(0, io.SEEK_END)
             conf_tarinfo.size = conf_stream_bytes.tell()
@@ -668,12 +679,8 @@ def create_spk(
             spk.addfile(conf_tarinfo, fileobj=conf_stream_bytes)
         if build.version.conf_resource is not None:
             conf_tarinfo = tarfile.TarInfo("conf/resource")
-            config = ConfigParser()
-            config.read_dict(json.loads(build.version.conf_resource))
-            conf_stream = io.StringIO()
-            config.write(conf_stream)
             conf_stream_bytes = io.BytesIO(
-                conf_stream.getvalue().encode(conf_resource_encoding)
+                build.version.conf_resource.encode(conf_resource_encoding)
             )
             conf_stream_bytes.seek(0, io.SEEK_END)
             conf_tarinfo.size = conf_stream_bytes.tell()
