@@ -14,7 +14,9 @@ Synology Package Repository
 3. Create the tables with `python manage.py db create`
 4. Populate the database with some fake packages with `python manage.py db populate`
 5. Add an user with `python manage.py user create -u Admin -e admin@admin.adm -p adminadmin`
-6. Grant the created user with admin permissions `python manage.py user add_role -u admin@admin.adm -r admin`
+6. Grant the created user with Administrator permissions `python manage.py user add_role -u admin@admin.adm -r admin`
+7. Grant the created user with Package Administrator permissions `python manage.py user add_role -u admin@admin.adm -r package_admin`
+8. Grant the created user with Developer permissions `python manage.py user add_role -u admin@admin.adm -r developer`
 
 To reset the environment, clean up with `python manage.py clean`.
 
@@ -24,7 +26,7 @@ To reset the environment, clean up with `python manage.py clean`.
 3. Admin interface is available at http://localhost:5000/admin
 4. NAS interface is available at http://localhost:5000/nas
 5. API is available at http://localhost:5000/api
-6. Run the test suite with `python manage.py test`
+6. Run the test suite with `poetry run pytest -v`
 
 ## Deployment
 
