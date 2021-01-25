@@ -30,11 +30,6 @@ class CatalogTestCase(BaseTestCase):
             entry["desc"],
             build.version.descriptions[data.get("language", "enu")].description,
         )
-        # self.assertTrue(
-        #     compare(
-        #         entry["link"],
-        #         url_for("nas.data", path=build.path, **link_params, _external=True),
-        #     )
         self.assertGreaterEqual(len(entry["thumbnail"]), 1)
         self.assertEqual(
             entry["thumbnail"],
