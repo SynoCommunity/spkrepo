@@ -52,6 +52,15 @@
     height: 100px;
 }
 
+.package-screenshots {
+    text-align: center;
+    padding: 5px 0;
+}
+
+.package-screenshot {
+    height: 100px;
+}
+
 .fastly-logo {
     width: auto;
     height: 45px;
