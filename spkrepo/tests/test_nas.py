@@ -14,6 +14,7 @@ from spkrepo.tests.common import (
     PackageFactory,
 )
 
+
 class CatalogTestCase(BaseTestCase):
     def assertCatalogEntry(self, entry, build, data=None, link_params=None):
         data = data or {}

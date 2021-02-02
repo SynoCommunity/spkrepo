@@ -160,15 +160,24 @@ def upgrade():
         "user_role",
         sa.Column("user_id", sa.Integer(), nullable=True),
         sa.Column("role_id", sa.Integer(), nullable=True),
-        sa.ForeignKeyConstraint(["role_id"], ["role.id"],),
-        sa.ForeignKeyConstraint(["user_id"], ["user.id"],),
+        sa.ForeignKeyConstraint(
+            ["role_id"],
+            ["role.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["user_id"],
+            ["user.id"],
+        ),
     )
     op.create_table(
         "screenshot",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("package_id", sa.Integer(), nullable=False),
         sa.Column("path", sa.Unicode(length=100), nullable=False),
-        sa.ForeignKeyConstraint(["package_id"], ["package.id"],),
+        sa.ForeignKeyConstraint(
+            ["package_id"],
+            ["package.id"],
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
@@ -192,7 +201,10 @@ def upgrade():
         sa.Column("startable", sa.Boolean(), nullable=True),
         sa.Column("license", sa.UnicodeText(), nullable=True),
         sa.Column("insert_date", sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(["package_id"], ["package.id"],),
+        sa.ForeignKeyConstraint(
+            ["package_id"],
+            ["package.id"],
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("package_id", "version"),
     )
@@ -205,15 +217,27 @@ def upgrade():
         "package_user_maintainer",
         sa.Column("package_id", sa.Integer(), nullable=True),
         sa.Column("user_id", sa.Integer(), nullable=True),
-        sa.ForeignKeyConstraint(["package_id"], ["package.id"],),
-        sa.ForeignKeyConstraint(["user_id"], ["user.id"],),
+        sa.ForeignKeyConstraint(
+            ["package_id"],
+            ["package.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["user_id"],
+            ["user.id"],
+        ),
     )
     op.create_table(
         "version_service_dependency",
         sa.Column("version_id", sa.Integer(), nullable=True),
         sa.Column("service_id", sa.Integer(), nullable=True),
-        sa.ForeignKeyConstraint(["service_id"], ["service.id"],),
-        sa.ForeignKeyConstraint(["version_id"], ["version.id"],),
+        sa.ForeignKeyConstraint(
+            ["service_id"],
+            ["service.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["version_id"],
+            ["version.id"],
+        ),
     )
     op.create_table(
         "build",
@@ -227,9 +251,18 @@ def upgrade():
         sa.Column("md5", sa.Unicode(length=32), nullable=True),
         sa.Column("insert_date", sa.DateTime(), nullable=False),
         sa.Column("active", sa.Boolean(), nullable=False),
-        sa.ForeignKeyConstraint(["firmware_id"], ["firmware.id"],),
-        sa.ForeignKeyConstraint(["publisher_user_id"], ["user.id"],),
-        sa.ForeignKeyConstraint(["version_id"], ["version.id"],),
+        sa.ForeignKeyConstraint(
+            ["firmware_id"],
+            ["firmware.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["publisher_user_id"],
+            ["user.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["version_id"],
+            ["version.id"],
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
@@ -240,7 +273,10 @@ def upgrade():
             "size", sa.Enum("72", "120", "256", name="icon_size"), nullable=False
         ),
         sa.Column("path", sa.Unicode(length=100), nullable=False),
-        sa.ForeignKeyConstraint(["version_id"], ["version.id"],),
+        sa.ForeignKeyConstraint(
+            ["version_id"],
+            ["version.id"],
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("version_id", "size"),
     )
@@ -249,8 +285,14 @@ def upgrade():
         sa.Column("version_id", sa.Integer(), nullable=False),
         sa.Column("language_id", sa.Integer(), nullable=False),
         sa.Column("description", sa.UnicodeText(), nullable=False),
-        sa.ForeignKeyConstraint(["language_id"], ["language.id"],),
-        sa.ForeignKeyConstraint(["version_id"], ["version.id"],),
+        sa.ForeignKeyConstraint(
+            ["language_id"],
+            ["language.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["version_id"],
+            ["version.id"],
+        ),
         sa.PrimaryKeyConstraint("version_id", "language_id"),
     )
     op.create_table(
@@ -258,16 +300,28 @@ def upgrade():
         sa.Column("version_id", sa.Integer(), nullable=False),
         sa.Column("language_id", sa.Integer(), nullable=False),
         sa.Column("displayname", sa.Unicode(length=50), nullable=False),
-        sa.ForeignKeyConstraint(["language_id"], ["language.id"],),
-        sa.ForeignKeyConstraint(["version_id"], ["version.id"],),
+        sa.ForeignKeyConstraint(
+            ["language_id"],
+            ["language.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["version_id"],
+            ["version.id"],
+        ),
         sa.PrimaryKeyConstraint("version_id", "language_id"),
     )
     op.create_table(
         "build_architecture",
         sa.Column("build_id", sa.Integer(), nullable=True),
         sa.Column("architecture_id", sa.Integer(), nullable=True),
-        sa.ForeignKeyConstraint(["architecture_id"], ["architecture.id"],),
-        sa.ForeignKeyConstraint(["build_id"], ["build.id"],),
+        sa.ForeignKeyConstraint(
+            ["architecture_id"],
+            ["architecture.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["build_id"],
+            ["build.id"],
+        ),
     )
     op.create_table(
         "download",
@@ -278,8 +332,14 @@ def upgrade():
         sa.Column("ip_address", sa.Unicode(length=46), nullable=False),
         sa.Column("user_agent", sa.Unicode(length=255), nullable=True),
         sa.Column("date", sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(["architecture_id"], ["architecture.id"],),
-        sa.ForeignKeyConstraint(["build_id"], ["build.id"],),
+        sa.ForeignKeyConstraint(
+            ["architecture_id"],
+            ["architecture.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["build_id"],
+            ["build.id"],
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
 

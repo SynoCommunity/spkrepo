@@ -290,7 +290,8 @@ class SPKParseTestCase(BaseTestCase):
             with self.assertRaises(SPKParseError) as cm:
                 SPK(f)
         self.assertEqual(
-            "File conf/privilege is not valid JSON", str(cm.exception),
+            "File conf/privilege is not valid JSON",
+            str(cm.exception),
         )
 
     def test_post_conf_resource_invalid_json(self):
@@ -299,7 +300,8 @@ class SPKParseTestCase(BaseTestCase):
             with self.assertRaises(SPKParseError) as cm:
                 SPK(f)
         self.assertEqual(
-            "File conf/resource is not valid JSON", str(cm.exception),
+            "File conf/resource is not valid JSON",
+            str(cm.exception),
         )
 
     def test_empty_conf_folder(self):
