@@ -3,6 +3,7 @@ import os
 from unittest import TestLoader, TestSuite
 
 from flask import current_app, url_for
+
 from spkrepo.ext import db
 from spkrepo.models import Package, Version
 from spkrepo.tests.common import (

@@ -5,6 +5,7 @@ import tarfile
 from unittest import TestLoader, TestSuite
 
 from mock import Mock
+
 from spkrepo.exceptions import SPKParseError
 from spkrepo.models import Architecture
 from spkrepo.tests.common import BaseTestCase, BuildFactory, create_info, create_spk

@@ -21,6 +21,7 @@ import faker
 from factory.alchemy import SQLAlchemyModelFactory
 from flask import current_app, url_for
 from flask_testing import TestCase
+
 from spkrepo import create_app
 from spkrepo.ext import db
 from spkrepo.models import (

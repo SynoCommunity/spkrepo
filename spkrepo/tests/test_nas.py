@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from unittest import TestLoader, TestSuite
 
 from flask import url_for
+
 from spkrepo.ext import db
 from spkrepo.models import Architecture, Download, Firmware
 from spkrepo.tests.common import (

@@ -4,6 +4,7 @@ from unittest import TestLoader, TestSuite
 from flask import url_for
 from flask_security import url_for_security
 from lxml.html import fromstring
+
 from spkrepo.ext import db
 from spkrepo.tests.common import BaseTestCase, BuildFactory, UserFactory
 

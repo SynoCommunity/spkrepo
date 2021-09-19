@@ -18,6 +18,7 @@ from flask_security.script import (
     commit,
 )
 from flask_security.utils import encrypt_password
+
 from spkrepo import create_app
 from spkrepo.ext import db
 from spkrepo.models import Architecture, Package, user_datastore
