@@ -47,9 +47,9 @@ venv
 docs/_build
 
 # spkrepo
-.vagrant/
-env/
 data/
-
-# config
 config.py
+
+# direnv
+.direnv/
+.envrc
