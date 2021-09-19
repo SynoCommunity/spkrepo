@@ -335,7 +335,10 @@ class Build(db.Model):
     # Relationships
     version = db.relationship("Version", back_populates="builds", lazy=False)
     architectures = db.relationship(
-        "Architecture", secondary="build_architecture", lazy=False
+        "Architecture",
+        secondary="build_architecture",
+        order_by="Architecture.code",
+        lazy=False,
     )
     firmware = db.relationship("Firmware", lazy=False)
     publisher = db.relationship("User", foreign_keys=[publisher_user_id])
@@ -469,6 +472,13 @@ class Version(db.Model):
 
     def __repr__(self):
         return "<{} {}>".format(self.__class__.__name__, self.version_string)
+
+    @hybrid_property
+    def builds_per_dsm(self):
+        result = {}
+        for build in self.builds:
+            result.setdefault(build.firmware.version[0:1], []).append(build)
+        return result
 
 
 class Package(db.Model):

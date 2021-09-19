@@ -1,7 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}{{ package.versions[-1].displaynames['enu'].displayname }} Package - {{ super() }}{% endblock %}
 {% block content %}
-{# TODO: Improve this template #}
 <div class="row">
   <div class="media">
     <a class="media-left" href="#">
@@ -14,19 +13,38 @@
         </small>
       </h1>
       <p>{{ package.versions[-1].descriptions['enu'].description }}</p>
+      <div class="package-screenshots">
+        {% for screenshot in package.screenshots %}
+        <img class="package-screenshot" src="{{ url_for('nas.data', path=screenshot.path) }}"/>&nbsp;
+        {% endfor %}
+      </div>
+      {% for version in package.versions|reverse %}
       <dl>
+        <dt>Version {{ version.version_string | safe }}</dt>
+        <dd>{{ version.changelog | safe }}</dd>
+        <dt>Date</dt>
+        <dd>{{ version.insert_date }}</dd>
         <dt>Architectures</dt>
         <dd>
-          {% for build in package.versions[-1].builds %}
+          {% for (version, builds) in version.builds_per_dsm.items() %}
+          <!-- Group firmware by DSM or SRM if 1.x -->
+          {% if version == '1' %}
+          SRM {{ version }}.x:
+          {% else %}
+          DSM {{ version }}.x:
+          {% endif %}
+          {% for build in builds %}
           {% for arch in build.architectures %}
-          <span class="label label-default">{{ arch.code }}</span>
+          <a href="{{ url_for('nas.data', path=build.path) }}"><span class="label label-default">{{ build.firmware.version }} {{ arch.code }}</span></a>
           {% endfor %}
+          {% endfor %}
+          <br/>
           {% endfor %}
         </dd>
-        <dt>Author</dt>
-        <dd>{{ package.author.username }}</dd>
       </dl>
+      {% endfor %}
     </div>
+    <span
   </div>
 </div>
 {% endblock %}
