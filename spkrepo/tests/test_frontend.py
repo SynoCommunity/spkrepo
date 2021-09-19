@@ -85,10 +85,6 @@ class PackageTestCase(BaseTestCase):
         for a in build.architectures:
             self.assertIn(a.code, response.data.decode(response.charset))
         self.assertIn(
-            build.version.package.author.username,
-            response.data.decode(response.charset),
-        )
-        self.assertIn(
             build.version.displaynames["enu"].displayname,
             response.data.decode(response.charset),
         )
