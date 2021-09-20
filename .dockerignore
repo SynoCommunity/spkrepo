@@ -1,0 +1,12 @@
+.git/
+.direnv/
+.github/
+.pytest_cache/
+__pycache__
+data/
+docs/
+.envrc
+.flake8
+.gitignore
+.pre-commit-config.yaml
+README.md

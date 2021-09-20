@@ -1,0 +1,19 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: spkrepo
+      POSTGRES_USER: spkrepo
+      POSTGRES_PASSWORD: spkrepo
+  spkrepo:
+      build: .
+      command: python manage.py runserver -h 0.0.0.0
+      ports:
+        - "5000:5000"
+      environment:
+        SPKREPO_SQLALCHEMY_DATABASE_URI: postgresql://spkrepo:spkrepo@db/spkrepo
+      volumes:
+        - .:/usr/src/app/
+      depends_on:
+        - db

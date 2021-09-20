@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import os.path
+import os
 
 DEBUG = True
 TESTING = False
@@ -23,7 +23,9 @@ SECURITY_PASSWORD_SALT = "password-salt"
 
 # SQLAlchemy
 SQLALCHEMY_ECHO = True
-SQLALCHEMY_DATABASE_URI = "sqlite:///%s/spkrepo.db" % DATA_PATH
+SQLALCHEMY_DATABASE_URI = os.environ.get(
+    "SPKREPO_SQLALCHEMY_DATABASE_URI", "sqlite:///%s/spkrepo.db" % DATA_PATH
+)
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 # Restful
