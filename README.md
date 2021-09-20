@@ -1,8 +1,8 @@
-spkrepo
-=======
+# spkrepo
 Synology Package Repository
 
-![Build](https://github.com/SynoCommunity/spkrepo/workflows/Build/badge.svg)
+![Build](https://img.shields.io/github/workflow/status/SynoCommunity/spkrepo/Build?style=for-the-badge)
+[![Discord](https://img.shields.io/discord/732558169863225384?color=7289DA&label=Discord&logo=Discord&logoColor=white&style=for-the-badge)](https://discord.gg/nnN9fgE7EF)
 
 
 ## Development
