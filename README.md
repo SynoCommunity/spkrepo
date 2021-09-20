@@ -60,7 +60,7 @@ GNUPG_PATH= "/usr/local/bin/gpg"
 Example usage:
 
 ```bash
-docker run -it --rm --name spkrepo -v $(pwd)/data:/data -p 8000:8000 synocommunity/spkrepo
+docker run -it --rm --name spkrepo -v $(pwd)/data:/data -p 8000:8000 ghcr.io/synocommunity/spkrepo
 ```
 
 Additional configuration can be mounted in the container and loaded by putting
@@ -68,7 +68,7 @@ the path into `SPKREPO_CONFIG` environment variable.
 
 e.g.
 ```bash
-docker run -it --rm --name spkrepo -v $(pwd)/data:/data -v $(pwd)/docker-config.py:/docker-config.py -e SPKREPO_CONFIG=/docker-config.py -p 8000:8000 synocommunity/spkrepo
+docker run -it --rm --name spkrepo -v $(pwd)/data:/data -v $(pwd)/docker-config.py:/docker-config.py -e SPKREPO_CONFIG=/docker-config.py -p 8000:8000 ghcr.io/synocommunity/spkrepo
 ```
 
 
