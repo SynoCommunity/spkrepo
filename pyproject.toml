@@ -16,6 +16,8 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
     "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
     "Topic :: System :: Archiving :: Packaging",
@@ -23,12 +25,13 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = "^3.7"
-flask = "^1.1.2"
+flask = "^2.0.0"
 flask-sqlalchemy = "^2.4.1"
 flask-security = "^3.0.0"
 passlib = "^1.7.2"
 flask-babelex = "^0.9.4"
-flask-wtf = "^0.14.3"
+flask-wtf = "^1.0.0"
+wtforms = "^2.3.3"
 flask-mail = "^0.9.1"
 configparser = "^5.0.0"
 email_validator = "^1.1.1"
@@ -39,11 +42,11 @@ pillow = "^ 8.3.2"
 flask-restful = "^0.3.8"
 flask-login = "^0.5.0"
 flask-caching = "^1.8.0"
-redis = "^3.5.2"
+redis = "^4.1.0"
 python-gnupg = "^0.4.6"
 requests = "^2.23.0"
-click = "^7.1.2"
-flask-migrate = "^2.5.3"
+click = "^8.0.0"
+flask-migrate = "^3.0.0"
 alembic = "^1.4.2"
 flask-script = "^2.0.6"
 text-unidecode = "^1.3"
