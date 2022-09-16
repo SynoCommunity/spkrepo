@@ -199,9 +199,9 @@ itsdangerous==2.1.1 ; python_version >= "3.7" \
 jinja2==3.0.3 ; python_version >= "3.6" \
     --hash=sha256:077ce6014f7b40d03b47d1f1ca4b0fc8328a692bd284016f806ed0eaca390ad8 \
     --hash=sha256:611bb273cd68f3b993fabdc4064fc858c5b47a973cb5aa7999ec1ba405c87cd7
-mako==1.2.0 ; python_version >= "3.7" \
-    --hash=sha256:23aab11fdbbb0f1051b93793a58323ff937e98e34aece1c4219675122e57e4ba \
-    --hash=sha256:9a7c7e922b87db3686210cf49d5d767033a41d4010b284e747682c92bddd8b39
+mako==1.2.2 ; python_version >= "3.7" \
+    --hash=sha256:3724869b363ba630a272a5f89f68c070352137b8fd1757650017b7e06fda163f \
+    --hash=sha256:8efcb8004681b5f71d09c983ad5a9e6f5c40601a6ec469148753292abc0da534
 markupsafe==2.1.0 ; python_version >= "3.7" \
     --hash=sha256:3028252424c72b2602a323f70fbf50aa80a5d3aa616ea6add4ba21ae9cc9da4c \
     --hash=sha256:290b02bab3c9e216da57c1d11d2ba73a9f73a614bbdcc027d299a60cdfabb11a \
