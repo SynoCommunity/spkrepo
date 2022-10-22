@@ -9,8 +9,8 @@ Synology Package Repository
 ### Installation
 1. Install dependencies with `poetry install`
 2. Run the next commands in the virtual environment `poetry shell`
-3. Create the tables with `python manage.py db create`
-4. Populate the database with some fake packages with `python manage.py db populate`
+3. Create the tables with `python manage.py create`
+4. Populate the database with some fake packages with `python manage.py populate`
 5. Add an user with `python manage.py user create -u Admin -e admin@admin.adm -p adminadmin`
 6. Grant the created user with Administrator permissions `python manage.py user add_role -u admin@admin.adm -r admin`
 7. Grant the created user with Package Administrator permissions `python manage.py user add_role -u admin@admin.adm -r package_admin`
@@ -19,7 +19,7 @@ Synology Package Repository
 To reset the environment, clean up with `python manage.py clean`.
 
 ### Run
-1. Start the development server with `python manage.py runserver`
+1. Start the development server with `python manage.py run`
 2. Website is available at http://localhost:5000
 3. Admin interface is available at http://localhost:5000/admin
 4. NAS interface is available at http://localhost:5000/nas

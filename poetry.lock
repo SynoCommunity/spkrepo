@@ -311,6 +311,23 @@ python-versions = ">=3.5"
 Flask = "*"
 
 [[package]]
+name = "Flask-CLI"
+version = "0.4.0"
+description = "Backport of Flask 1.0 new click integration."
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+click = ">=2.0"
+Flask = ">=0.10"
+
+[package.extras]
+all = ["Sphinx (>=1.3)", "Sphinx (>=1.3)", "check-manifest (>=0.25)", "check-manifest (>=0.25)", "coverage (>=4.0)", "coverage (>=4.0)", "isort (>=4.2.2)", "isort (>=4.2.2)", "pydocstyle (>=1.0.0)", "pydocstyle (>=1.0.0)", "pytest (>=2.8.0)", "pytest (>=2.8.0)", "pytest-cache (>=1.0)", "pytest-cache (>=1.0)", "pytest-cov (>=1.8.0)", "pytest-cov (>=1.8.0)", "pytest-pep8 (>=1.0.6)", "pytest-pep8 (>=1.0.6)"]
+docs = ["Sphinx (>=1.3)"]
+tests = ["check-manifest (>=0.25)", "coverage (>=4.0)", "isort (>=4.2.2)", "pydocstyle (>=1.0.0)", "pytest (>=2.8.0)", "pytest-cache (>=1.0)", "pytest-cov (>=1.8.0)", "pytest-pep8 (>=1.0.6)"]
+
+[[package]]
 name = "flask-debugtoolbar"
 version = "0.11.0"
 description = "A toolbar overlay for debugging Flask applications."
@@ -388,17 +405,6 @@ six = ">=1.3.0"
 
 [package.extras]
 docs = ["sphinx"]
-
-[[package]]
-name = "flask-script"
-version = "2.0.6"
-description = "Scripting support for Flask"
-category = "main"
-optional = false
-python-versions = "*"
-
-[package.dependencies]
-Flask = "*"
 
 [[package]]
 name = "flask-security"
@@ -1063,7 +1069,7 @@ locale = ["Babel (>=1.3)"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.9"
-content-hash = "1344192296dfc519f669f59dd8dab69a160600dd6c66d5a76ce467fd21b79633"
+content-hash = "df3bc8beec0a8a5709de7776f234e500a3cd599dee6f4848c06fa3f38cb98e1a"
 
 [metadata.files]
 alabaster = [
@@ -1228,6 +1234,10 @@ flask-caching = [
     {file = "Flask-Caching-1.10.1.tar.gz", hash = "sha256:cf19b722fcebc2ba03e4ae7c55b532ed53f0cbf683ce36fafe5e881789a01c00"},
     {file = "Flask_Caching-1.10.1-py3-none-any.whl", hash = "sha256:bcda8acbc7508e31e50f63e9b1ab83185b446f6b6318bd9dd1d45626fba2e903"},
 ]
+Flask-CLI = [
+    {file = "Flask-CLI-0.4.0.tar.gz", hash = "sha256:6604ab407c0a2f6cdb51e1f64bdb01b8b135d547a0a99189b9158353ded6eeb9"},
+    {file = "Flask_CLI-0.4.0-py2.py3-none-any.whl", hash = "sha256:625b534f1bd4d05cbd2084b6b820e2d8cbfea8bc08dd3ee786f365bc0591f1d8"},
+]
 flask-debugtoolbar = [
     {file = "Flask-DebugToolbar-0.11.0.tar.gz", hash = "sha256:3c4e79d354ede014e6657c545a536d4fb273cc89e3fd6b4835b02e346dd3aab4"},
     {file = "Flask_DebugToolbar-0.11.0-py2.py3-none-any.whl", hash = "sha256:0e9a80d4c599233c68376e81cc99976200b5ac5248cfb24f18935cc5b69ac5b3"},
@@ -1249,9 +1259,6 @@ flask-principal = [
 flask-restful = [
     {file = "Flask-RESTful-0.3.9.tar.gz", hash = "sha256:ccec650b835d48192138c85329ae03735e6ced58e9b2d9c2146d6c84c06fa53e"},
     {file = "Flask_RESTful-0.3.9-py2.py3-none-any.whl", hash = "sha256:4970c49b6488e46c520b325f54833374dc2b98e211f1b272bd4b0c516232afe2"},
-]
-flask-script = [
-    {file = "Flask-Script-2.0.6.tar.gz", hash = "sha256:6425963d91054cfcc185807141c7314a9c5ad46325911bd24dcb489bd0161c65"},
 ]
 flask-security = [
     {file = "Flask-Security-3.0.0.tar.gz", hash = "sha256:d61daa5f5a48f89f30f50555872bdf581b2c65804668b0313345cd7beff26432"},
