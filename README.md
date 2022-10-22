@@ -79,3 +79,10 @@ Example:
 pip install gunicorn
 SPKREPO_CONFIG="$PWD/config.py" gunicorn -w 4 'wsgi:app'
 ```
+
+## Add migration
+
+```
+cd migrations/
+alembic revision -m "update build path length"
+```
