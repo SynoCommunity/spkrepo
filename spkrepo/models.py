@@ -35,6 +35,7 @@ class User(db.Model, UserMixin):
     password = db.Column(db.Unicode(255), nullable=False)
     api_key = db.Column(db.Unicode(64), unique=True)
     github_access_token = db.Column(db.Unicode(255))
+    fs_uniquifier = db.Column(db.String(255), unique=True, nullable=False)
     active = db.Column(db.Boolean(), nullable=False)
     confirmed_at = db.Column(db.DateTime())
 

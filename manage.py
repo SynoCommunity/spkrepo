@@ -6,18 +6,8 @@ import re
 import shutil
 import click
 
-from flask import Flask
-from flask.cli import FlaskGroup
-# from flask_security.script import (
-#     ActivateUserCommand,
-#     AddRoleCommand,
-#     CreateRoleCommand,
-#     CreateUserCommand,
-#     DeactivateUserCommand,
-#     RemoveRoleCommand,
-#     commit,
-# )
-# from flask_security.utils import encrypt_password
+from flask import current_app
+from flask.cli import FlaskGroup, AppGroup
 
 from spkrepo import create_app
 from spkrepo.ext import db
@@ -25,8 +15,7 @@ from spkrepo.models import Architecture, Package, user_datastore
 from spkrepo.utils import populate_db
 
 cli = FlaskGroup(create_app)
-# click.option("-c", "--config", dest="config", required=False)
-
+@click.option("-c", "--config", help="config", required=False)
 
 def date_handler(obj):
     return obj.isoformat() if hasattr(obj, "isoformat") else obj
@@ -35,60 +24,46 @@ def date_handler(obj):
 def pprint(obj):
     print(json.dumps(obj, default=date_handler, sort_keys=True, indent=4))
 
-
 # User commands
-# class CreateSpkrepoUserCommand(CreateUserCommand):
-#     """Create a user"""
+user_cli = AppGroup('user', help="Perform user actions")
+@user_cli.command('create')
+@click.option("-u", "--username", help="username", default=None)
+@click.option("-e", "--email", help="email", default=None)
+@click.option("-p", "--password", help="password", default=None)
+@click.option("-a", "--active", help="active", default="")
+@click.option("-c", "--confirmed", help="confirmed", default="")
+def create_user(username, email, password, active, confirmed):
+    kwargs = {
+        "username": username,
+        "email": email,
+        "password": password,
+        "active": active,
+        "confirmed": confirmed
+    }
 
-#     option_list = (
-#         Option("-u", "--username", dest="username", default=None),
-#         Option("-e", "--email", dest="email", default=None),
-#         Option("-p", "--password", dest="password", default=None),
-#         Option("-a", "--active", dest="active", default=""),
-#         Option("-c", "--confirmed", dest="confirmed", default=""),
-#     )
+    # handle confirmed
+    if re.sub(r"\s", "", str(kwargs.pop("confirmed"))).lower() in [
+        "",
+        "y",
+        "yes",
+        "1",
+        "active",
+    ]:
+        kwargs["confirmed_at"] = datetime.datetime.now()
 
-#     @commit
-#     def run(self, **kwargs):
-#         # handle confirmed
-#         if re.sub(r"\s", "", str(kwargs.pop("confirmed"))).lower() in [
-#             "",
-#             "y",
-#             "yes",
-#             "1",
-#             "active",
-#         ]:
-#             kwargs["confirmed_at"] = datetime.datetime.now()
+    # sanitize active input
+    ai = re.sub(r"\s", "", str(kwargs["active"]))
+    kwargs["active"] = ai.lower() in ["", "y", "yes", "1", "active"]
 
-#         # sanitize active input
-#         ai = re.sub(r"\s", "", str(kwargs["active"]))
-#         kwargs["active"] = ai.lower() in ["", "y", "yes", "1", "active"]
+    from flask_security import hash_password
+    kwargs["password"] = hash_password(kwargs["password"])
+    user_datastore.create_user(**kwargs)
+    user_datastore.commit()
+    print("User created successfully.")
+    kwargs["password"] = "****"
+    pprint(kwargs)
 
-#         from flask_security.forms import ConfirmRegisterForm
-#         from werkzeug.datastructures import MultiDict
-
-#         form = ConfirmRegisterForm(MultiDict(kwargs), csrf_enabled=False)
-
-#         if form.validate():
-#             kwargs["password"] = encrypt_password(kwargs["password"])
-#             user_datastore.create_user(**kwargs)
-#             print("User created successfully.")
-#             kwargs["password"] = "****"
-#             pprint(kwargs)
-#         else:
-#             print("Error creating user")
-#             pprint(form.errors)
-
-
-# UserCommand = Manager(usage="Perform user actions")
-# UserCommand.add_command("create", CreateSpkrepoUserCommand)
-# UserCommand.add_command("activate", ActivateUserCommand)
-# UserCommand.add_command("deactivate", DeactivateUserCommand)
-# UserCommand.add_command("create_role", CreateRoleCommand)
-# UserCommand.add_command("remove_role", RemoveRoleCommand)
-# UserCommand.add_command("add_role", AddRoleCommand)
-# click.add_command("user", UserCommand)
-
+cli.add_command(user_cli)
 
 @cli.command()
 def drop():

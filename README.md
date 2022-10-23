@@ -12,9 +12,9 @@ Synology Package Repository
 3. Create the tables with `python manage.py create`
 4. Populate the database with some fake packages with `python manage.py populate`
 5. Add an user with `python manage.py user create -u Admin -e admin@admin.adm -p adminadmin`
-6. Grant the created user with Administrator permissions `python manage.py user add_role -u admin@admin.adm -r admin`
-7. Grant the created user with Package Administrator permissions `python manage.py user add_role -u admin@admin.adm -r package_admin`
-8. Grant the created user with Developer permissions `python manage.py user add_role -u admin@admin.adm -r developer`
+6. Grant the created user with Administrator permissions `python manage.py roles add admin@admin.adm admin`
+7. Grant the created user with Package Administrator permissions `python manage.py roles add admin@admin.adm package_admin`
+8. Grant the created user with Developer permissions `python manage.py roles add admin@admin.adm developer`
 
 To reset the environment, clean up with `python manage.py clean`.
 
