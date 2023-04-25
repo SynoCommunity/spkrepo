@@ -250,7 +250,7 @@ class Packages(Resource):
                     current_app.config["GNUPG_PATH"],
                 )
             except SPKSignError as e:
-                abort(500, message="Failed to sign package", details=e.message)
+                abort(500, message="Failed to sign package", details=str(e))
 
         # save files
         try:
@@ -275,7 +275,7 @@ class Packages(Resource):
                     os.remove(os.path.join(data_path, build.path))
                 except OSError:
                     pass
-            abort(500, message="Failed to save files", details=e.message)
+            abort(500, message="Failed to save files", details=str(e))
 
         # insert the package into database
         db.session.add(build)
