@@ -98,7 +98,7 @@ def packages():
 def package(name):
     # show only packages with at least a version and an active build
     package = Package.query.filter_by(name=name).first()
-    if package is None or not package.any_builds_active():
+    if package is None or not package.any_builds_active:
         abort(404)
     return render_template("frontend/package.html", package=package)
 
