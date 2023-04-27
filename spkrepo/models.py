@@ -444,6 +444,10 @@ class Version(db.Model):
     def all_builds_active(self):
         return all(b.active for b in self.builds)
 
+    @hybrid_property
+    def any_builds_active(self):
+        return any(b.active for b in self.builds)
+
     @all_builds_active.expression
     def all_builds_active(cls):
         return (
@@ -531,6 +535,10 @@ class Package(db.Model):
 
     # Constraints
     __table_args__ = (db.UniqueConstraint(name),)
+
+    @hybrid_property
+    def any_builds_active(self):
+        return any(v.any_builds_active for v in self.versions)
 
     @classmethod
     def find(cls, name):
