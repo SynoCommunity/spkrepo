@@ -34,9 +34,11 @@
           DSM {{ version }}.x:
           {% endif %}
           {% for build in builds %}
+          {% if build.active %}
           {% for arch in build.architectures %}
           <a href="{{ url_for('nas.data', path=build.path) }}"><span class="label label-default">{{ build.firmware.version }} {{ arch.code }}</span></a>
           {% endfor %}
+          {% endif %}
           {% endfor %}
           <br/>
           {% endfor %}
