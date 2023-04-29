@@ -3,7 +3,7 @@ import io
 import os
 import re
 import shutil
-import threading
+import redis
 from functools import wraps
 
 from flask import Blueprint, _request_ctx_stack, current_app, request
@@ -29,14 +29,13 @@ from ..models import (
 from ..utils import SPK
 
 api = Blueprint("api", __name__)
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
+redis_lock = redis_client.lock('my_lock')
 
 # regexes
 firmware_re = re.compile(r"^(?P<version>\d\.\d)-(?P<build>\d{3,6})$")
 version_re = re.compile(r"^(?P<upstream_version>.*)-(?P<version>\d+)$")
 
-# Create two locks
-package_lock = threading.Lock()
-version_lock = threading.Lock()
 
 def api_auth_required(f):
     @wraps(f)
@@ -135,7 +134,10 @@ class Packages(Resource):
         data_path = current_app.config["DATA_PATH"]
 
         # Package
-        with package_lock:
+        try:
+            # Acquire the Redis lock
+            redis_lock.acquire()
+
             create_package = False
             package = Package.find(spk.info["package"])
             if package is None:
@@ -158,9 +160,16 @@ class Packages(Resource):
                 # Add package to database
                 db.session.add(package)
                 db.session.commit()
+            
+        finally:
+            # Release the Redis lock
+            redis_lock.release()
 
         # Version
-        with version_lock:
+        try:
+            # Acquire the Redis lock
+            redis_lock.acquire()
+
             create_version = False
             match = version_re.match(spk.info["version"])
             if not match:
@@ -246,6 +255,10 @@ class Packages(Resource):
                     # Add version to database
                     db.session.add(version)
                     db.session.commit()
+
+        finally:
+            # Release the Redis lock
+            redis_lock.release()
 
         # Build
         if version.id:
