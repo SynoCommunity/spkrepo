@@ -21,7 +21,8 @@ class IndexTestCase(BaseTestCase):
 
     def test_anonymous_redirects_to_login(self):
         self.assertRedirectsTo(
-            self.client.get(url_for("admin.index")), url_for("security.login")
+            self.client.get(url_for("admin.index")),
+            url_for("security.login"),
         )
 
     def test_user(self):

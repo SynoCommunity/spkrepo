@@ -7,37 +7,33 @@ Synology Package Repository
 
 ## Development
 ### Installation
-1. Install dependencies with `poetry install`
-2. Run the next commands in the virtual environment `poetry shell`
-3. Create the tables with `python manage.py create`
-4. Populate the database with some fake packages with `python manage.py populate`
-5. Add an user with `python manage.py user create -u Admin -e admin@admin.adm -p adminadmin`
-6. Grant the created user with Administrator permissions `python manage.py roles add admin@admin.adm admin`
-7. Grant the created user with Package Administrator permissions `python manage.py roles add admin@admin.adm package_admin`
-8. Grant the created user with Developer permissions `python manage.py roles add admin@admin.adm developer`
+1. Run postgres, e.g. using docker with `docker-compose up db`
+2. Install dependencies with `poetry install`
+3. Run the next commands in the virtual environment `poetry shell`
+4. Create the tables with `flask db upgrade`
+5. Populate the database with some fake packages with `flask spkrepo populate_db`
+6. Add a user with `flask users create username:admin email:admin@synocommunity.com --password adminadmin`
+7. Grant the created user with Administrator permissions `flask roles add admin@synocommunity.com admin`
+8. Grant the created user with Package Administrator permissions `flask roles add admin@synocommunity.com package_admin`
+9. Grant the created user with Developer permissions `flask roles add admin@synocommunity.com developer`
 
-To reset the environment, clean up with `python manage.py clean`.
+To clean data created by fake packages, run `flask spkrepo clean`
 
 ### Run
-1. Start the development server with `python manage.py run`
-2. Website is available at http://localhost:5000
-3. Admin interface is available at http://localhost:5000/admin
-4. NAS interface is available at http://localhost:5000/nas
-5. API is available at http://localhost:5000/api
-6. Run the test suite with `poetry run pytest -v`
+1. Start postgres with `docker-compose up db`
+2. Start the development server with `flask run`
+3. Website is available at http://localhost:5000
+4. Admin interface is available at http://localhost:5000/admin
+5. NAS interface is available at http://localhost:5000/nas
+6. API is available at http://localhost:5000/api
+7. Run the test suite with `pytest -v`
 
 ## Docker Compose Run
-It is also possible to start a development environment with postgres database
-using docker compose:
-1. Build and run `docker-compose up --build`
-2. On first run you can apply database migrations with `docker exec spkrepo_spkrepo_1 python manage.py db upgrade`.
-   Also run any other command that you need (populate the databse, create user) as mentioned above but by prefixing
-   with `docker exec {container_id} [...]`.
-3. Browse to http://localhost:5000
-4. To tear down the environment, run `docker-compose down --remove`
+- If you also want to run the app in docker you can with `docker-compose up app`
+- You can run both postgres and the app with `docker-compose up`
+
 
 ## Deployment
-
 ### Configuration
 Create a config file `./config.py` to disable debug logs, connect to a database, set a secure key and optionally set a cache:
 

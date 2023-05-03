@@ -41,8 +41,10 @@ def api_auth_required(f):
             user = user_datastore.find_user(api_key=request.authorization.username)
             if user and user.has_role("developer"):
                 _request_ctx_stack.top.user = user
+                current_app.login_manager._update_request_context_with_user(user)
                 identity_changed.send(
-                    current_app._get_current_object(), identity=Identity(user.id)
+                    current_app._get_current_object(),
+                    identity=Identity(user.fs_uniquifier),
                 )
                 return f(*args, **kwargs)
         abort(401)

@@ -37,6 +37,7 @@ class User(db.Model, UserMixin):
     github_access_token = db.Column(db.Unicode(255))
     fs_uniquifier = db.Column(db.String(255), unique=True, nullable=False)
     active = db.Column(db.Boolean(), nullable=False)
+    fs_uniquifier = db.Column(db.String(255), unique=True, nullable=False)
     confirmed_at = db.Column(db.DateTime())
 
     # Relationships

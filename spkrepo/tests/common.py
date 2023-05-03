@@ -324,7 +324,7 @@ class DownloadFactory(SQLAlchemyModelFactory):
 
 # Base test case
 class BaseTestCase(TestCase):
-    DEBUG = False
+    DEBUG = True
     TESTING = True
     LOGIN_DISABLED = False
     WTF_CSRF_ENABLED = False
@@ -362,7 +362,7 @@ class BaseTestCase(TestCase):
         return self.client.post(
             url_for("security.login"),
             data=dict(email=email, password=password),
-            follow_redirects=True,
+            follow_redirects=False,
         )
 
     def logout(self):
@@ -397,7 +397,8 @@ class BaseTestCase(TestCase):
         :return: the logged user
         """
         user = self.create_user(*args, **kwargs)
-        self.login(user.email, user.password)
+        response = self.login(user.email, user.password)
+        breakpoint()
         yield user
         self.logout()
 

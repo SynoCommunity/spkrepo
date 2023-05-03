@@ -24,7 +24,8 @@ SECURITY_PASSWORD_SALT = "password-salt"
 # SQLAlchemy
 SQLALCHEMY_ECHO = True
 SQLALCHEMY_DATABASE_URI = os.environ.get(
-    "SPKREPO_SQLALCHEMY_DATABASE_URI", "sqlite:///%s/spkrepo.db" % DATA_PATH
+    "SPKREPO_SQLALCHEMY_DATABASE_URI",
+    "postgresql+psycopg2://spkrepo:spkrepo@localhost/spkrepo",
 )
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 
