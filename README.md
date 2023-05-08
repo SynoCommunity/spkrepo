@@ -6,6 +6,11 @@ Synology Package Repository
 
 
 ## Development
+### Requirements
+1. Install docker and docker-compose
+2. Install python and poetry
+3. Optionally install direnv and a working poetry layout as described [here](https://github.com/direnv/direnv/issues/592#issuecomment-856227234) in your `~/.config/direnv/direnvrc`
+
 ### Installation
 1. Run postgres, e.g. using docker with `docker-compose up db`
 2. Install dependencies with `poetry install`
