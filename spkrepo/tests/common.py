@@ -397,8 +397,6 @@ class BaseTestCase(TestCase):
         :return: the logged user
         """
         user = self.create_user(*args, **kwargs)
-        response = self.login(user.email, user.password)
-        # breakpoint()
         yield user
         self.logout()
 

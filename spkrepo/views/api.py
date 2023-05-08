@@ -260,7 +260,10 @@ class Packages(Resource):
             if create_package:
                 os.makedirs(os.path.join(data_path, package.name), exist_ok=True)
             if create_version:
-                os.makedirs(os.path.join(data_path, package.name, str(version.version)), exist_ok=True)
+                os.makedirs(
+                    os.path.join(data_path, package.name, str(version.version)),
+                    exist_ok=True,
+                )
                 for size, icon in build.version.icons.items():
                     icon.save(spk.icons[size])
             build.save(spk.stream)
