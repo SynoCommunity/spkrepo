@@ -398,7 +398,7 @@ class BaseTestCase(TestCase):
         """
         user = self.create_user(*args, **kwargs)
         response = self.login(user.email, user.password)
-        breakpoint()
+        # breakpoint()
         yield user
         self.logout()
 
