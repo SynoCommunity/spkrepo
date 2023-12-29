@@ -4,24 +4,6 @@ Synology Package Repository
 ![Build](https://img.shields.io/github/actions/workflow/status/SynoCommunity/spkrepo/build.yml?branch=main&style=for-the-badge)
 [![Discord](https://img.shields.io/discord/732558169863225384?color=7289DA&label=Discord&logo=Discord&logoColor=white&style=for-the-badge)](https://discord.gg/nnN9fgE7EF)
 
-```
-pacman -S python-pipx
-pipx ensurepath
-pipx install poetry
-pyenv init
-pyenv install 3.10.12
-pyenv local 3.10.12
-poetry env use 3.10.12
-
-
-poetry install
-
-poetry cache clear . --all
-rm poetry.lock
-poetry install
-```
-
-
 ## Development
 
 ### Requirements
