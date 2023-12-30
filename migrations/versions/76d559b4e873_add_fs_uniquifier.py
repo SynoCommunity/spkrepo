@@ -1,12 +1,12 @@
 """Add fs_uniquifier
 
 Revision ID: 76d559b4e873
-Revises: dc7687894ba7
+Revises: d429595e8362
 Create Date: 2022-10-24 09:31:01.814928
 
 """
 revision = "76d559b4e873"
-down_revision = "dc7687894ba7"
+down_revision = "d429595e8362"
 
 import sqlalchemy as sa
 from alembic import op
