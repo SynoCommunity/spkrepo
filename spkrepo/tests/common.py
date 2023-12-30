@@ -21,6 +21,7 @@ import faker
 from factory.alchemy import SQLAlchemyModelFactory
 from flask import current_app, url_for
 from flask_testing import TestCase
+from flask_security import hash_password
 
 from spkrepo import create_app
 from spkrepo.ext import db
@@ -84,7 +85,6 @@ class UserFactory(SQLAlchemyModelFactory):
         sqlalchemy_session = db.session
         model = User
 
-    id = factory.Sequence(lambda n: n)
     username = factory.LazyAttribute(lambda x: fake.user_name())
     email = factory.LazyAttribute(lambda x: fake.email())
     password = factory.LazyAttribute(lambda x: fake.password())
@@ -94,13 +94,18 @@ class UserFactory(SQLAlchemyModelFactory):
     active = True
     confirmed_at = datetime.datetime.now()
 
+    # Use a PostGeneration hook to hash the password before committing
+    @factory.post_generation
+    def hashed_password(obj, create, extracted, **kwargs):
+        if create:
+            obj.password = hash_password(obj.password)
+
 
 class IconFactory(SQLAlchemyModelFactory):
     class Meta:
         sqlalchemy_session = db.session
         model = Icon
 
-    id = factory.Sequence(lambda n: n)
     size = factory.fuzzy.FuzzyChoice(["72", "120"])
 
 
@@ -108,8 +113,6 @@ class ScreenshotFactory(SQLAlchemyModelFactory):
     class Meta:
         sqlalchemy_session = db.session
         model = Screenshot
-
-    id = factory.Sequence(lambda n: n)
 
 
 class DisplayNameFactory(SQLAlchemyModelFactory):
@@ -135,7 +138,6 @@ class PackageFactory(SQLAlchemyModelFactory):
         sqlalchemy_session = db.session
         model = Package
 
-    id = factory.Sequence(lambda n: n)
     name = factory.Sequence(lambda n: "test_%d" % n)
 
     @factory.post_generation
@@ -165,7 +167,6 @@ class VersionFactory(SQLAlchemyModelFactory):
         sqlalchemy_session = db.session
         model = Version
 
-    id = factory.Sequence(lambda n: n)
     package = factory.SubFactory(PackageFactory)
     version = factory.Sequence(lambda n: n)
     upstream_version = factory.LazyAttribute(
@@ -311,7 +312,6 @@ class DownloadFactory(SQLAlchemyModelFactory):
         sqlalchemy_session = db.session
         model = Download
 
-    id = factory.Sequence(lambda n: n)
     build = factory.SubFactory(BuildFactory)
     architecture = factory.LazyAttribute(lambda x: x.build.architectures[0])
     firmware_build = factory.LazyAttribute(

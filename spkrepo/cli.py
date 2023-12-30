@@ -12,6 +12,25 @@ def spkrepo():
     """Spkrepo admin commands."""
 
 
+@spkrepo.command("create_user")
+@click.option("-u", "--username", help="username", default=None)
+@click.option("-e", "--email", help="email", default=None)
+@click.option("-p", "--password", help="password", default=None)
+@with_appcontext
+def create_user(username, email, password):
+    """Create a new user with an activated account."""
+    from spkrepo.tests.common import UserFactory
+
+    with db.session.no_autoflush:
+        UserFactory(
+            username=username,
+            email=email,
+            password=password,
+            api_key=None
+        )
+    db.session.commit()
+
+
 @spkrepo.command("populate_db")
 @with_appcontext
 def populate_db():
