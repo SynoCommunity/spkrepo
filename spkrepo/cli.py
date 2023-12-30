@@ -22,12 +22,7 @@ def create_user(username, email, password):
     from spkrepo.tests.common import UserFactory
 
     with db.session.no_autoflush:
-        UserFactory(
-            username=username,
-            email=email,
-            password=password,
-            api_key=None
-        )
+        UserFactory(username=username, email=email, password=password, api_key=None)
     db.session.commit()
 
 
