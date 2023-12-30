@@ -26,7 +26,7 @@ class GenerateApiKeyForm(FlaskForm):
     api_key = StringField("API Key")
     submit = SubmitField("Generate API Key")
 
-    def validate(self):
+    def validate(self, extra_validators=None):
         if not super(GenerateApiKeyForm, self).validate():  # pragma: no cover
             return False
 
