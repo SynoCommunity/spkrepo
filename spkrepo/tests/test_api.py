@@ -19,12 +19,9 @@ from spkrepo.tests.common import (
 
 
 def authorization_header(user):
-    return {
-        (
-            "Authorization",
-            "Basic " + base64.b64encode(user.api_key.encode("utf-8")).decode("utf-8"),
-        )
-    }
+    auth_str = user.api_key + ":"
+    encoded_auth = base64.b64encode(auth_str.encode("utf-8")).decode("ascii")
+    return {"Authorization": "Basic " + encoded_auth}
 
 
 class PackagesTestCase(BaseTestCase):
