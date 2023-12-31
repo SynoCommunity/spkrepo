@@ -499,7 +499,8 @@ class Package(db.Model):
     download_count = db.column_property(
         db.select(db.func.count(Download.id))
         .select_from(Download.__table__.join(Build).join(Version))
-        .where(Version.package_id == id).scalar_subquery(),
+        .where(Version.package_id == id)
+        .scalar_subquery(),
         deferred=True,
     )
     recent_download_count = db.column_property(
@@ -511,7 +512,8 @@ class Package(db.Model):
                 Download.date >= datetime.now() - timedelta(days=90),
             )
         )
-        .correlate_except(Download).scalar_subquery(),
+        .correlate_except(Download)
+        .scalar_subquery(),
         deferred=True,
     )
 

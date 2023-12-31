@@ -236,9 +236,7 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn(
-            "Unknown architecture: newarch", response.data.decode()
-        )
+        self.assertIn("Unknown architecture: newarch", response.data.decode())
 
     def test_post_invalid_firmware(self):
         user = UserFactory(roles=[Role.find("developer")])
@@ -404,9 +402,7 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn(
-            "Unknown INFO displayname language", response.data.decode()
-        )
+        self.assertIn("Unknown INFO displayname language", response.data.decode())
 
     def test_post_wrong_description_language(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -422,9 +418,7 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn(
-            "Unknown INFO description language", response.data.decode()
-        )
+        self.assertIn("Unknown INFO description language", response.data.decode())
 
     def test_post_wrong_version(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -454,9 +448,7 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn(
-            "Package contains a signature", response.data.decode()
-        )
+        self.assertIn("Package contains a signature", response.data.decode())
 
     def test_post_invalid_spk(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
