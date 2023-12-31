@@ -430,7 +430,7 @@ class BaseTestCase(TestCase):
         :param message: Message to display on test failure
         """
 
-        self.assertRedirects(response, location, message)
+        self.assertEqual(response.location, location, message)
 
     def assert409(self, response, message=None):
         """
