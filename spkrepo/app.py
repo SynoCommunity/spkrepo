@@ -2,6 +2,7 @@
 import jinja2
 from flask import Flask
 from flask_admin import Admin
+from flask_babel import Babel
 from wtforms import HiddenField
 
 from . import config as default_config
@@ -57,6 +58,9 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
         admin.add_view(VersionView())
         admin.add_view(BuildView())
         admin.init_app(app)
+
+    # Initialize Flask-Babel
+    babel = Babel(app)
 
     # Commands
     app.cli.add_command(spkrepo_cli)
