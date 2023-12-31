@@ -451,11 +451,11 @@ class Version(db.Model):
     @all_builds_active.expression
     def all_builds_active(cls):
         return (
-            db.select([db.func.count()])
+            db.select(db.func.count())
             .where(db.and_(Build.version_id == cls.id, Build.active))
             .label("active_builds")
         ) == (
-            db.select([db.func.count()])
+            db.select(db.func.count())
             .where(Build.version_id == cls.id)
             .label("total_builds")
         )
@@ -497,13 +497,13 @@ class Package(db.Model):
     name = db.Column(db.Unicode(50), nullable=False)
     insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
     download_count = db.column_property(
-        db.select([db.func.count(Download.id)])
+        db.select(db.func.count(Download.id))
         .select_from(Download.__table__.join(Build).join(Version))
         .where(Version.package_id == id).scalar_subquery(),
         deferred=True,
     )
     recent_download_count = db.column_property(
-        db.select([db.func.count(Download.id)])
+        db.select(db.func.count(Download.id))
         .select_from(Download.__table__.join(Build).join(Version))
         .where(
             db.and_(
