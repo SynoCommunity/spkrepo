@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import os
-from unittest import TestLoader, TestSuite
 
 from flask import current_app, url_for
 
@@ -335,14 +334,3 @@ class ScreenshotTestCase(BaseTestCase):
             )
         self.assertEqual(len(package.screenshots), 1)
         self.assertTrue(package.screenshots[0].path.endswith("screenshot_1.png"))
-
-
-def suite():
-    suite = TestSuite()
-    suite.addTest(TestLoader().loadTestsFromTestCase(IndexTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(UserTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(PackageTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(VersionTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(BuildTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(ScreenshotTestCase))
-    return suite

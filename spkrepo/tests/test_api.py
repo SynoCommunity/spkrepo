@@ -2,7 +2,6 @@
 import base64
 import datetime
 import os
-from unittest import TestLoader, TestSuite
 
 from flask import current_app, url_for
 
@@ -21,8 +20,10 @@ from spkrepo.tests.common import (
 
 def authorization_header(user):
     return {
-        "Authorization": b"Basic "
-        + base64.b64encode(user.api_key.encode("utf-8") + b":")
+        (
+            "Authorization",
+            "Basic " + base64.b64encode(user.api_key.encode("utf-8")).decode("utf-8"),
+        )
     }
 
 
@@ -466,7 +467,7 @@ class PackagesTestCase(BaseTestCase):
         self.assertIn("Invalid SPK", response.data.decode())
 
 
-def suite():
-    suite = TestSuite()
-    suite.addTest(TestLoader().loadTestsFromTestCase(PackagesTestCase))
-    return suite
+# def suite():
+#     suite = TestSuite()
+#     suite.addTest(TestLoader().loadTestsFromTestCase(PackagesTestCase))
+#     return suite

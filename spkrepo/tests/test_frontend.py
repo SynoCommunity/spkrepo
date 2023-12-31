@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from unittest import TestLoader, TestSuite
 
 from flask import url_for
 from flask_security import url_for_security
@@ -146,13 +145,3 @@ class RegisterTestCase(BaseTestCase):
         self.client.post(url_for_security("register"), data=data)
         response = self.client.post(url_for_security("register"), data=data)
         self.assertIn("Username already taken", response.data.decode())
-
-
-def suite():
-    suite = TestSuite()
-    suite.addTest(TestLoader().loadTestsFromTestCase(IndexTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(PackagesTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(PackageTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(ProfileTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(RegisterTestCase))
-    return suite

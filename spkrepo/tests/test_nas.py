@@ -2,7 +2,6 @@
 import hashlib
 import json
 from datetime import datetime, timedelta
-from unittest import TestLoader, TestSuite
 
 from flask import url_for
 
@@ -667,10 +666,3 @@ class DownloadTestCase(BaseTestCase):
         )
         self.assert400(response)
         self.assertEqual(Download.query.count(), 0)
-
-
-def suite():
-    suite = TestSuite()
-    suite.addTest(TestLoader().loadTestsFromTestCase(CatalogTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(DownloadTestCase))
-    return suite
