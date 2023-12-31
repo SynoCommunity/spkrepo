@@ -22,8 +22,7 @@ Synology Package Repository
 8. Grant the created user with Package Administrator permissions `flask roles add admin@synocommunity.com package_admin`
 9. Grant the created user with Developer permissions `flask roles add admin@synocommunity.com developer`
 
-To clean the database of fake packages, run `flask spkrepo depopulate_db`
-To clean data created by fake packages, run `flask spkrepo clean`
+To clean data created by fake packages, run `flask spkrepo depopulate_db`
 
 ### Run
 1. Start postgres with `docker compose up db`
