@@ -98,6 +98,7 @@ class UserFactory(SQLAlchemyModelFactory):
     @factory.post_generation
     def hashed_password(obj, create, extracted, **kwargs):
         if create:
+            obj.orig_pass = obj.password
             obj.password = hash_password(obj.password)
 
 
@@ -398,6 +399,10 @@ class BaseTestCase(TestCase):
         :return: the logged user
         """
         user = self.create_user(*args, **kwargs)
+
+        # Explicitly log in the user using the custom login method
+        self.login(user.email, user.orig_pass)
+
         yield user
         self.logout()
 
