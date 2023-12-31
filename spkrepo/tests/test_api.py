@@ -462,9 +462,3 @@ class PackagesTestCase(BaseTestCase):
             )
         self.assert422(response)
         self.assertIn("Invalid SPK", response.data.decode())
-
-
-# def suite():
-#     suite = TestSuite()
-#     suite.addTest(TestLoader().loadTestsFromTestCase(PackagesTestCase))
-#     return suite
