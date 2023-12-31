@@ -12,7 +12,7 @@ Synology Package Repository
 3. Optionally install direnv and a working poetry layout as described [here](https://github.com/direnv/direnv/issues/592#issuecomment-856227234) in your `~/.config/direnv/direnvrc`
 
 ### Installation
-1. Run postgres, e.g. using docker with `docker-compose up db`
+1. Run postgres, e.g. using docker with `docker compose up db`
 2. Install dependencies with `poetry install`
 3. Run the next commands in the virtual environment `poetry shell`
 4. Create the tables with `flask db upgrade`
@@ -22,10 +22,10 @@ Synology Package Repository
 8. Grant the created user with Package Administrator permissions `flask roles add admin@synocommunity.com package_admin`
 9. Grant the created user with Developer permissions `flask roles add admin@synocommunity.com developer`
 
-To clean data created by fake packages, run `flask spkrepo clean`
+To clean data created by fake packages, run `flask spkrepo depopulate_db`
 
 ### Run
-1. Start postgres with `docker-compose up db`
+1. Start postgres with `docker compose up db`
 2. Start the development server with `flask run`
 3. Website is available at http://localhost:5000
 4. Admin interface is available at http://localhost:5000/admin
@@ -34,8 +34,8 @@ To clean data created by fake packages, run `flask spkrepo clean`
 7. Run the test suite with `pytest -v`
 
 ## Docker Compose Run
-- If you also want to run the app in docker you can with `docker-compose up app`
-- You can run both postgres and the app with `docker-compose up`
+- If you also want to run the app in docker you can with `docker compose up app`
+- You can run both postgres and the app with `docker compose up`
 
 
 ## Deployment
