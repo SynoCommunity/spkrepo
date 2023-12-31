@@ -2,7 +2,6 @@
 import io
 import json
 import tarfile
-from unittest import TestLoader, TestSuite
 
 from mock import Mock
 
@@ -365,10 +364,3 @@ class SPKUnsignTestCase(BaseTestCase):
         with self.assertRaises(ValueError) as cm:
             spk.unsign()
         self.assertEqual("Not signed", str(cm.exception))
-
-
-def suite():
-    suite = TestSuite()
-    suite.addTest(TestLoader().loadTestsFromTestCase(SPKParseTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(SPKSignTestCase))
-    return suite

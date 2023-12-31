@@ -5,7 +5,8 @@ import re
 import shutil
 from functools import wraps
 
-from flask import Blueprint, _request_ctx_stack, current_app, request
+from flask import Blueprint, current_app, request
+from flask.globals import request_ctx
 from flask_principal import Identity, identity_changed
 from flask_restful import Api, Resource, abort
 from flask_security import current_user
@@ -40,9 +41,11 @@ def api_auth_required(f):
         if request.authorization and request.authorization.type == "basic":
             user = user_datastore.find_user(api_key=request.authorization.username)
             if user and user.has_role("developer"):
-                _request_ctx_stack.top.user = user
+                request_ctx.user = user
+                current_app.login_manager._update_request_context_with_user(user)
                 identity_changed.send(
-                    current_app._get_current_object(), identity=Identity(user.id)
+                    current_app._get_current_object(),
+                    identity=Identity(user.fs_uniquifier),
                 )
                 return f(*args, **kwargs)
         abort(401)
@@ -258,7 +261,10 @@ class Packages(Resource):
             if create_package:
                 os.makedirs(os.path.join(data_path, package.name), exist_ok=True)
             if create_version:
-                os.makedirs(os.path.join(data_path, package.name, str(version.version)), exist_ok=True)
+                os.makedirs(
+                    os.path.join(data_path, package.name, str(version.version)),
+                    exist_ok=True,
+                )
                 for size, icon in build.version.icons.items():
                     icon.save(spk.icons[size])
             build.save(spk.stream)

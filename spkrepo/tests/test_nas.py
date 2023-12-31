@@ -2,7 +2,6 @@
 import hashlib
 import json
 from datetime import datetime, timedelta
-from unittest import TestLoader, TestSuite
 
 from flask import url_for
 
@@ -222,7 +221,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 1)
         self.assertCatalogEntry(
             catalog[0], build, data, dict(arch="88f628x", build="1594")
@@ -240,7 +239,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertIn("packages", catalog)
         self.assertIn("keyrings", catalog)
         self.assertEqual(len(catalog["packages"]), 1)
@@ -269,7 +268,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 1)
         self.assertEqual(catalog[0]["download_count"], 7)
         self.assertEqual(catalog[0]["recent_download_count"], 3)
@@ -295,7 +294,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 1)
         self.assertCatalogEntry(
             catalog[0], build, data, dict(arch="88f628x", build="1594")
@@ -314,7 +313,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 1)
         self.assertCatalogEntry(
             catalog[0], build, data, dict(arch="88f628x", build="1594")
@@ -334,7 +333,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 1)
         self.assertCatalogEntry(
             catalog[0], build, data, dict(arch="88f628x", build="1594")
@@ -355,7 +354,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 1)
         self.assertCatalogEntry(
             catalog[0], build, data, dict(arch="88f628x", build="1594")
@@ -376,7 +375,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 1)
         self.assertCatalogEntry(
             catalog[0], build, data, dict(arch="88f628x", build="1594")
@@ -394,7 +393,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 0)
 
     def test_stable_build_active_stable_different_firmware(self):
@@ -409,7 +408,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 0)
 
     def test_stable_build_not_active_stable(self):
@@ -424,7 +423,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 0)
 
     def test_stable_build_active_not_stable(self):
@@ -438,7 +437,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 0)
 
     def test_not_stable_build_active_stable(self):
@@ -455,7 +454,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 1)
         self.assertCatalogEntry(
             catalog[0], build, data, dict(arch="88f628x", build="1594")
@@ -474,7 +473,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 1)
         self.assertCatalogEntry(
             catalog[0], build, data, dict(arch="88f628x", build="1594")
@@ -494,7 +493,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 0)
 
     def test_not_stable_build_not_active_not_stable(self):
@@ -510,7 +509,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 0)
 
     def test_stable_build_not_active_not_stable(self):
@@ -526,7 +525,7 @@ class CatalogTestCase(BaseTestCase):
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode(response.charset))
+        catalog = json.loads(response.data.decode())
         self.assertEqual(len(catalog), 0)
 
 
@@ -667,10 +666,3 @@ class DownloadTestCase(BaseTestCase):
         )
         self.assert400(response)
         self.assertEqual(Download.query.count(), 0)
-
-
-def suite():
-    suite = TestSuite()
-    suite.addTest(TestLoader().loadTestsFromTestCase(CatalogTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(DownloadTestCase))
-    return suite

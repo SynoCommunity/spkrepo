@@ -1,4 +1,4 @@
-"""empty message
+"""Increase field sizes
 
 Revision ID: dc7687894ba7
 Revises: d785f1fb2307

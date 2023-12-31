@@ -2,7 +2,6 @@
 import base64
 import datetime
 import os
-from unittest import TestLoader, TestSuite
 
 from flask import current_app, url_for
 
@@ -20,10 +19,9 @@ from spkrepo.tests.common import (
 
 
 def authorization_header(user):
-    return {
-        "Authorization": b"Basic "
-        + base64.b64encode(user.api_key.encode("utf-8") + b":")
-    }
+    auth_str = user.api_key + ":"
+    encoded_auth = base64.b64encode(auth_str.encode("utf-8")).decode("ascii")
+    return {"Authorization": "Basic " + encoded_auth}
 
 
 class PackagesTestCase(BaseTestCase):
@@ -132,7 +130,7 @@ class PackagesTestCase(BaseTestCase):
             url_for("api.packages"), headers=authorization_header(user)
         )
         self.assert400(response)
-        self.assertIn("No data to process", response.data.decode(response.charset))
+        self.assertIn("No data to process", response.data.decode())
 
     def test_post_minimum(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -172,7 +170,7 @@ class PackagesTestCase(BaseTestCase):
         self.assert409(response)
         self.assertIn(
             "Conflicting architectures: 88f628x, cedarview",
-            response.data.decode(response.charset),
+            response.data.decode(),
         )
 
     def test_post_new_package_not_author_not_maintainer_user(self):
@@ -188,7 +186,7 @@ class PackagesTestCase(BaseTestCase):
         self.assert403(response)
         self.assertIn(
             "Insufficient permissions to create new packages",
-            response.data.decode(response.charset),
+            response.data.decode(),
         )
 
     def test_post_existing_package_not_author_not_maintainer_user(self):
@@ -205,7 +203,7 @@ class PackagesTestCase(BaseTestCase):
         self.assert403(response)
         self.assertIn(
             "Insufficient permissions on this package",
-            response.data.decode(response.charset),
+            response.data.decode(),
         )
 
     def test_post_existing_package_maintainer_user(self):
@@ -236,9 +234,7 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn(
-            "Unknown architecture: newarch", response.data.decode(response.charset)
-        )
+        self.assertIn("Unknown architecture: newarch", response.data.decode())
 
     def test_post_invalid_firmware(self):
         user = UserFactory(roles=[Role.find("developer")])
@@ -252,7 +248,7 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn("Invalid firmware", response.data.decode(response.charset))
+        self.assertIn("Invalid firmware", response.data.decode())
 
     def test_post_unknown_firmware(self):
         user = UserFactory(roles=[Role.find("developer")])
@@ -266,7 +262,7 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn("Unknown firmware", response.data.decode(response.charset))
+        self.assertIn("Unknown firmware", response.data.decode())
 
     def test_post_icons_in_info_only(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -404,9 +400,7 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn(
-            "Unknown INFO displayname language", response.data.decode(response.charset)
-        )
+        self.assertIn("Unknown INFO displayname language", response.data.decode())
 
     def test_post_wrong_description_language(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -422,9 +416,7 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn(
-            "Unknown INFO description language", response.data.decode(response.charset)
-        )
+        self.assertIn("Unknown INFO description language", response.data.decode())
 
     def test_post_wrong_version(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -440,7 +432,7 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn("Invalid version", response.data.decode(response.charset))
+        self.assertIn("Invalid version", response.data.decode())
 
     def test_post_signed(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -454,9 +446,7 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn(
-            "Package contains a signature", response.data.decode(response.charset)
-        )
+        self.assertIn("Package contains a signature", response.data.decode())
 
     def test_post_invalid_spk(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -471,10 +461,4 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn("Invalid SPK", response.data.decode(response.charset))
-
-
-def suite():
-    suite = TestSuite()
-    suite.addTest(TestLoader().loadTestsFromTestCase(PackagesTestCase))
-    return suite
+        self.assertIn("Invalid SPK", response.data.decode())

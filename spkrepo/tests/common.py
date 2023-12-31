@@ -20,6 +20,7 @@ import factory.fuzzy
 import faker
 from factory.alchemy import SQLAlchemyModelFactory
 from flask import current_app, url_for
+from flask_security import hash_password
 from flask_testing import TestCase
 
 from spkrepo import create_app
@@ -84,15 +85,21 @@ class UserFactory(SQLAlchemyModelFactory):
         sqlalchemy_session = db.session
         model = User
 
-    id = factory.Sequence(lambda n: n)
     username = factory.LazyAttribute(lambda x: fake.user_name())
     email = factory.LazyAttribute(lambda x: fake.email())
     password = factory.LazyAttribute(lambda x: fake.password())
-    api_key = factory.LazyAttribute(lambda x: fake.md5())
+    api_key = factory.LazyAttribute(lambda x: fake.sha256())
     github_access_token = None
     fs_uniquifier = factory.LazyAttribute(lambda x: fake.md5())
     active = True
     confirmed_at = datetime.datetime.now()
+
+    # Use a PostGeneration hook to hash the password before committing
+    @factory.post_generation
+    def hashed_password(obj, create, extracted, **kwargs):
+        if create:
+            obj.orig_pass = obj.password
+            obj.password = hash_password(obj.password)
 
 
 class IconFactory(SQLAlchemyModelFactory):
@@ -100,7 +107,6 @@ class IconFactory(SQLAlchemyModelFactory):
         sqlalchemy_session = db.session
         model = Icon
 
-    id = factory.Sequence(lambda n: n)
     size = factory.fuzzy.FuzzyChoice(["72", "120"])
 
 
@@ -108,8 +114,6 @@ class ScreenshotFactory(SQLAlchemyModelFactory):
     class Meta:
         sqlalchemy_session = db.session
         model = Screenshot
-
-    id = factory.Sequence(lambda n: n)
 
 
 class DisplayNameFactory(SQLAlchemyModelFactory):
@@ -135,7 +139,6 @@ class PackageFactory(SQLAlchemyModelFactory):
         sqlalchemy_session = db.session
         model = Package
 
-    id = factory.Sequence(lambda n: n)
     name = factory.Sequence(lambda n: "test_%d" % n)
 
     @factory.post_generation
@@ -165,7 +168,6 @@ class VersionFactory(SQLAlchemyModelFactory):
         sqlalchemy_session = db.session
         model = Version
 
-    id = factory.Sequence(lambda n: n)
     package = factory.SubFactory(PackageFactory)
     version = factory.Sequence(lambda n: n)
     upstream_version = factory.LazyAttribute(
@@ -311,7 +313,6 @@ class DownloadFactory(SQLAlchemyModelFactory):
         sqlalchemy_session = db.session
         model = Download
 
-    id = factory.Sequence(lambda n: n)
     build = factory.SubFactory(BuildFactory)
     architecture = factory.LazyAttribute(lambda x: x.build.architectures[0])
     firmware_build = factory.LazyAttribute(
@@ -324,8 +325,9 @@ class DownloadFactory(SQLAlchemyModelFactory):
 
 # Base test case
 class BaseTestCase(TestCase):
-    DEBUG = False
+    DEBUG = True
     TESTING = True
+    CACHE_TYPE = "SimpleCache"
     LOGIN_DISABLED = False
     WTF_CSRF_ENABLED = False
     DATA_PATH = tempfile.mkdtemp("spkrepo")
@@ -362,7 +364,7 @@ class BaseTestCase(TestCase):
         return self.client.post(
             url_for("security.login"),
             data=dict(email=email, password=password),
-            follow_redirects=True,
+            follow_redirects=False,
         )
 
     def logout(self):
@@ -397,7 +399,10 @@ class BaseTestCase(TestCase):
         :return: the logged user
         """
         user = self.create_user(*args, **kwargs)
-        self.login(user.email, user.password)
+
+        # Explicitly log in the user using the custom login method
+        self.login(user.email, user.orig_pass)
+
         yield user
         self.logout()
 
@@ -430,7 +435,7 @@ class BaseTestCase(TestCase):
         :param message: Message to display on test failure
         """
 
-        self.assertRedirects(response, location, message)
+        self.assertEqual(response.location, location, message)
 
     def assert409(self, response, message=None):
         """

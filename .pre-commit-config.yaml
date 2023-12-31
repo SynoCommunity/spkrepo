@@ -1,22 +1,25 @@
+---
+default_language_version:
+  python: python3.11
 repos:
   - repo: https://github.com/python-poetry/poetry
-    rev: master
+    rev: 1.4.2
     hooks:
       - id: poetry-export
   - repo: https://github.com/psf/black
-    rev: 22.1.0
+    rev: 23.3.0
     hooks:
       - id: black
-  - repo: https://gitlab.com/PyCQA/flake8
-    rev: 3.9.2
+  - repo: https://github.com/PyCQA/flake8
+    rev: 6.0.0
     hooks:
       - id: flake8
   - repo: https://github.com/PyCQA/isort
-    rev: 5.10.1
+    rev: 5.12.0
     hooks:
       - id: isort
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.1.0
+    rev: v4.4.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer

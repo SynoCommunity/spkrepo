@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import os
-from unittest import TestLoader, TestSuite
 
 from flask import current_app, url_for
 
@@ -21,7 +20,8 @@ class IndexTestCase(BaseTestCase):
 
     def test_anonymous_redirects_to_login(self):
         self.assertRedirectsTo(
-            self.client.get(url_for("admin.index")), url_for("security.login")
+            self.client.get(url_for("admin.index")),
+            url_for("security.login"),
         )
 
     def test_user(self):
@@ -74,7 +74,7 @@ class UserTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "User was successfully activated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertTrue(user.active)
 
@@ -93,7 +93,7 @@ class UserTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "2 users were successfully activated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertTrue(user1.active)
             self.assertTrue(user2.active)
@@ -111,7 +111,7 @@ class UserTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "User was successfully deactivated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertFalse(user.active)
 
@@ -130,7 +130,7 @@ class UserTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "2 users were successfully deactivated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertFalse(user1.active)
             self.assertFalse(user2.active)
@@ -243,7 +243,7 @@ class BuildTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "Build was successfully activated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertTrue(build.active)
 
@@ -260,7 +260,7 @@ class BuildTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "2 builds were successfully activated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertTrue(build1.active)
             self.assertTrue(build2.active)
@@ -277,7 +277,7 @@ class BuildTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "Build was successfully deactivated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertFalse(build.active)
 
@@ -294,7 +294,7 @@ class BuildTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "2 builds were successfully deactivated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertFalse(build1.active)
             self.assertFalse(build2.active)
@@ -334,14 +334,3 @@ class ScreenshotTestCase(BaseTestCase):
             )
         self.assertEqual(len(package.screenshots), 1)
         self.assertTrue(package.screenshots[0].path.endswith("screenshot_1.png"))
-
-
-def suite():
-    suite = TestSuite()
-    suite.addTest(TestLoader().loadTestsFromTestCase(IndexTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(UserTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(PackageTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(VersionTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(BuildTestCase))
-    suite.addTest(TestLoader().loadTestsFromTestCase(ScreenshotTestCase))
-    return suite

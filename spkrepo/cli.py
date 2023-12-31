@@ -1,87 +1,36 @@
-# -*- coding: utf-8 -*-
-import datetime
-import json
 import os
-import re
 import shutil
+
 import click
+from flask.cli import with_appcontext
 
-from flask import current_app
-from flask.cli import FlaskGroup, AppGroup
-
-from spkrepo import create_app
-from spkrepo.ext import db
-from spkrepo.models import Architecture, Package, user_datastore
-from spkrepo.utils import populate_db
-
-cli = FlaskGroup(create_app)
-@click.option("-c", "--config", help="config", required=False)
-
-def date_handler(obj):
-    return obj.isoformat() if hasattr(obj, "isoformat") else obj
+from .ext import db
 
 
-def pprint(obj):
-    print(json.dumps(obj, default=date_handler, sort_keys=True, indent=4))
+@click.group()
+def spkrepo():
+    """Spkrepo admin commands."""
 
-# User commands
-user_cli = AppGroup('user', help="Perform user actions")
-@user_cli.command('create')
+
+@spkrepo.command("create_user")
 @click.option("-u", "--username", help="username", default=None)
 @click.option("-e", "--email", help="email", default=None)
 @click.option("-p", "--password", help="password", default=None)
-@click.option("-a", "--active", help="active", default="")
-@click.option("-c", "--confirmed", help="confirmed", default="")
-def create_user(username, email, password, active, confirmed):
-    kwargs = {
-        "username": username,
-        "email": email,
-        "password": password,
-        "active": active,
-        "confirmed": confirmed
-    }
+@with_appcontext
+def create_user(username, email, password):
+    """Create a new user with an activated account."""
+    from spkrepo.tests.common import UserFactory
 
-    # handle confirmed
-    if re.sub(r"\s", "", str(kwargs.pop("confirmed"))).lower() in [
-        "",
-        "y",
-        "yes",
-        "1",
-        "active",
-    ]:
-        kwargs["confirmed_at"] = datetime.datetime.now()
-
-    # sanitize active input
-    ai = re.sub(r"\s", "", str(kwargs["active"]))
-    kwargs["active"] = ai.lower() in ["", "y", "yes", "1", "active"]
-
-    from flask_security import hash_password
-    kwargs["password"] = hash_password(kwargs["password"])
-    user_datastore.create_user(**kwargs)
-    user_datastore.commit()
-    print("User created successfully.")
-    kwargs["password"] = "****"
-    pprint(kwargs)
-
-cli.add_command(user_cli)
-
-@cli.command()
-def drop():
-    """Drop database"""
-    db.drop_all()
-
-
-@cli.command()
-def create():
-    """Create Database"""
-    db.create_all()
-    populate_db()
+    with db.session.no_autoflush:
+        UserFactory(username=username, email=email, password=password)
     db.session.commit()
 
 
-@cli.command()
-def populate():
-    """Populate the database with some packages"""
+@spkrepo.command("populate_db")
+@with_appcontext
+def populate_db():
+    """Populate the database with some packages."""
+    from spkrepo.models import Architecture
     from spkrepo.tests.common import BuildFactory, PackageFactory, VersionFactory
 
     with db.session.no_autoflush:
@@ -222,18 +171,26 @@ def populate():
     db.session.commit()
 
 
-@cli.command()
-def depopulate():
-    """Depopulate database"""
+@spkrepo.command("depopulate_db")
+@with_appcontext
+def depopulate_db():
+    """Depopulate database."""
+    from flask import current_app
+
+    from spkrepo.models import Package
+
     for package in Package.query.all():
         shutil.rmtree(os.path.join(current_app.config["DATA_PATH"], package.name))
         db.session.delete(package)
     db.session.commit()
 
 
-@cli.command()
+@spkrepo.command("clean")
+@with_appcontext
 def clean():
-    """Clean data path"""
+    """Clean data path."""
+    from flask import current_app
+
     # do not remove and recreate the path since it may be a docker volume
     for root, dirs, files in os.walk(
         os.path.join(current_app.config["DATA_PATH"]), topdown=False
@@ -242,7 +199,3 @@ def clean():
             os.remove(os.path.join(root, name))
         for name in dirs:
             os.rmdir(os.path.join(root, name))
-
-
-if __name__ == "__main__":
-    cli()

@@ -9,34 +9,32 @@ jobs:
   pre-commit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
         with:
-          fetch-depth: 1
-      - uses: actions/setup-python@v2
-        with:
-          python-version: 3.8
-      - uses: pre-commit/action@v2.0.0
+          python-version: 3.11
+      - uses: pre-commit/action@v3.0.0
 
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
         with:
-          python-version: 3.9
-      - uses: snok/install-poetry@v1.2.0
+          python-version: 3.11
+      - uses: snok/install-poetry@v1
         with:
           virtualenvs-in-project: true
       - name: Load cached venv
         id: cached-poetry-dependencies
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/pyproject.toml') }}
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
-      - name: Install application
+      - name: Install project
         run: poetry install --no-interaction
       - name: Run tests
         run: poetry run pytest -v
