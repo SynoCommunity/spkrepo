@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "spkrepo"
-version = "0.2.3"
+version = "0.2.4"
 description = "Synology Package Repository"
 license = "MIT"
 authors = ["Antoine Bertin <diaoulael@gmail.com>"]

@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY spkrepo ./spkrepo
 COPY migrations ./migrations
-COPY manage.py wsgi.py ./
+COPY wsgi.py ./
 
 HEALTHCHECK --interval=1m --timeout=5s \
   CMD curl -f http://localhost:8000/ || exit 1

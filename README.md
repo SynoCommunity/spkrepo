@@ -51,7 +51,7 @@ SECRET_KEY = "Please-change-me-to-some-random-string"
 SQLALCHEMY_ECHO = False
 SQLALCHEMY_DATABASE_URI = "postgresql://user:pass@localhost/dbname"
 # https://pythonhosted.org/Flask-Caching/#configuring-flask-caching
-CACHE_TYPE= "simple"
+CACHE_TYPE= "SimpleCache"
 # For signing packages
 GNUPG_PATH= "/usr/local/bin/gpg"
 ```
