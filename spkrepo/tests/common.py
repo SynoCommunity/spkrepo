@@ -88,7 +88,7 @@ class UserFactory(SQLAlchemyModelFactory):
     username = factory.LazyAttribute(lambda x: fake.user_name())
     email = factory.LazyAttribute(lambda x: fake.email())
     password = factory.LazyAttribute(lambda x: fake.password())
-    api_key = factory.LazyAttribute(lambda x: fake.md5())
+    api_key = factory.LazyAttribute(lambda x: fake.sha256())
     github_access_token = None
     fs_uniquifier = factory.LazyAttribute(lambda x: fake.md5())
     active = True

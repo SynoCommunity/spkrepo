@@ -454,9 +454,9 @@ typing-extensions==4.9.0 ; python_version >= "3.9" and python_version < "4.0" \
 urllib3==2.1.0 ; python_version >= "3.9" and python_version < "4.0" \
     --hash=sha256:55901e917a5896a349ff771be919f8bd99aff50b79fe58fec595eb37bbc56bb3 \
     --hash=sha256:df7aa8afb0148fa78488e7899b2c59b5f4ffcfa82e6c54ccb9dd37c1d7b52d54
-werkzeug==3.0.1 ; python_version >= "3.9" and python_version < "4.0" \
-    --hash=sha256:507e811ecea72b18a404947aded4b3390e1db8f826b494d76550ef45bb3b1dcc \
-    --hash=sha256:90a285dc0e42ad56b34e696398b8122ee4c681833fb35b8334a095d82c56da10
+werkzeug==2.3.8 ; python_version >= "3.9" and python_version < "4.0" \
+    --hash=sha256:554b257c74bbeb7a0d254160a4f8ffe185243f52a52035060b761ca62d977f03 \
+    --hash=sha256:bba1f19f8ec89d4d607a3bd62f1904bd2e609472d93cd85e9d4e178f472c3748
 wtforms==3.1.1 ; python_version >= "3.9" and python_version < "4.0" \
     --hash=sha256:5e51df8af9a60f6beead75efa10975e97768825a82146a65c7cbf5b915990620 \
     --hash=sha256:ae7c54b29806c70f7bce8eb9f24afceb10ca5c32af3d9f04f74d2f66ccc5c7e0
