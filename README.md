@@ -17,7 +17,7 @@ Synology Package Repository
 3. Run the next commands in the virtual environment `poetry shell`
 4. Create the tables with `flask db upgrade`
 5. Populate the database with some fake packages with `flask spkrepo populate_db`
-6. Add a user with `flask users create username:admin email:admin@synocommunity.com --password adminadmin`
+6. Add a user with `flask spkrepo create_user -u admin -e admin@synocommunity.com -p adminadmin`
 7. Grant the created user with Administrator permissions `flask roles add admin@synocommunity.com admin`
 8. Grant the created user with Package Administrator permissions `flask roles add admin@synocommunity.com package_admin`
 9. Grant the created user with Developer permissions `flask roles add admin@synocommunity.com developer`
