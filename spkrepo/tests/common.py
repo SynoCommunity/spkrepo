@@ -326,6 +326,7 @@ class DownloadFactory(SQLAlchemyModelFactory):
 class BaseTestCase(TestCase):
     DEBUG = True
     TESTING = True
+    CACHE_TYPE = "SimpleCache"
     LOGIN_DISABLED = False
     WTF_CSRF_ENABLED = False
     DATA_PATH = tempfile.mkdtemp("spkrepo")

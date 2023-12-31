@@ -5,7 +5,8 @@ import re
 import shutil
 from functools import wraps
 
-from flask import Blueprint, _request_ctx_stack, current_app, request
+from flask import Blueprint, current_app, request
+from flask.globals import request_ctx
 from flask_principal import Identity, identity_changed
 from flask_restful import Api, Resource, abort
 from flask_security import current_user
@@ -40,7 +41,7 @@ def api_auth_required(f):
         if request.authorization and request.authorization.type == "basic":
             user = user_datastore.find_user(api_key=request.authorization.username)
             if user and user.has_role("developer"):
-                _request_ctx_stack.top.user = user
+                request_ctx.user = user
                 current_app.login_manager._update_request_context_with_user(user)
                 identity_changed.send(
                     current_app._get_current_object(),

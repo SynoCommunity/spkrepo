@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from flask import current_app
 from flask_security import RoleMixin, SQLAlchemyUserDatastore, UserMixin
-from flask_sqlalchemy import before_models_committed, models_committed
+from flask_sqlalchemy import track_modifications
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.collections import attribute_mapped_collection
 
@@ -499,7 +499,7 @@ class Package(db.Model):
     download_count = db.column_property(
         db.select([db.func.count(Download.id)])
         .select_from(Download.__table__.join(Build).join(Version))
-        .where(Version.package_id == id),
+        .where(Version.package_id == id).scalar_subquery(),
         deferred=True,
     )
     recent_download_count = db.column_property(
@@ -511,7 +511,7 @@ class Package(db.Model):
                 Download.date >= datetime.now() - timedelta(days=90),
             )
         )
-        .correlate_except(Download),
+        .correlate_except(Download).scalar_subquery(),
         deferred=True,
     )
 
@@ -551,7 +551,7 @@ class Package(db.Model):
         return "<{} {}>".format(self.__class__.__name__, self.name)
 
 
-@models_committed.connect
+@track_modifications.models_committed.connect
 def on_models_committed(sender, changes):
     for obj, change in changes:
         if change == "insert" and hasattr(obj, "_after_insert"):
@@ -560,7 +560,7 @@ def on_models_committed(sender, changes):
             obj._after_delete()
 
 
-@before_models_committed.connect
+@track_modifications.before_models_committed.connect
 def on_before_models_committed(sender, changes):
     for obj, change in changes:
         if change == "insert" and hasattr(obj, "_before_insert"):

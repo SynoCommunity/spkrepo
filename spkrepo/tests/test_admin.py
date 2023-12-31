@@ -75,7 +75,7 @@ class UserTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "User was successfully activated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertTrue(user.active)
 
@@ -94,7 +94,7 @@ class UserTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "2 users were successfully activated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertTrue(user1.active)
             self.assertTrue(user2.active)
@@ -112,7 +112,7 @@ class UserTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "User was successfully deactivated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertFalse(user.active)
 
@@ -131,7 +131,7 @@ class UserTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "2 users were successfully deactivated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertFalse(user1.active)
             self.assertFalse(user2.active)
@@ -244,7 +244,7 @@ class BuildTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "Build was successfully activated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertTrue(build.active)
 
@@ -261,7 +261,7 @@ class BuildTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "2 builds were successfully activated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertTrue(build1.active)
             self.assertTrue(build2.active)
@@ -278,7 +278,7 @@ class BuildTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "Build was successfully deactivated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertFalse(build.active)
 
@@ -295,7 +295,7 @@ class BuildTestCase(BaseTestCase):
             self.assert200(response)
             self.assertIn(
                 "2 builds were successfully deactivated.",
-                response.data.decode(response.charset),
+                response.data.decode(),
             )
             self.assertFalse(build1.active)
             self.assertFalse(build2.active)
