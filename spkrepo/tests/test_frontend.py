@@ -24,7 +24,7 @@ class IndexTestCase(BaseTestCase):
 
 
 class PackagesTestCase(BaseTestCase):
-    def test_get_active_stable(self):
+    def test_get_active(self):
         build = BuildFactory(version__report_url=None, active=True)
         db.session.commit()
         response = self.client.get(url_for("frontend.packages"))
@@ -35,8 +35,8 @@ class PackagesTestCase(BaseTestCase):
         )
         self.assertNotIn("beta", response.data.decode())
 
-    def test_get_active_not_stable(self):
-        build = BuildFactory(active=True)
+    def test_get_not_active(self):
+        build = BuildFactory(active=False)
         db.session.commit()
         response = self.client.get(url_for("frontend.packages"))
         self.assert200(response)
@@ -44,33 +44,10 @@ class PackagesTestCase(BaseTestCase):
             build.version.displaynames["enu"].displayname,
             response.data.decode(),
         )
-        self.assertIn("beta", response.data.decode())
-
-    def test_get_not_active_not_stable(self):
-        build = BuildFactory(active=False)
-        db.session.commit()
-        response = self.client.get(url_for("frontend.packages"))
-        self.assert200(response)
-        self.assertNotIn(
-            build.version.displaynames["enu"].displayname,
-            response.data.decode(),
-        )
-        self.assertNotIn("beta", response.data.decode())
-
-    def test_get_not_active_stable(self):
-        build = BuildFactory(active=False)
-        db.session.commit()
-        response = self.client.get(url_for("frontend.packages"))
-        self.assert200(response)
-        self.assertNotIn(
-            build.version.displaynames["enu"].displayname,
-            response.data.decode(),
-        )
-        self.assertNotIn("beta", response.data.decode())
 
 
 class PackageTestCase(BaseTestCase):
-    def test_get(self):
+    def test_get_active_stable(self):
         build = BuildFactory(
             version__package__author=UserFactory(),
             version__report_url=None,
@@ -91,6 +68,74 @@ class PackageTestCase(BaseTestCase):
             build.version.descriptions["enu"].description,
             response.data.decode(),
         )
+        self.assertNotIn("beta", response.data.decode())
+
+    def test_get_not_active_stable(self):
+        build = BuildFactory(
+            version__package__author=UserFactory(),
+            version__report_url=None,
+            active=False,
+        )
+        db.session.commit()
+        response = self.client.get(
+            url_for("frontend.package", name=build.version.package.name)
+        )
+        self.assert200(response)
+        for a in build.architectures:
+            self.assertIn(a.code, response.data.decode())
+        self.assertIn(
+            build.version.displaynames["enu"].displayname,
+            response.data.decode(),
+        )
+        self.assertIn(
+            build.version.descriptions["enu"].description,
+            response.data.decode(),
+        )
+        self.assertNotIn("beta", response.data.decode())
+
+    def test_get_active_not_stable(self):
+        build = BuildFactory(
+            version__package__author=UserFactory(),
+            active=True,
+        )
+        db.session.commit()
+        response = self.client.get(
+            url_for("frontend.package", name=build.version.package.name)
+        )
+        self.assert200(response)
+        for a in build.architectures:
+            self.assertIn(a.code, response.data.decode())
+        self.assertIn(
+            build.version.displaynames["enu"].displayname,
+            response.data.decode(),
+        )
+        self.assertIn(
+            build.version.descriptions["enu"].description,
+            response.data.decode(),
+        )
+        self.assertIn("beta", response.data.decode())
+
+    def test_get_not_active_not_stable(self):
+        build = BuildFactory(
+            version__package__author=UserFactory(),
+            active=False,
+        )
+        db.session.commit()
+        response = self.client.get(
+            url_for("frontend.package", name=build.version.package.name)
+        )
+        self.assert200(response)
+        for a in build.architectures:
+            self.assertIn(a.code, response.data.decode())
+        self.assertIn(
+            build.version.displaynames["enu"].displayname,
+            response.data.decode(),
+        )
+        self.assertIn(
+            build.version.descriptions["enu"].description,
+            response.data.decode(),
+        )
+        self.assertIn("beta", response.data.decode())
 
     def test_get_no_package(self):
         response = self.client.get(url_for("frontend.package", name="no-package"))
