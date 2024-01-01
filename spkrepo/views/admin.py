@@ -35,6 +35,10 @@ class UserView(ModelView):
     # View
     column_list = ("username", "email", "roles", "active", "confirmed_at")
 
+    column_formatters = {
+        "confirmed_at": lambda v, c, m, p: m.confirmed_at.strftime("%Y-%m-%d %H:%M:%S")
+    }
+
     # Form
     form_columns = ("username", "roles", "active")
     form_overrides = {"password": PasswordField}
@@ -143,6 +147,11 @@ class ScreenshotView(ModelView):
         return current_user.is_authenticated and current_user.has_role("package_admin")
 
     # View
+    column_labels = {
+        "package.name": "Package Name",
+        "path": "Screenshot",
+    }
+
     def _display(view, context, model, name):
         return Markup(
             '<img src="%s" alt="screenshot" height="100" width="100">'
@@ -221,6 +230,10 @@ class PackageView(ModelView):
         ("insert_date", "insert_date"),
     )
 
+    column_formatters = {
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S")
+    }
+
     # Form
     form_columns = ("name", "author", "maintainers")
     form_args = {"name": {"validators": [Regexp(SPK.package_re)]}}
@@ -276,21 +289,33 @@ class VersionView(ModelView):
         "startable",
     )
     column_labels = {
+        "package.name": "Package Name",
         "version_string": "Version",
         "dependencies": "Dependencies",
         "service_dependencies": "Services",
     }
-    column_filters = ("package.name", "version", "upstream_version")
+    column_filters = (
+        "package.name",
+        "upstream_version",
+        "version",
+        "beta",
+        "all_builds_active",
+    )
     column_sortable_list = (
         ("package", "package.name"),
         ("upstream_version", "upstream_version"),
         ("version", "version"),
+        ("beta", "beta"),
         ("insert_date", "insert_date"),
+        ("all_builds_active", "all_builds_active"),
         ("install_wizard", "install_wizard"),
         ("upgrade_wizard", "upgrade_wizard"),
         ("startable", "startable"),
     )
-    # TODO: Add beta and all_builds_active with Flask-Admin>1.0.8
+
+    column_formatters = {
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S")
+    }
     column_default_sort = (Version.insert_date, True)
 
     # Custom queries
@@ -516,16 +541,24 @@ class BuildView(ModelView):
     )
     column_labels = {
         "version.package": "Package",
+        "version.package.name": "Package Name",
         "version.upstream_version": "Upstream Version",
         "version.version": "Version",
+        "architectures.code": "Architecture",
+        "firmware.version": "Firmware Version",
+        "publisher.username": "Publisher Username",
     }
     column_filters = (
         "version.package.name",
         "version.upstream_version",
         "version.version",
+        "architectures.code",
+        "firmware.version",
         "publisher.username",
+        "active",
     )
     column_sortable_list = (
+        ("version.package", "version.package.name"),
         ("version.upstream_version", "version.upstream_version"),
         ("version.version", "version.version"),
         ("firmware", "firmware.build"),
@@ -533,7 +566,10 @@ class BuildView(ModelView):
         ("insert_date", "insert_date"),
         ("active", "active"),
     )
-    # TODO: Add version.package with Flask-Admin>1.0.8
+
+    column_formatters = {
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S")
+    }
     column_default_sort = (Build.insert_date, True)
 
     # Custom queries
