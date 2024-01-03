@@ -345,6 +345,18 @@ class SPK(object):
         self.stream.truncate()
         self.stream.seek(0)
 
+    def calculate_md5(self):
+        md5_hash = hashlib.md5()
+
+        # Ensure the stream position is at the beginning
+        self.stream.seek(0)
+
+        # Update MD5 hash directly from the stream
+        for chunk in iter(lambda: self.stream.read(4096), b""):
+            md5_hash.update(chunk)
+
+        return md5_hash.hexdigest()
+
     def _generate_signature(self, stream, timestamp_url, gnupghome):  # pragma: no cover
         # generate the signature
         gpg = gnupg.GPG(gnupghome=gnupghome)

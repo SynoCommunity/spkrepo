@@ -278,6 +278,8 @@ class Packages(Resource):
                 for size, icon in build.version.icons.items():
                     icon.save(spk.icons[size])
             build.save(spk.stream)
+            # generate md5 hash
+            build.md5 = build.calculate_md5()
         except Exception as e:  # pragma: no cover
             if create_package:
                 shutil.rmtree(os.path.join(data_path, package.name), ignore_errors=True)

@@ -428,8 +428,11 @@ class VersionView(ModelView):
                                 current_app.config["GNUPG_TIMESTAMP_URL"],
                                 current_app.config["GNUPG_PATH"],
                             )
+                            build.md5 = spk.calculate_md5()
+                            self.session.commit()
                             success.append(filename)
                         except Exception:
+                            self.session.rollback()
                             failed.append(filename)
                 if failed:
                     if len(failed) == 1:
@@ -479,8 +482,11 @@ class VersionView(ModelView):
                             continue
                         try:
                             spk.unsign()
+                            build.md5 = spk.calculate_md5()
+                            self.session.commit()
                             success.append(filename)
                         except Exception:
+                            self.session.rollback()
                             failed.append(filename)
                 if failed:
                     if len(failed) == 1:
@@ -683,8 +689,11 @@ class BuildView(ModelView):
                             current_app.config["GNUPG_TIMESTAMP_URL"],
                             current_app.config["GNUPG_PATH"],
                         )
+                        build.md5 = spk.calculate_md5()
+                        self.session.commit()
                         success.append(filename)
                     except Exception:
+                        self.session.rollback()
                         failed.append(filename)
             if failed:
                 if len(failed) == 1:
@@ -733,8 +742,11 @@ class BuildView(ModelView):
                         continue
                     try:
                         spk.unsign()
+                        build.md5 = spk.calculate_md5()
+                        self.session.commit()
                         success.append(filename)
                     except Exception:
+                        self.session.rollback()
                         failed.append(filename)
             if failed:
                 if len(failed) == 1:
