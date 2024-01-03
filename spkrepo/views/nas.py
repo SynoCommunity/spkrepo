@@ -108,13 +108,21 @@ def get_catalog(arch, build, major, language, beta):
         .subquery()
     )
 
-    # Step 3: Get the latest builds for versions
+    # Step 3: Get the latest builds for versions, undefer download counts
+    # so they are computed once and included in the cache rather than
+    # firing a correlated subquery per package on every cache hit.
     firmware_min_for_build = aliased(Firmware)
     latest_build = (
         Build.query.options(
             db.joinedload(Build.architectures),
             db.joinedload(Build.firmware_min),
             db.joinedload(Build.firmware_max),
+            db.joinedload(Build.version)
+            .joinedload(Version.package)
+            .undefer(Package.download_count),
+            db.joinedload(Build.version)
+            .joinedload(Version.package)
+            .undefer(Package.recent_download_count),
             db.joinedload(Build.version).joinedload(Version.package),
             db.joinedload(Build.version).joinedload(Version.service_dependencies),
             db.joinedload(Build.version).joinedload(Version.icons),
