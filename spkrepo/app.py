@@ -15,6 +15,7 @@ from .views import (
     IndexView,
     PackageView,
     ScreenshotView,
+    ServiceView,
     SpkrepoConfirmRegisterForm,
     UserView,
     VersionView,
@@ -52,6 +53,7 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
         admin.add_view(UserView())
         admin.add_view(ArchitectureView())
         admin.add_view(FirmwareView())
+        admin.add_view(ServiceView())
         admin.add_view(ScreenshotView())
         admin.add_view(PackageView())
         admin.add_view(VersionView())

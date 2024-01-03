@@ -16,7 +16,16 @@ from wtforms import PasswordField
 from wtforms.validators import Regexp
 
 from ..ext import db
-from ..models import Architecture, Build, Firmware, Package, Screenshot, User, Version
+from ..models import (
+    Architecture,
+    Build,
+    Firmware,
+    Package,
+    Screenshot,
+    Service,
+    User,
+    Version,
+)
 from ..utils import SPK
 
 
@@ -101,6 +110,21 @@ class FirmwareView(ModelView):
 
     def __init__(self, **kwargs):
         super(FirmwareView, self).__init__(Firmware, db.session, **kwargs)
+
+    # Permissions
+    def is_accessible(self):
+        return current_user.is_authenticated and current_user.has_role("package_admin")
+
+    can_edit = False
+
+    can_delete = False
+
+
+class ServiceView(ModelView):
+    """View for :class:`~spkrepo.models.Service`"""
+
+    def __init__(self, **kwargs):
+        super(ServiceView, self).__init__(Service, db.session, **kwargs)
 
     # Permissions
     def is_accessible(self):

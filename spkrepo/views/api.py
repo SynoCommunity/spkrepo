@@ -130,6 +130,16 @@ class Packages(Resource):
         if firmware is None:
             abort(422, message="Unknown firmware")
 
+        # Services
+        input_install_dep_services = spk.info.get("install_dep_services", None)
+        if input_install_dep_services:
+            for info_dep_service in input_install_dep_services.split():
+                service_name = Service.find(info_dep_service)
+                if service_name is None:
+                    abort(
+                        422, message="Unknown dependent service: %s" % info_dep_service
+                    )
+
         # Package
         create_package = False
         package = Package.find(spk.info["package"])
