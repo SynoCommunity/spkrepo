@@ -104,6 +104,9 @@ class ArchitectureView(ModelView):
 
     can_delete = False
 
+    # Form
+    form_excluded_columns = "builds"
+
 
 class FirmwareView(ModelView):
     """View for :class:`~spkrepo.models.Firmware`"""
