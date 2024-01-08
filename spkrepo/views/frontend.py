@@ -97,7 +97,7 @@ def packages():
 @frontend.route("/package/<name>")
 def package(name):
     package = Package.query.filter_by(name=name).first()
-    if package is None:
+    if package is None or not package.versions:
         abort(404)
     return render_template("frontend/package.html", package=package)
 
