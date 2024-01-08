@@ -28,7 +28,7 @@ class IndexTestCase(BaseTestCase):
 class PackagesTestCase(BaseTestCase):
     # Assert beta is not shown on Packages page
     def test_get_active_not_stable(self):
-        build = BuildFactory(version__report_url=None, active=True)
+        build = BuildFactory(active=True)
         db.session.commit()
         response = self.client.get(url_for("frontend.packages"))
         self.assert200(response)
