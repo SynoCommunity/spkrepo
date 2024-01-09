@@ -290,7 +290,7 @@ class VersionView(ModelView):
         ("upgrade_wizard", "upgrade_wizard"),
         ("startable", "startable"),
     )
-
+    # TODO: Add beta and all_builds_active with Flask-Admin>1.0.8
     column_default_sort = (Version.insert_date, True)
 
     # Custom queries
@@ -533,7 +533,7 @@ class BuildView(ModelView):
         ("insert_date", "insert_date"),
         ("active", "active"),
     )
-
+    # TODO: Add version.package with Flask-Admin>1.0.8
     column_default_sort = (Build.insert_date, True)
 
     # Custom queries
