@@ -329,7 +329,7 @@ class Build(db.Model):
     publisher_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     checksum = db.Column(db.Unicode(32))
     extract_size = db.Column(db.Integer)
-    path = db.Column(db.Unicode(100))
+    path = db.Column(db.Unicode(2048))
     md5 = db.Column(db.Unicode(32))
     insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
     active = db.Column(db.Boolean(), default=False, nullable=False)

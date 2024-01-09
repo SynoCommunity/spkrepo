@@ -177,7 +177,7 @@ class ScreenshotView(ModelView):
 
     column_formatters = {"path": _display}
     column_sortable_list = (("package", "package.name"),)
-    column_default_sort = (Package.name, True)
+    column_default_sort = "package.name"
     column_filters = ("package.name",)
 
     # Hooks
