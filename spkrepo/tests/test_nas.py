@@ -227,11 +227,11 @@ class CatalogTestCase(BaseTestCase):
             catalog[0], build, data, dict(arch="88f628x", build="1594")
         )
 
-    def test_stable_build_active_stable_5004(self):
+    def test_stable_noarch_build_active_stable_5004(self):
         build = BuildFactory(
             active=True,
             version__report_url=None,
-            architectures=[Architecture.find("88f6281", syno=True)],
+            architectures=[Architecture.find("noarch", syno=True)],
             firmware=Firmware.find(1594),
         )
         db.session.commit()
@@ -246,6 +246,23 @@ class CatalogTestCase(BaseTestCase):
         self.assertCatalogEntry(
             catalog["packages"][0], build, data, dict(arch="88f628x", build="5004")
         )
+
+    def test_stable_arch_build_active_stable_5004(self):
+        BuildFactory(
+            active=True,
+            version__report_url=None,
+            architectures=[Architecture.find("88f6281", syno=True)],
+            firmware=Firmware.find(1594),
+        )
+        db.session.commit()
+        data = dict(arch="88f6281", build="5004", language="enu")
+        response = self.client.post(url_for("nas.catalog"), data=data)
+        self.assert200(response)
+        self.assertHeader(response, "Content-Type", "application/json")
+        catalog = json.loads(response.data.decode())
+        self.assertIn("packages", catalog)
+        self.assertIn("keyrings", catalog)
+        self.assertEqual(len(catalog["packages"]), 0)
 
     def test_stable_build_active_stable_download_count(self):
         package = PackageFactory()
