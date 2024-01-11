@@ -344,7 +344,11 @@ class Build(db.Model):
     )
     firmware = db.relationship("Firmware", lazy=False)
     publisher = db.relationship("User", foreign_keys=[publisher_user_id])
-    downloads = db.relationship("Download", back_populates="build")
+    downloads = db.relationship(
+        "Download",
+        back_populates="build",
+        cascade="save-update, merge, delete, delete-orphan",
+    )
 
     @classmethod
     def generate_filename(cls, package, version, firmware, architectures):

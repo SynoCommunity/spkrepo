@@ -180,8 +180,15 @@ def depopulate_db():
     from spkrepo.models import Package
 
     for package in Package.query.all():
-        shutil.rmtree(os.path.join(current_app.config["DATA_PATH"], package.name))
+        # Delete the package and its associated versions and builds
         db.session.delete(package)
+
+        # Remove the directory associated with the package (if it exists)
+        shutil.rmtree(
+            os.path.join(current_app.config["DATA_PATH"], package.name),
+            ignore_errors=True,
+        )
+
     db.session.commit()
 
 
