@@ -46,7 +46,7 @@ def is_valid_language(language):
 def get_catalog(arch, build, language, beta):
     # Find the closest matching firmware for the provided build
     closest_firmware = (
-        Firmware.query.filter(Firmware.build <= build)
+        Firmware.query.filter(Firmware.build <= build, Firmware.type == "dsm")
         .order_by(Firmware.build.desc())
         .first()
     )

@@ -398,7 +398,10 @@ def populate_db():
     )
     db.session.execute(
         Firmware.__table__.insert().values(
-            [{"version": "3.1", "build": 1594}, {"version": "5.0", "build": 4458}]
+            [
+                {"version": "3.1", "build": 1594, "type": "dsm"},
+                {"version": "5.0", "build": 4458, "type": "dsm"},
+            ]
         )
     )
     db.session.execute(

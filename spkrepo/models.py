@@ -134,8 +134,9 @@ class Firmware(db.Model):
 
     # Columns
     id = db.Column(db.Integer, primary_key=True)
-    version = db.Column(db.Unicode(3), nullable=False)
+    version = db.Column(db.Unicode(4), nullable=False)
     build = db.Column(db.Integer, unique=True, nullable=False)
+    type = db.Column(db.Unicode(4), nullable=False)
 
     @classmethod
     def find(cls, build):
