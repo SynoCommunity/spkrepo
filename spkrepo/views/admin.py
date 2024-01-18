@@ -122,6 +122,13 @@ class FirmwareView(ModelView):
 
     can_delete = False
 
+    # Form
+    form_columns = ("version", "build", "type")
+    form_args = {
+        "version": {"validators": [Regexp(SPK.firmware_version_re)]},
+        "type": {"validators": [Regexp(SPK.firmware_type_re)]},
+    }
+
 
 class ServiceView(ModelView):
     """View for :class:`~spkrepo.models.Service`"""

@@ -58,6 +58,10 @@ class SPK(object):
     #: Regex for files in conf
     conf_filename_re = re.compile(r"^conf/.+$")
 
+    #: Regex for firmware input
+    firmware_version_re = re.compile(r"^\d+\.\d$")
+    firmware_type_re = re.compile(r"^([a-z]){3,}$")
+
     def __init__(self, stream):
         self.info = {}
         self.icons = {}
