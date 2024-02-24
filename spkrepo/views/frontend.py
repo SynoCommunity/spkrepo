@@ -64,12 +64,12 @@ def profile():
 
 @frontend.route("/packages")
 def packages():
+    # show only packages with at least one version, but ignore whether builds are active
     latest_version = (
         db.session.query(
             Version.package_id, db.func.max(Version.version).label("latest_version")
         )
         .join(Build)
-        .filter(Build.active)
         .group_by(Version.package_id)
         .subquery()
     )
@@ -96,9 +96,8 @@ def packages():
 
 @frontend.route("/package/<name>")
 def package(name):
-    # TODO: show only packages with at least a version and an active build
     package = Package.query.filter_by(name=name).first()
-    if package is None:
+    if package is None or not package.versions:
         abort(404)
     return render_template("frontend/package.html", package=package)
 

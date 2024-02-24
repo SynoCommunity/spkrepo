@@ -12,9 +12,7 @@
         </a>
         <div class="media-body">
           <h4 class="media-heading">{{ version.displaynames['enu'].displayname }}
-            <small>v{{ version.version_string }}
-              {% if version.report_url %}<span class="label label-danger">beta</span>{% endif %}
-            </small>
+            <small>v{{ version.version_string }}</small>
           </h4>
           <div class="ellipsis package-description">
             <p>{{ version.descriptions['enu'].description }}</p>
