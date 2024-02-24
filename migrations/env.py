@@ -5,14 +5,8 @@ from alembic import context
 from flask import current_app
 from sqlalchemy import engine_from_config, pool
 
-from spkrepo import create_app
-
 config = context.config
 fileConfig(config.config_file_name)
-
-# Set up the Flask application context
-app = create_app()  # Create the Flask app
-app.app_context().push()  # Push the app context
 
 config.set_main_option(
     "sqlalchemy.url", current_app.config.get("SQLALCHEMY_DATABASE_URI")
