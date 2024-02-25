@@ -2,12 +2,11 @@
 import jinja2
 from flask import Flask
 from flask_admin import Admin
-from flask_babel import Babel
 from wtforms import HiddenField
 
 from . import config as default_config
 from .cli import spkrepo as spkrepo_cli
-from .ext import cache, db, debug_toolbar, mail, migrate, security
+from .ext import babel, cache, db, debug_toolbar, mail, migrate, security
 from .models import user_datastore
 from .views import (
     ArchitectureView,
@@ -16,6 +15,7 @@ from .views import (
     IndexView,
     PackageView,
     ScreenshotView,
+    ServiceView,
     SpkrepoConfirmRegisterForm,
     UserView,
     VersionView,
@@ -53,17 +53,18 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
         admin.add_view(UserView())
         admin.add_view(ArchitectureView())
         admin.add_view(FirmwareView())
+        admin.add_view(ServiceView())
         admin.add_view(ScreenshotView())
         admin.add_view(PackageView())
         admin.add_view(VersionView())
         admin.add_view(BuildView())
         admin.init_app(app)
 
-    # Initialize Flask-Babel
-    babel = Babel(app)
-
     # Commands
     app.cli.add_command(spkrepo_cli)
+
+    # Flask-Babel
+    babel.init_app(app)
 
     # SQLAlchemy
     db.init_app(app)

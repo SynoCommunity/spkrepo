@@ -130,6 +130,16 @@ class Packages(Resource):
         if firmware is None:
             abort(422, message="Unknown firmware")
 
+        # Services
+        input_install_dep_services = spk.info.get("install_dep_services", None)
+        if input_install_dep_services:
+            for info_dep_service in input_install_dep_services.split():
+                service_name = Service.find(info_dep_service)
+                if service_name is None:
+                    abort(
+                        422, message="Unknown dependent service: %s" % info_dep_service
+                    )
+
         # Package
         create_package = False
         package = Package.find(spk.info["package"])
@@ -268,6 +278,8 @@ class Packages(Resource):
                 for size, icon in build.version.icons.items():
                     icon.save(spk.icons[size])
             build.save(spk.stream)
+            # generate md5 hash
+            build.md5 = build.calculate_md5()
         except Exception as e:  # pragma: no cover
             if create_package:
                 shutil.rmtree(os.path.join(data_path, package.name), ignore_errors=True)

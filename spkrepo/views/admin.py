@@ -16,7 +16,16 @@ from wtforms import PasswordField
 from wtforms.validators import Regexp
 
 from ..ext import db
-from ..models import Architecture, Build, Firmware, Package, Screenshot, User, Version
+from ..models import (
+    Architecture,
+    Build,
+    Firmware,
+    Package,
+    Screenshot,
+    Service,
+    User,
+    Version,
+)
 from ..utils import SPK
 
 
@@ -34,6 +43,12 @@ class UserView(ModelView):
 
     # View
     column_list = ("username", "email", "roles", "active", "confirmed_at")
+
+    column_formatters = {
+        "confirmed_at": lambda v, c, m, p: (
+            m.confirmed_at.strftime("%Y-%m-%d %H:%M:%S") if m.confirmed_at else None
+        )
+    }
 
     # Form
     form_columns = ("username", "roles", "active")
@@ -91,12 +106,37 @@ class ArchitectureView(ModelView):
 
     can_delete = False
 
+    # Form
+    form_excluded_columns = "builds"
+
 
 class FirmwareView(ModelView):
     """View for :class:`~spkrepo.models.Firmware`"""
 
     def __init__(self, **kwargs):
         super(FirmwareView, self).__init__(Firmware, db.session, **kwargs)
+
+    # Permissions
+    def is_accessible(self):
+        return current_user.is_authenticated and current_user.has_role("package_admin")
+
+    can_edit = False
+
+    can_delete = False
+
+    # Form
+    form_columns = ("version", "build", "type")
+    form_args = {
+        "version": {"validators": [Regexp(SPK.firmware_version_re)]},
+        "type": {"validators": [Regexp(SPK.firmware_type_re)]},
+    }
+
+
+class ServiceView(ModelView):
+    """View for :class:`~spkrepo.models.Service`"""
+
+    def __init__(self, **kwargs):
+        super(ServiceView, self).__init__(Service, db.session, **kwargs)
 
     # Permissions
     def is_accessible(self):
@@ -120,18 +160,6 @@ def screenshot_namegen(obj, file_data):
     return os.path.join(obj.package.name, pattern % (i, ext))
 
 
-# TODO: Not necessary with Flask-Admin>1.0.8
-# see https://github.com/mrjoes/flask-admin/pull/705
-class SpkrepoImageUploadField(ImageUploadField):
-    def _get_path(self, filename):
-        if not self.base_path:  # pragma: no cover
-            raise ValueError("FileUploadField field requires base_path to be set.")
-
-        if callable(self.base_path):
-            return os.path.join(self.base_path(), filename)
-        return os.path.join(self.base_path, filename)  # pragma: no cover
-
-
 class ScreenshotView(ModelView):
     """View for :class:`~spkrepo.models.Screenshot`"""
 
@@ -142,7 +170,14 @@ class ScreenshotView(ModelView):
     def is_accessible(self):
         return current_user.is_authenticated and current_user.has_role("package_admin")
 
+    can_edit = False
+
     # View
+    column_labels = {
+        "package.name": "Package Name",
+        "path": "Screenshot",
+    }
+
     def _display(view, context, model, name):
         return Markup(
             '<img src="%s" alt="screenshot" height="100" width="100">'
@@ -151,11 +186,17 @@ class ScreenshotView(ModelView):
 
     column_formatters = {"path": _display}
     column_sortable_list = (("package", "package.name"),)
-    column_default_sort = (Package.name, True)
+    column_default_sort = "package.name"
     column_filters = ("package.name",)
 
+    # Hooks
+    def on_model_delete(self, model):
+        build_path = os.path.join(current_app.config["DATA_PATH"], model.path)
+        if os.path.exists(build_path):
+            os.remove(build_path)
+
     # Form
-    form_overrides = {"path": SpkrepoImageUploadField}
+    form_overrides = {"path": ImageUploadField}
     form_args = {
         "path": {
             "label": "Screenshot",
@@ -221,6 +262,10 @@ class PackageView(ModelView):
         ("insert_date", "insert_date"),
     )
 
+    column_formatters = {
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S")
+    }
+
     # Form
     form_columns = ("name", "author", "maintainers")
     form_args = {"name": {"validators": [Regexp(SPK.package_re)]}}
@@ -276,21 +321,33 @@ class VersionView(ModelView):
         "startable",
     )
     column_labels = {
+        "package.name": "Package Name",
         "version_string": "Version",
         "dependencies": "Dependencies",
         "service_dependencies": "Services",
     }
-    column_filters = ("package.name", "version", "upstream_version")
+    column_filters = (
+        "package.name",
+        "upstream_version",
+        "version",
+        "beta",
+        "all_builds_active",
+    )
     column_sortable_list = (
         ("package", "package.name"),
         ("upstream_version", "upstream_version"),
         ("version", "version"),
+        ("beta", "beta"),
         ("insert_date", "insert_date"),
+        ("all_builds_active", "all_builds_active"),
         ("install_wizard", "install_wizard"),
         ("upgrade_wizard", "upgrade_wizard"),
         ("startable", "startable"),
     )
-    # TODO: Add beta and all_builds_active with Flask-Admin>1.0.8
+
+    column_formatters = {
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S")
+    }
     column_default_sort = (Version.insert_date, True)
 
     # Custom queries
@@ -383,8 +440,11 @@ class VersionView(ModelView):
                                 current_app.config["GNUPG_TIMESTAMP_URL"],
                                 current_app.config["GNUPG_PATH"],
                             )
+                            build.md5 = spk.calculate_md5()
+                            self.session.commit()
                             success.append(filename)
                         except Exception:
+                            self.session.rollback()
                             failed.append(filename)
                 if failed:
                     if len(failed) == 1:
@@ -434,8 +494,11 @@ class VersionView(ModelView):
                             continue
                         try:
                             spk.unsign()
+                            build.md5 = spk.calculate_md5()
+                            self.session.commit()
                             success.append(filename)
                         except Exception:
+                            self.session.rollback()
                             failed.append(filename)
                 if failed:
                     if len(failed) == 1:
@@ -516,16 +579,24 @@ class BuildView(ModelView):
     )
     column_labels = {
         "version.package": "Package",
+        "version.package.name": "Package Name",
         "version.upstream_version": "Upstream Version",
         "version.version": "Version",
+        "architectures.code": "Architecture",
+        "firmware.version": "Firmware Version",
+        "publisher.username": "Publisher Username",
     }
     column_filters = (
         "version.package.name",
         "version.upstream_version",
         "version.version",
+        "architectures.code",
+        "firmware.version",
         "publisher.username",
+        "active",
     )
     column_sortable_list = (
+        ("version.package", "version.package.name"),
         ("version.upstream_version", "version.upstream_version"),
         ("version.version", "version.version"),
         ("firmware", "firmware.build"),
@@ -533,7 +604,10 @@ class BuildView(ModelView):
         ("insert_date", "insert_date"),
         ("active", "active"),
     )
-    # TODO: Add version.package with Flask-Admin>1.0.8
+
+    column_formatters = {
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S")
+    }
     column_default_sort = (Build.insert_date, True)
 
     # Custom queries
@@ -627,8 +701,11 @@ class BuildView(ModelView):
                             current_app.config["GNUPG_TIMESTAMP_URL"],
                             current_app.config["GNUPG_PATH"],
                         )
+                        build.md5 = spk.calculate_md5()
+                        self.session.commit()
                         success.append(filename)
                     except Exception:
+                        self.session.rollback()
                         failed.append(filename)
             if failed:
                 if len(failed) == 1:
@@ -677,8 +754,11 @@ class BuildView(ModelView):
                         continue
                     try:
                         spk.unsign()
+                        build.md5 = spk.calculate_md5()
+                        self.session.commit()
                         success.append(filename)
                     except Exception:
+                        self.session.rollback()
                         failed.append(filename)
             if failed:
                 if len(failed) == 1:

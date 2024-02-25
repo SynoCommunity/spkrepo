@@ -6,6 +6,7 @@ from .admin import (
     IndexView,
     PackageView,
     ScreenshotView,
+    ServiceView,
     UserView,
     VersionView,
 )

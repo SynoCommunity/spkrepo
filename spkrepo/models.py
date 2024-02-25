@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import hashlib
 import io
 import os
 import shutil
@@ -133,8 +134,9 @@ class Firmware(db.Model):
 
     # Columns
     id = db.Column(db.Integer, primary_key=True)
-    version = db.Column(db.Unicode(3), nullable=False)
+    version = db.Column(db.Unicode(4), nullable=False)
     build = db.Column(db.Integer, unique=True, nullable=False)
+    type = db.Column(db.Unicode(4), nullable=False)
 
     @classmethod
     def find(cls, build):
@@ -328,7 +330,7 @@ class Build(db.Model):
     publisher_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     checksum = db.Column(db.Unicode(32))
     extract_size = db.Column(db.Integer)
-    path = db.Column(db.Unicode(100))
+    path = db.Column(db.Unicode(2048))
     md5 = db.Column(db.Unicode(32))
     insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
     active = db.Column(db.Boolean(), default=False, nullable=False)
@@ -343,7 +345,11 @@ class Build(db.Model):
     )
     firmware = db.relationship("Firmware", lazy=False)
     publisher = db.relationship("User", foreign_keys=[publisher_user_id])
-    downloads = db.relationship("Download", back_populates="build")
+    downloads = db.relationship(
+        "Download",
+        back_populates="build",
+        cascade="save-update, merge, delete, delete-orphan",
+    )
 
     @classmethod
     def generate_filename(cls, package, version, firmware, architectures):
@@ -359,6 +365,24 @@ class Build(db.Model):
             os.path.join(current_app.config["DATA_PATH"], self.path), "wb"
         ) as f:
             f.write(stream.read())
+
+    def calculate_md5(self):
+        if not self.path:
+            raise ValueError("Path cannot be empty.")
+
+        file_path = os.path.join(current_app.config["DATA_PATH"], self.path)
+
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found at path: {file_path}")
+
+        if self.md5 is None:
+            with io.open(file_path, "rb") as f:
+                md5_hash = hashlib.md5()
+                for chunk in iter(lambda: f.read(4096), b""):
+                    md5_hash.update(chunk)
+                return md5_hash.hexdigest()
+
+        return self.md5
 
     def _after_insert(self):
         assert os.path.exists(os.path.join(current_app.config["DATA_PATH"], self.path))

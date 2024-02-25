@@ -281,8 +281,7 @@ class BuildFactory(SQLAlchemyModelFactory):
         with create_spk(self) as spk_stream:
             self.save(spk_stream)
             if self.md5 is None:
-                spk_stream.seek(0)
-                self.md5 = hashlib.md5(spk_stream.read()).hexdigest()
+                self.md5 = self.calculate_md5()
         spk_stream.close()
 
     @classmethod

@@ -8,7 +8,6 @@ from sqlalchemy import engine_from_config, pool
 config = context.config
 fileConfig(config.config_file_name)
 
-
 config.set_main_option(
     "sqlalchemy.url", current_app.config.get("SQLALCHEMY_DATABASE_URI")
 )

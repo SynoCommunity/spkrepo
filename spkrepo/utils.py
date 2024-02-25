@@ -58,6 +58,10 @@ class SPK(object):
     #: Regex for files in conf
     conf_filename_re = re.compile(r"^conf/.+$")
 
+    #: Regex for firmware input
+    firmware_version_re = re.compile(r"^\d+\.\d$")
+    firmware_type_re = re.compile(r"^([a-z]){3,}$")
+
     def __init__(self, stream):
         self.info = {}
         self.icons = {}
@@ -345,6 +349,18 @@ class SPK(object):
         self.stream.truncate()
         self.stream.seek(0)
 
+    def calculate_md5(self):
+        md5_hash = hashlib.md5()
+
+        # Ensure the stream position is at the beginning
+        self.stream.seek(0)
+
+        # Update MD5 hash directly from the stream
+        for chunk in iter(lambda: self.stream.read(4096), b""):
+            md5_hash.update(chunk)
+
+        return md5_hash.hexdigest()
+
     def _generate_signature(self, stream, timestamp_url, gnupghome):  # pragma: no cover
         # generate the signature
         gpg = gnupg.GPG(gnupghome=gnupghome)
@@ -386,7 +402,10 @@ def populate_db():
     )
     db.session.execute(
         Firmware.__table__.insert().values(
-            [{"version": "3.1", "build": 1594}, {"version": "5.0", "build": 4458}]
+            [
+                {"version": "3.1", "build": 1594, "type": "dsm"},
+                {"version": "5.0", "build": 4458, "type": "dsm"},
+            ]
         )
     )
     db.session.execute(

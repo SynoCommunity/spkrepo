@@ -44,12 +44,28 @@ def is_valid_language(language):
 
 @cache.memoize(timeout=600)
 def get_catalog(arch, build, language, beta):
-    # latest version per package
+    # Find the closest matching firmware for the provided build
+    closest_firmware = (
+        Firmware.query.filter(Firmware.build <= build, Firmware.type == "dsm")
+        .order_by(Firmware.build.desc())
+        .first()
+    )
+
+    # Extract major version from the closest matching firmware
+    major_version = (
+        int(closest_firmware.version.split(".")[0])
+        if closest_firmware and closest_firmware.version
+        else None
+    )
+
+    # latest version per package and major version
     latest_version = db.session.query(
         Version.package_id, db.func.max(Version.version).label("latest_version")
     ).select_from(Version)
+
     if not beta:
         latest_version = latest_version.filter(Version.report_url.is_(None))
+
     latest_version = (
         latest_version.join(Build)
         .filter(Build.active)
@@ -57,6 +73,19 @@ def get_catalog(arch, build, language, beta):
         .filter(Architecture.code.in_(["noarch", arch]))
         .join(Build.firmware)
         .filter(Firmware.build <= build)
+        .filter(
+            db.or_(
+                # Check if major_version is not None before applying the filter
+                (major_version is not None)
+                and Firmware.version.startswith(f"{major_version}."),
+                # Include earlier "noarch" version when major_version < 6
+                db.and_(
+                    Architecture.code == "noarch",
+                    (major_version is not None) and (major_version < 6),
+                    Firmware.version.startswith("3."),
+                ),
+            )
+        )
         .group_by(Version.package_id)
     ).subquery()
 
