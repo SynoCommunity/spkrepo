@@ -44,10 +44,6 @@ class UserView(ModelView):
     # View
     column_list = ("username", "email", "roles", "active", "confirmed_at")
 
-    column_formatters = {
-        "confirmed_at": lambda v, c, m, p: m.confirmed_at.strftime("%Y-%m-%d %H:%M:%S")
-    }
-
     # Form
     form_columns = ("username", "roles", "active")
     form_overrides = {"password": PasswordField}
