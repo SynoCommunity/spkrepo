@@ -560,9 +560,9 @@ class DownloadTestCase(BaseTestCase):
         response = self.client.get(
             url_for(
                 "nas.download",
-                architecture_id=architecture.id,
-                firmware_build=4458,
-                build_id=build.id,
+                md5=build.md5,
+                arch=architecture.code,
+                build=4458,
             ),
             environ_base={"REMOTE_ADDR": "127.0.0.1"},
             headers={"User-Agent": "My User Agent"},
@@ -592,9 +592,9 @@ class DownloadTestCase(BaseTestCase):
         response = self.client.get(
             url_for(
                 "nas.download",
-                architecture_id=architecture.id,
-                firmware_build=4458,
-                build_id=build.id + 1,
+                md5=build.md5 + "1",
+                arch=architecture.code,
+                build=4458,
             )
         )
         self.assert404(response)
@@ -613,9 +613,9 @@ class DownloadTestCase(BaseTestCase):
         response = self.client.get(
             url_for(
                 "nas.download",
-                architecture_id=architecture.id,
-                firmware_build=4458,
-                build_id=build.id,
+                md5=build.md5,
+                arch=architecture.code,
+                build=4458,
             )
         )
         self.assert403(response)
@@ -634,9 +634,9 @@ class DownloadTestCase(BaseTestCase):
         response = self.client.get(
             url_for(
                 "nas.download",
-                architecture_id=10,
-                firmware_build=4458,
-                build_id=build.id,
+                md5=build.md5,
+                arch=Architecture.find(10).code if Architecture.find(10) else "",
+                build=4458,
             )
         )
         self.assert404(response)
@@ -655,9 +655,9 @@ class DownloadTestCase(BaseTestCase):
         response = self.client.get(
             url_for(
                 "nas.download",
-                architecture_id=Architecture.find("cedarview").id,
-                firmware_build=4458,
-                build_id=build.id,
+                md5=build.md5,
+                arch=Architecture.find("cedarview").code,
+                build=4458,
             )
         )
         self.assert400(response)
@@ -676,9 +676,9 @@ class DownloadTestCase(BaseTestCase):
         response = self.client.get(
             url_for(
                 "nas.download",
-                architecture_id=architecture.id,
-                firmware_build=1593,
-                build_id=build.id,
+                md5=build.md5,
+                arch=architecture.code,
+                build=1593,
             )
         )
         self.assert400(response)
