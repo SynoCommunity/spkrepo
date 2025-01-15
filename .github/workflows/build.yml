@@ -25,6 +25,8 @@ jobs:
       - uses: snok/install-poetry@v1
         with:
           virtualenvs-in-project: true
+      - name: Setup ImageMagick
+        uses: mfinelli/setup-imagemagick@v6.0.0
       - name: Load cached venv
         id: cached-poetry-dependencies
         uses: actions/cache@v4
