@@ -462,7 +462,7 @@ class Version(db.Model):
 
     @hybrid_property
     def beta(self):
-        return self.report_url != None  # noqa: E711
+        return bool(self.report_url)  # Treats None and "" as False
 
     @hybrid_property
     def all_builds_active(self):
@@ -483,6 +483,10 @@ class Version(db.Model):
             .where(Build.version_id == cls.id)
             .label("total_builds")
         )
+
+    @beta.expression
+    def beta(cls):
+        return db.and_(cls.report_url.isnot(None), cls.report_url != "")
 
     @property
     def path(self):
