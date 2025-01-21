@@ -1,13 +1,16 @@
-[tool.poetry]
+[project]
 name = "spkrepo"
 version = "0.2.6"
 description = "Synology Package Repository"
-license = "MIT"
-authors = ["Antoine Bertin <diaoulael@gmail.com>"]
+requires-python = ">=3.10,<4.0"
 readme = "README.md"
-repository = "https://github.com/SynoCommunity/spkrepo"
+license = { text = "MIT" }
+authors = [
+    { name = "Antoine Bertin", email = "diaoulael@gmail.com" }
+]
 keywords = ["synology", "package", "repository"]
 homepage = "https://synocommunity.com"
+urls = { "Repository" = "https://github.com/SynoCommunity/spkrepo" }
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Web Environment",
@@ -21,48 +24,50 @@ classifiers = [
     "Topic :: System :: Archiving :: Packaging",
 ]
 
-[tool.poetry.dependencies]
-python = ">=3.10,<4.0"
-flask = "^3.1.0"
-flask-sqlalchemy = "^3.1.1"
-flask-security = "^5.5.2"
-passlib = "^1.7.4"
-flask-babel = "^4.0.0"
-flask-wtf = "^1.2.2"
-wtforms = "^3.2.1"
-flask-mail = "^0.10.0"
-configparser = "^7.1.0"
-email_validator = "^2.2.0"
-flask-principal = "^0.4.0"
-flask-admin = "^1.6.1"
-sqlalchemy = "^2.0.37"
-pillow = "^11.1.0"
-flask-restful = "^0.3.10"
-flask-login = "^0.6.3"
-flask-caching = "^2.3.0"
-redis = "^5.2.1"
-python-gnupg = "^0.5.4"
-requests = "^2.32.3"
-click = "^8.1.8"
-flask-migrate = "^4.1.0"
-alembic = "^1.14.1"
-text-unidecode = "^1.3"
-ipaddress = "^1.0.23"
-flask-debugtoolbar = "^0.16.0"
-bcrypt = "^4.2.1"
+dependencies = [
+    "flask>=3.1.0",
+    "flask-sqlalchemy>=3.1.1",
+    "flask-security>=5.5.2",
+    "passlib>=1.7.4",
+    "flask-babel>=4.0.0",
+    "flask-wtf>=1.2.2",
+    "wtforms>=3.2.1",
+    "flask-mail>=0.10.0",
+    "configparser>=7.1.0",
+    "email_validator>=2.2.0",
+    "flask-principal>=0.4.0",
+    "flask-admin>=1.6.1",
+    "sqlalchemy>=2.0.37",
+    "pillow>=11.1.0",
+    "flask-restful>=0.3.10",
+    "flask-login>=0.6.3",
+    "flask-caching>=2.3.0",
+    "redis>=5.2.1",
+    "python-gnupg>=0.5.4",
+    "requests>=2.32.3",
+    "click>=8.1.8",
+    "flask-migrate>=4.1.0",
+    "alembic>=1.14.1",
+    "text-unidecode>=1.3",
+    "ipaddress>=1.0.23",
+    "flask-debugtoolbar>=0.16.0",
+    "bcrypt>=4.2.1"
+]
 
-[tool.poetry.group.dev.dependencies]
-sphinx = "^8.1.3"
-sphinx-rtd-theme = "^3.0.2"
-flask-testing = "^0.8.1"
-factory-boy = "^3.3.1"
-faker = "^33.3.1"
-lxml = "^5.3.0"
-mock = "^5.1.0"
-pre-commit = "^4.1.0"
-pytest = "^8.3.4"
-psycopg2 = "^2.9.10"
-setuptools = "^75.8.0"
+[project.optional-dependencies]
+dev = [
+    "sphinx>=8.1.3",
+    "sphinx-rtd-theme>=3.0.2",
+    "flask-testing>=0.8.1",
+    "factory-boy>=3.3.1",
+    "faker>=33.3.1",
+    "lxml>=5.3.0",
+    "mock>=5.1.0",
+    "pre-commit>=4.1.0",
+    "pytest>=8.3.4",
+    "psycopg2>=2.9.10",
+    "setuptools>=75.8.0"
+]
 
 [tool.isort]
 line_length = 88
@@ -73,5 +78,5 @@ use_parentheses = true
 known_first_party = "spkrepo"
 
 [build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+requires = ["poetry>=1.2.0"]
+build-backend = "poetry.core.masonry.api"
