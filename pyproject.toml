@@ -73,5 +73,5 @@ use_parentheses = true
 known_first_party = "spkrepo"
 
 [build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+requires = ["poetry>=1.2.0"]
+build-backend = "poetry.core.masonry.api"
