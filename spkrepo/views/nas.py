@@ -64,7 +64,9 @@ def get_catalog(arch, build, language, beta):
     ).select_from(Version)
 
     if not beta:
-        latest_version = latest_version.filter(Version.report_url.is_(None))
+        latest_version = latest_version.filter(
+            db.or_(Version.report_url.is_(None), Version.report_url == "")
+        )
 
     latest_version = (
         latest_version.join(Build)
