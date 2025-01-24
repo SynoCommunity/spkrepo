@@ -146,6 +146,10 @@ def get_catalog(arch, build, language, beta):
     # fill the catalog
     entries = []
     for b in latest_build.all():
+        # correct any missing md5 hashes
+        if b.md5 is None:
+            b.md5 = b.calculate_md5()
+            db.session.commit()
         entry = {
             "package": b.version.package.name,
             "version": b.version.version_string,
@@ -156,7 +160,11 @@ def get_catalog(arch, build, language, beta):
                 language, b.version.descriptions["enu"]
             ).description,
             "link": url_for(
-                ".data", path=b.path, arch=arch, build=build, _external=True
+                ".download",
+                md5=b.md5,
+                arch=arch,
+                build=build,
+                _external=True,
             ),
             "thumbnail": [
                 url_for(".data", path=icon.path, _external=True)
@@ -253,25 +261,34 @@ def catalog():
     return Response(json.dumps(catalog), mimetype="application/json")
 
 
-@nas.route("/download/<int:architecture_id>/<int:firmware_build>/<int:build_id>")
-def download(architecture_id, firmware_build, build_id):
+@nas.route("/download/<string:md5>/<string:arch>/<int:build>")
+def download(md5, arch, build):
     # check build
-    build = Build.query.get_or_404(build_id)
-    if not build.active:
+    build_obj = Build.query.filter_by(md5=md5).one_or_none()
+
+    if build_obj is None:
+        abort(404)
+    elif not build_obj.active:
         abort(403)
 
     # architecture
-    architecture = Architecture.query.get_or_404(architecture_id)
+    architecture = Architecture.query.filter_by(code=arch).one_or_none()
 
+    if architecture is None:
+        abort(404)
     # check consistency
-    if architecture not in build.architectures or firmware_build < build.firmware.build:
+    elif build < build_obj.firmware.build:
+        abort(400)
+    elif architecture not in build_obj.architectures and not any(
+        arch.code == "noarch" for arch in build_obj.architectures
+    ):
         abort(400)
 
     # insert in database
     download = Download(
-        build=build,
+        build=build_obj,
         architecture=architecture,
-        firmware_build=firmware_build,
+        firmware_build=build,
         ip_address=request.remote_addr,
         user_agent=request.user_agent.string,
     )
@@ -279,7 +296,7 @@ def download(architecture_id, firmware_build, build_id):
     db.session.commit()
 
     # redirect
-    return redirect(url_for(".data", path=build.path))
+    return redirect(url_for(".data", path=build_obj.path))
 
 
 @nas.route("/<path:path>")
