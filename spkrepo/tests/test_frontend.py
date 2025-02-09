@@ -196,10 +196,20 @@ class ProfileTestCase(BaseTestCase):
 
 
 class RegisterTestCase(BaseTestCase):
-    def test_unique_user_username(self):
+    def test_invalid_email(self):
         data = dict(
             username="test",
             email="test@test.com",
+            password="password",
+            password_confirm="password",
+        )
+        response = self.client.post(url_for_security("register"), data=data)
+        self.assertIn("Invalid email address", response.data.decode())
+
+    def test_unique_user_username(self):
+        data = dict(
+            username="test",
+            email="test@gmail.com",
             password="password",
             password_confirm="password",
         )
