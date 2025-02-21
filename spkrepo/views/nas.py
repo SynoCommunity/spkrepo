@@ -243,7 +243,11 @@ def catalog():
         build = int(request.values["build"])
     except ValueError:
         abort(422)
-    beta = request.values.get("package_update_channel") == "beta"
+    # DSM 7.0
+    if build < 40000:
+        beta = request.values.get("package_update_channel") == "beta"
+    else:
+        beta = False
     # Check if "major" is provided
     if "major" in request.values:
         try:
