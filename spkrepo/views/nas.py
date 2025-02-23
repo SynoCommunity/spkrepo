@@ -132,8 +132,8 @@ def get_catalog(arch, build, major, language, beta):
 
     # Step 4: Construct response with "packages"
     packages = []
-    for b in latest_build.all():
-        packages.append(build_package_entry(b, language))
+    for b in latest_build:
+        packages.append(build_package_entry(b, language, arch, build))
 
     # DSM 5.1
     if build >= 5004:
@@ -152,7 +152,7 @@ def get_catalog(arch, build, major, language, beta):
     return packages
 
 
-def build_package_entry(b, language):
+def build_package_entry(b, language, arch, build):
     entry = {
         "package": b.version.package.name,
         "version": b.version.version_string,
@@ -165,8 +165,8 @@ def build_package_entry(b, language):
         "link": url_for(
             ".data",
             path=b.path,
-            arch=b.architectures[0].code,
-            build=b.firmware.build,
+            arch=arch,
+            build=build,
             _external=True,
         ),
         "thumbnail": [
@@ -247,7 +247,7 @@ def catalog():
     if build < 40000:
         beta = request.values.get("package_update_channel") == "beta"
     else:
-        beta = False
+        beta = False  # Ensure no beta packages are returned for DSM 7+
     # Check if "major" is provided
     if "major" in request.values:
         try:
