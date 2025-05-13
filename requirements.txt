@@ -188,9 +188,9 @@ flask-sqlalchemy==3.1.1 ; python_version >= "3.10" and python_version < "4.0" \
 flask-wtf==1.2.2 ; python_version >= "3.10" and python_version < "4.0" \
     --hash=sha256:79d2ee1e436cf570bccb7d916533fa18757a2f18c290accffab1b9a0b684666b \
     --hash=sha256:e93160c5c5b6b571cf99300b6e01b72f9a101027cab1579901f8b10c5daf0b70
-flask==3.1.0 ; python_version >= "3.10" and python_version < "4.0" \
-    --hash=sha256:5f873c5184c897c8d9d1b05df1e3d01b14910ce69607a117bd3277098a5836ac \
-    --hash=sha256:d667207822eb83f1c4b50949b1623c8fc8d51f2341d65f72e1a1815397551136
+flask==3.1.1 ; python_version >= "3.10" and python_version < "4.0" \
+    --hash=sha256:07aae2bb5eaf77993ef57e357491839f5fd9f4dc281593a81a9e4d79a24f295c \
+    --hash=sha256:284c7b8f2f58cb737f0cf1c30fd7eaf0ccfcde196099d24ecede3fc2005aa59e
 greenlet==3.1.1 ; python_version < "3.14" and platform_machine == "aarch64" and python_version >= "3.10" or python_version < "3.14" and platform_machine == "ppc64le" and python_version >= "3.10" or python_version < "3.14" and platform_machine == "x86_64" and python_version >= "3.10" or python_version < "3.14" and platform_machine == "amd64" and python_version >= "3.10" or python_version < "3.14" and platform_machine == "AMD64" and python_version >= "3.10" or python_version < "3.14" and platform_machine == "win32" and python_version >= "3.10" or python_version < "3.14" and platform_machine == "WIN32" and python_version >= "3.10" \
     --hash=sha256:0153404a4bb921f0ff1abeb5ce8a5131da56b953eda6e14b88dc6bbc04d2049e \
     --hash=sha256:03a088b9de532cbfe2ba2034b2b85e82df37874681e8c470d6fb2f8c04d7e4b7 \
