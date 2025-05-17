@@ -32,6 +32,7 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
     # Configuration
     app.config.from_object(default_config)
     app.config.from_envvar("SPKREPO_CONFIG", silent=True)
+    app.url_map.strict_slashes = False
     if config is not None:
         app.config.from_object(config)
 
