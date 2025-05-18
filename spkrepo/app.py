@@ -34,8 +34,7 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
     app.config.from_envvar("SPKREPO_CONFIG", silent=True)
 
     # Enable or disable Flask’s subdomain routing per config
-    sub_match = app.config.get("SUBDOMAIN_MATCHING", False)
-    app.url_map.subdomain_matching = sub_match
+    app.subdomain_matching = app.config.get("SUBDOMAIN_MATCHING", False)
 
     if config is not None:
         app.config.from_object(config)
