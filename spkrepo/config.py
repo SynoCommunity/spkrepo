@@ -5,6 +5,8 @@ DEBUG = True
 TESTING = False
 SECRET_KEY = "secret-key"
 MAX_CONTENT_LENGTH = 170 * 1024 * 1024
+# Enable subdomain-based routing (False in local dev; True in prod)
+SUBDOMAIN_MATCHING = False
 
 # Application
 DATA_PATH = os.path.realpath("data")
