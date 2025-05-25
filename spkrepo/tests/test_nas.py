@@ -575,7 +575,7 @@ class DownloadTestCase(BaseTestCase):
         self.assertEqual(download.firmware_build, 4458)
         self.assertAlmostEqual(
             download.date,
-            datetime.now(timezone.utc).replace(microsecond=0),
+            datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None),
             delta=timedelta(seconds=10),
         )
 

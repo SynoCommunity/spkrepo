@@ -33,7 +33,7 @@ class PackagesTestCase(BaseTestCase):
         self.assertEqual(inserted_build.extract_size, build.extract_size)
         self.assertAlmostEqual(
             inserted_build.insert_date,
-            datetime.now(timezone.utc).replace(microsecond=0),
+            datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None),
             delta=timedelta(seconds=10),
         )
         self.assertFalse(inserted_build.active)
