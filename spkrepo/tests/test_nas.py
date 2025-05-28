@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import hashlib
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from flask import url_for
 
@@ -575,7 +575,7 @@ class DownloadTestCase(BaseTestCase):
         self.assertEqual(download.firmware_build, 4458)
         self.assertAlmostEqual(
             download.date,
-            datetime.utcnow().replace(microsecond=0),
+            datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None),
             delta=timedelta(seconds=10),
         )
 

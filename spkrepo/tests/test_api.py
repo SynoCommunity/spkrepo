@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import base64
-import datetime
 import os
+from datetime import datetime, timedelta, timezone
 
 from flask import current_app, url_for
 
@@ -33,8 +33,8 @@ class PackagesTestCase(BaseTestCase):
         self.assertEqual(inserted_build.extract_size, build.extract_size)
         self.assertAlmostEqual(
             inserted_build.insert_date,
-            datetime.datetime.utcnow().replace(microsecond=0),
-            delta=datetime.timedelta(seconds=10),
+            datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None),
+            delta=timedelta(seconds=10),
         )
         self.assertFalse(inserted_build.active)
 
