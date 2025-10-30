@@ -11,5 +11,5 @@ from .admin import (
     VersionView,
 )
 from .api import api
-from .frontend import SpkrepoConfirmRegisterForm, frontend
+from .frontend import SpkrepoRegisterForm, frontend
 from .nas import nas

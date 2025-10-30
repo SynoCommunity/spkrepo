@@ -3,7 +3,7 @@ import hashlib
 import os
 
 from flask import Blueprint, abort, redirect, render_template, url_for
-from flask_security import ConfirmRegisterForm, current_user, login_required
+from flask_security import RegisterFormV2, current_user, login_required
 from flask_security.forms import ChangePasswordForm
 from flask_wtf import FlaskForm
 from wtforms import StringField, SubmitField, ValidationError
@@ -107,7 +107,7 @@ def unique_user_username(form, field):
         raise ValidationError("Username already taken")
 
 
-class SpkrepoConfirmRegisterForm(ConfirmRegisterForm):
+class SpkrepoRegisterForm(RegisterFormV2):
     username = StringField(
         "Username", [InputRequired(), Length(min=4), unique_user_username]
     )
