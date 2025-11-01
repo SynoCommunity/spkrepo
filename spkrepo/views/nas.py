@@ -275,12 +275,12 @@ def catalog():
 @nas.route("/download/<int:architecture_id>/<int:firmware_build>/<int:build_id>")
 def download(architecture_id, firmware_build, build_id):
     # check build
-    build = Build.query.get_or_404(build_id)
+    build = db.get_or_404(Build, build_id)
     if not build.active:
         abort(403)
 
     # architecture
-    architecture = Architecture.query.get_or_404(architecture_id)
+    architecture = db.get_or_404(Architecture, architecture_id)
 
     # check consistency
     if architecture not in build.architectures or firmware_build < build.firmware.build:
