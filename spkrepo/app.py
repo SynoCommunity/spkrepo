@@ -16,7 +16,7 @@ from .views import (
     PackageView,
     ScreenshotView,
     ServiceView,
-    SpkrepoConfirmRegisterForm,
+    SpkrepoRegisterForm,
     UserView,
     VersionView,
     api,
@@ -32,6 +32,7 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
     # Configuration
     app.config.from_object(default_config)
     app.config.from_envvar("SPKREPO_CONFIG", silent=True)
+    app.config.update(SECURITY_PASSWORD_CONFIRM_REQUIRED=False)
 
     # Enable or disable Flask’s subdomain routing per config
     app.subdomain_matching = app.config.get("SUBDOMAIN_MATCHING", False)
@@ -74,9 +75,7 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
     db.init_app(app)
 
     # Security
-    security.init_app(
-        app, user_datastore, confirm_register_form=SpkrepoConfirmRegisterForm
-    )
+    security.init_app(app, user_datastore, register_form=SpkrepoRegisterForm)
 
     # Migrate
     migrate.init_app(app, db, directory=app.config["MIGRATE_DIRECTORY"])
