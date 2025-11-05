@@ -415,14 +415,14 @@ dotenv = ["python-dotenv"]
 
 [[package]]
 name = "flask-admin"
-version = "2.0.0"
+version = "2.0.1"
 description = "Simple and extensible admin interface framework for Flask"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "flask_admin-2.0.0-py3-none-any.whl", hash = "sha256:3b2dc1f13c2ec450e2c9197f58cd684be5b96a9497e1ffb9d9efb9f7f59825f9"},
-    {file = "flask_admin-2.0.0.tar.gz", hash = "sha256:c5878ab1ea92c9e8345c0e1a2cd15851f5ecf2e1616d7fb9158487769f188e81"},
+    {file = "flask_admin-2.0.1-py3-none-any.whl", hash = "sha256:3bebd383322d680f46793bc59325e991d99f5b5e0ddb6db05e759c824f372f1c"},
+    {file = "flask_admin-2.0.1.tar.gz", hash = "sha256:ab83a435942c2a6af83e80f306b18786e459887564a18cb8fb45c31af8a4929b"},
 ]
 
 [package.dependencies]
@@ -1924,4 +1924,4 @@ email = ["email-validator"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "958c3c94010528d96a2a19654d8c3b9da42a459a6575f6fdfefa3a5008766e6b"
+content-hash = "7ca48b5f97890107d8fa337f2a836284a0bd75c297b60e9baf740d8a6ec4c7c2"
