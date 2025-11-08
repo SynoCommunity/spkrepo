@@ -535,11 +535,17 @@ def create_info(build):
         info["displayname_%s" % language] = displayname.displayname
     for language, description in build.version.descriptions.items():
         info["description_%s" % language] = description.description
-    if (
-        build.buildmanifest
-        and (
-            build.buildmanifest.conf_dependencies is not None
-            or build.buildmanifest.conf_conflicts is not None
+    if build.buildmanifest and any(
+        getattr(
+            build.buildmanifest,
+            attr,
+        )
+        is not None
+        for attr in (
+            "conf_dependencies",
+            "conf_conflicts",
+            "conf_privilege",
+            "conf_resource",
         )
     ):
         info["support_conf_folder"] = "yes"
