@@ -668,13 +668,18 @@ def create_spk(
 
     # conf
     manifest = build.buildmanifest
-    if (
+    include_conf_folder = (
         with_conf
         or (manifest and manifest.conf_dependencies is not None)
         or (manifest and manifest.conf_conflicts is not None)
         or (manifest and manifest.conf_privilege is not None)
         or (manifest and manifest.conf_resource is not None)
-    ):
+    )
+
+    if include_conf_folder and not isinstance(info, io.BytesIO):
+        info.setdefault("support_conf_folder", "yes")
+
+    if include_conf_folder:
         conf_folder_tarinfo = tarfile.TarInfo("conf")
         conf_folder_tarinfo.type = tarfile.DIRTYPE
         conf_folder_tarinfo.mode = 0o755
