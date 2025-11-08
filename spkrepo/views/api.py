@@ -254,7 +254,7 @@ class Packages(Resource):
         build = Build(
             version=version,
             architectures=architectures,
-            firmware_min_id=firmware.id,
+            firmware_min=firmware,
             publisher=current_user,
             path=os.path.join(package.name, str(version.version), build_filename),
             checksum=spk.info.get("checksum"),

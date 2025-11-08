@@ -251,7 +251,7 @@ class BuildFactory(SQLAlchemyModelFactory):
     )
 
     @factory.post_generation
-    def buildmanifest(self, create, extracted, **_):
+    def buildmanifest(self, create, extracted, **kwargs):
         if extracted is False:
             return
 
@@ -278,6 +278,9 @@ class BuildFactory(SQLAlchemyModelFactory):
             manifest_kwargs.update(extracted)
         elif extracted not in (None, True):
             raise ValueError("buildmanifest expects a dict, True, False, or None")
+
+        if kwargs:
+            manifest_kwargs.update(kwargs)
 
         manifest = BuildManifest(**manifest_kwargs)
         self.buildmanifest = manifest
