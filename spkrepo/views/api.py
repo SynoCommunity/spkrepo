@@ -260,7 +260,8 @@ class Packages(Resource):
         )
 
         db.session.add(build)
-        build.firmware_min_id = firmware.id
+        db.session.flush()
+        build.firmware_min = firmware
 
         build.buildmanifest = BuildManifest(
             dependencies=spk.info.get("install_dep_packages"),
