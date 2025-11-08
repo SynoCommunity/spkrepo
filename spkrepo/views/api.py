@@ -253,14 +253,15 @@ class Packages(Resource):
         )
         build = Build(
             version=version,
-            architectures=architectures,
             publisher=current_user,
             path=os.path.join(package.name, str(version.version), build_filename),
             checksum=spk.info.get("checksum"),
-            firmware_min_id=firmware.id,
         )
 
         db.session.add(build)
+
+        build.architectures = architectures
+        build.firmware_min = firmware
 
         build.buildmanifest = BuildManifest(
             dependencies=spk.info.get("install_dep_packages"),
