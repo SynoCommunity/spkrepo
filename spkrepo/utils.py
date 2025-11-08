@@ -200,7 +200,7 @@ class SPK(object):
 
                         try:
                             json.loads(conf_privilege)
-                        except json.JSONDecodeError:
+                        except (json.JSONDecodeError, ValueError):
                             raise SPKParseError("File conf/privilege is not valid JSON")
 
                         self.conf_privilege = conf_privilege
@@ -214,7 +214,7 @@ class SPK(object):
 
                         try:
                             json.loads(conf_resource)
-                        except json.JSONDecodeError:
+                        except (json.JSONDecodeError, ValueError):
                             raise SPKParseError("File conf/resource is not valid JSON")
 
                         self.conf_resource = conf_resource

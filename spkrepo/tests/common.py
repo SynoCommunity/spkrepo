@@ -677,7 +677,7 @@ def create_spk(
     )
 
     if include_conf_folder and not isinstance(info, io.BytesIO):
-        info.setdefault("support_conf_folder", "yes")
+        info["support_conf_folder"] = "yes"
 
     if include_conf_folder:
         conf_folder_tarinfo = tarfile.TarInfo("conf")

@@ -260,6 +260,8 @@ class Packages(Resource):
             checksum=spk.info.get("checksum"),
         )
 
+        db.session.add(build)
+
         build.buildmanifest = BuildManifest(
             dependencies=spk.info.get("install_dep_packages"),
             conf_dependencies=spk.conf_dependencies,
@@ -277,6 +279,7 @@ class Packages(Resource):
                     current_app.config["GNUPG_PATH"],
                 )
             except SPKSignError as e:
+                db.session.rollback()
                 abort(500, message="Failed to sign package", details=str(e))
 
         # save files
@@ -295,6 +298,7 @@ class Packages(Resource):
             # generate md5 hash
             build.md5 = build.calculate_md5()
         except Exception as e:  # pragma: no cover
+            db.session.rollback()
             if create_package:
                 shutil.rmtree(os.path.join(data_path, package.name), ignore_errors=True)
             elif create_version:
@@ -310,7 +314,6 @@ class Packages(Resource):
             abort(500, message="Failed to save files", details=str(e))
 
         # insert the package into database
-        db.session.add(build)
         db.session.commit()
 
         # success
