@@ -257,7 +257,7 @@ class Packages(Resource):
             publisher=current_user,
             path=os.path.join(package.name, str(version.version), build_filename),
             checksum=spk.info.get("checksum"),
-            firmware_min=firmware,
+            firmware_min_id=firmware.id,
         )
 
         db.session.add(build)
