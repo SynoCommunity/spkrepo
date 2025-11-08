@@ -28,6 +28,7 @@ from spkrepo.ext import db
 from spkrepo.models import (
     Architecture,
     Build,
+    BuildManifest,
     Description,
     DisplayName,
     Download,
@@ -180,28 +181,6 @@ class VersionFactory(SQLAlchemyModelFactory):
     distributor_url = factory.LazyAttribute(lambda x: fake.url())
     maintainer = factory.LazyAttribute(lambda x: fake.name())
     maintainer_url = factory.LazyAttribute(lambda x: fake.url())
-    dependencies = factory.LazyAttribute(lambda x: fake.word())
-    conf_dependencies = factory.LazyAttribute(
-        lambda x: json.dumps({fake.word(): {"dsm_min_ver": "5.0-4300"}})
-    )
-    conflicts = factory.LazyAttribute(lambda x: fake.word())
-    conf_conflicts = factory.LazyAttribute(
-        lambda x: json.dumps({fake.word(): {"dsm_min_ver": "5.0-4300"}})
-    )
-    conf_privilege = factory.LazyAttribute(
-        lambda x: json.dumps({"defaults": {"run-as": "root"}})
-    )
-    conf_resource = factory.LazyAttribute(
-        lambda x: json.dumps(
-            {
-                "usr-local-linker": {
-                    "lib": ["lib/foo"],
-                    "bin": ["bin/foo"],
-                    "etc": ["etc/foo"],
-                }
-            }
-        )
-    )
     install_wizard = False
     upgrade_wizard = False
     startable = None
@@ -259,7 +238,10 @@ class BuildFactory(SQLAlchemyModelFactory):
         model = Build
 
     version = factory.SubFactory(VersionFactory)
-    firmware = factory.LazyAttribute(lambda x: random.choice(Firmware.query.all()))
+    firmware_min = factory.LazyAttribute(
+        lambda x: random.choice(Firmware.query.all())
+    )
+    firmware_max = None
     architectures = factory.LazyAttribute(
         lambda x: [
             random.choice(
@@ -267,13 +249,55 @@ class BuildFactory(SQLAlchemyModelFactory):
             )
         ]
     )
+    manifest_dependencies = factory.LazyAttribute(lambda x: fake.word())
+    manifest_conf_dependencies = factory.LazyAttribute(
+        lambda x: json.dumps({fake.word(): {"dsm_min_ver": "5.0-4300"}})
+    )
+    manifest_conflicts = factory.LazyAttribute(lambda x: fake.word())
+    manifest_conf_conflicts = factory.LazyAttribute(
+        lambda x: json.dumps({fake.word(): {"dsm_min_ver": "5.0-4300"}})
+    )
+    manifest_conf_privilege = factory.LazyAttribute(
+        lambda x: json.dumps({"defaults": {"run-as": "root"}})
+    )
+    manifest_conf_resource = factory.LazyAttribute(
+        lambda x: json.dumps(
+            {
+                "usr-local-linker": {
+                    "lib": ["lib/foo"],
+                    "bin": ["bin/foo"],
+                    "etc": ["etc/foo"],
+                }
+            }
+        )
+    )
+
+    @factory.post_generation
+    def buildmanifest(self, create, extracted, **kwargs):
+        if extracted is False:
+            return
+        manifest_kwargs = {
+            "dependencies": self.manifest_dependencies,
+            "conf_dependencies": self.manifest_conf_dependencies,
+            "conflicts": self.manifest_conflicts,
+            "conf_conflicts": self.manifest_conf_conflicts,
+            "conf_privilege": self.manifest_conf_privilege,
+            "conf_resource": self.manifest_conf_resource,
+        }
+        if isinstance(extracted, dict):
+            manifest_kwargs.update(extracted)
+        manifest_kwargs.update(kwargs)
+        manifest = BuildManifest(**manifest_kwargs)
+        self.buildmanifest = manifest
+        if create:
+            db.session.add(manifest)
 
     @factory.post_generation
     def create_spk(self, create, extracted, **kwargs):
         if not create:
             return
         build_filename = Build.generate_filename(
-            self.version.package, self.version, self.firmware, self.architectures
+            self.version.package, self.version, self.firmware_min, self.architectures
         )
         self.path = os.path.join(
             self.version.package.name, str(self.version.version), build_filename
@@ -288,7 +312,7 @@ class BuildFactory(SQLAlchemyModelFactory):
     def create_batch(cls, size, **kwargs):
         if (
             "version" in kwargs
-            and "firmware" not in kwargs
+            and "firmware_min" not in kwargs
             and "architectures" not in kwargs
         ):
             combinations = itertools.product(
@@ -300,11 +324,15 @@ class BuildFactory(SQLAlchemyModelFactory):
                 firmware, architecture = next(combinations)
                 batch.append(
                     cls.create(
-                        architectures=[architecture], firmware=firmware, **kwargs
+                        architectures=[architecture],
+                        firmware_min=firmware,
+                        **kwargs,
                     )
                 )
             return batch
         return super(BuildFactory, cls).create_batch(size, **kwargs)
+
+
 
 
 class DownloadFactory(SQLAlchemyModelFactory):
@@ -486,7 +514,7 @@ def create_info(build):
         ),
         "displayname": build.version.displaynames["enu"].displayname,
         "description": build.version.descriptions["enu"].description,
-        "firmware": build.firmware.firmware_string,
+        "firmware": build.firmware_min.firmware_string,
     }
     if build.version.changelog:
         info["changelog"] = build.version.changelog
@@ -500,10 +528,10 @@ def create_info(build):
         info["maintainer"] = build.version.maintainer
     if build.version.maintainer_url:
         info["maintainer_url"] = build.version.maintainer_url
-    if build.version.dependencies:
-        info["install_dep_packages"] = build.version.dependencies
-    if build.version.conflicts:
-        info["install_conflict_packages"] = build.version.conflicts
+    if build.buildmanifest and build.buildmanifest.dependencies:
+        info["install_dep_packages"] = build.buildmanifest.dependencies
+    if build.buildmanifest and build.buildmanifest.conflicts:
+        info["install_conflict_packages"] = build.buildmanifest.conflicts
     if build.version.service_dependencies:
         info["install_dep_services"] = ":".join(
             [s.code for s in build.version.service_dependencies]
@@ -515,8 +543,11 @@ def create_info(build):
     for language, description in build.version.descriptions.items():
         info["description_%s" % language] = description.description
     if (
-        build.version.conf_dependencies is not None
-        or build.version.conf_conflicts is not None
+        build.buildmanifest
+        and (
+            build.buildmanifest.conf_dependencies is not None
+            or build.buildmanifest.conf_conflicts is not None
+        )
     ):
         info["support_conf_folder"] = "yes"
     return info
@@ -637,21 +668,22 @@ def create_spk(
         spk.addfile(signature_tarinfo, fileobj=signature_stream)
 
     # conf
+    manifest = build.buildmanifest
     if (
         with_conf
-        or build.version.conf_dependencies is not None
-        or build.version.conf_conflicts is not None
-        or build.version.conf_privilege is not None
-        or build.version.conf_resource is not None
+        or (manifest and manifest.conf_dependencies is not None)
+        or (manifest and manifest.conf_conflicts is not None)
+        or (manifest and manifest.conf_privilege is not None)
+        or (manifest and manifest.conf_resource is not None)
     ):
         conf_folder_tarinfo = tarfile.TarInfo("conf")
         conf_folder_tarinfo.type = tarfile.DIRTYPE
         conf_folder_tarinfo.mode = 0o755
         spk.addfile(conf_folder_tarinfo)
-        if build.version.conf_dependencies is not None:
+        if manifest and manifest.conf_dependencies is not None:
             conf_tarinfo = tarfile.TarInfo("conf/PKG_DEPS")
             config = ConfigParser()
-            config.read_dict(json.loads(build.version.conf_dependencies))
+            config.read_dict(json.loads(manifest.conf_dependencies))
             conf_stream = io.StringIO()
             config.write(conf_stream)
             conf_stream_bytes = io.BytesIO(
@@ -661,10 +693,10 @@ def create_spk(
             conf_tarinfo.size = conf_stream_bytes.tell()
             conf_stream_bytes.seek(0)
             spk.addfile(conf_tarinfo, fileobj=conf_stream_bytes)
-        if build.version.conf_conflicts is not None:
+        if manifest and manifest.conf_conflicts is not None:
             conf_tarinfo = tarfile.TarInfo("conf/PKG_CONX")
             config = ConfigParser()
-            config.read_dict(json.loads(build.version.conf_conflicts))
+            config.read_dict(json.loads(manifest.conf_conflicts))
             conf_stream = io.StringIO()
             config.write(conf_stream)
             conf_stream_bytes = io.BytesIO(
@@ -674,19 +706,19 @@ def create_spk(
             conf_tarinfo.size = conf_stream_bytes.tell()
             conf_stream_bytes.seek(0)
             spk.addfile(conf_tarinfo, fileobj=conf_stream_bytes)
-        if build.version.conf_privilege is not None:
+        if manifest and manifest.conf_privilege is not None:
             conf_tarinfo = tarfile.TarInfo("conf/privilege")
             conf_stream_bytes = io.BytesIO(
-                build.version.conf_privilege.encode(conf_privilege_encoding)
+                manifest.conf_privilege.encode(conf_privilege_encoding)
             )
             conf_stream_bytes.seek(0, io.SEEK_END)
             conf_tarinfo.size = conf_stream_bytes.tell()
             conf_stream_bytes.seek(0)
             spk.addfile(conf_tarinfo, fileobj=conf_stream_bytes)
-        if build.version.conf_resource is not None:
+        if manifest and manifest.conf_resource is not None:
             conf_tarinfo = tarfile.TarInfo("conf/resource")
             conf_stream_bytes = io.BytesIO(
-                build.version.conf_resource.encode(conf_resource_encoding)
+                manifest.conf_resource.encode(conf_resource_encoding)
             )
             conf_stream_bytes.seek(0, io.SEEK_END)
             conf_tarinfo.size = conf_stream_bytes.tell()
@@ -741,7 +773,7 @@ def create_spk(
         unique = "%s-%d-%d-[%s]" % (
             build.version.package.name,
             build.version.version,
-            build.firmware.build,
+            build.firmware_min.build,
             "-".join(a.code for a in build.architectures),
         )
         unique_stream = io.BytesIO(unique.encode("utf-8"))

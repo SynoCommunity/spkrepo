@@ -16,6 +16,7 @@ from ..ext import db
 from ..models import (
     Architecture,
     Build,
+    BuildManifest,
     Description,
     DisplayName,
     Firmware,
@@ -180,12 +181,6 @@ class Packages(Resource):
                 distributor_url=spk.info.get("distributor_url"),
                 maintainer=spk.info.get("maintainer"),
                 maintainer_url=spk.info.get("maintainer_url"),
-                dependencies=spk.info.get("install_dep_packages"),
-                conf_dependencies=spk.conf_dependencies,
-                conflicts=spk.info.get("install_conflict_packages"),
-                conf_conflicts=spk.conf_conflicts,
-                conf_privilege=spk.conf_privilege,
-                conf_resource=spk.conf_resource,
                 install_wizard="install" in spk.wizards,
                 upgrade_wizard="upgrade" in spk.wizards,
                 startable=version_startable,
@@ -231,11 +226,21 @@ class Packages(Resource):
         # Build
         if version.id:
             # check for conflicts
-            conflicts = set(architectures) & set(
-                Architecture.query.join(Architecture.builds)
-                .filter_by(version=version, firmware=firmware)
-                .all()
-            )
+            conflicts = set()
+            for existing_build in version.builds:
+                overlapping_architectures = set(existing_build.architectures) & set(
+                    architectures
+                )
+                if not overlapping_architectures:
+                    continue
+                if existing_build.firmware_min.build > firmware.build:
+                    continue
+                if (
+                    existing_build.firmware_max
+                    and existing_build.firmware_max.build < firmware.build
+                ):
+                    continue
+                conflicts |= overlapping_architectures
             if conflicts:
                 abort(
                     409,
@@ -249,10 +254,19 @@ class Packages(Resource):
         build = Build(
             version=version,
             architectures=architectures,
-            firmware=firmware,
+            firmware_min=firmware,
             publisher=current_user,
             path=os.path.join(package.name, str(version.version), build_filename),
             checksum=spk.info.get("checksum"),
+        )
+
+        build.buildmanifest = BuildManifest(
+            dependencies=spk.info.get("install_dep_packages"),
+            conf_dependencies=spk.conf_dependencies,
+            conflicts=spk.info.get("install_conflict_packages"),
+            conf_conflicts=spk.conf_conflicts,
+            conf_privilege=spk.conf_privilege,
+            conf_resource=spk.conf_resource,
         )
 
         # sign

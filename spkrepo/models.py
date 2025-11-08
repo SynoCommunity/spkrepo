@@ -326,7 +326,10 @@ class Build(db.Model):
     # Columns
     id = db.Column(db.Integer, primary_key=True)
     version_id = db.Column(db.Integer, db.ForeignKey("version.id"), nullable=False)
-    firmware_id = db.Column(db.Integer, db.ForeignKey("firmware.id"), nullable=False)
+    firmware_min_id = db.Column(
+        db.Integer, db.ForeignKey("firmware.id"), nullable=False
+    )
+    firmware_max_id = db.Column(db.Integer, db.ForeignKey("firmware.id"))
     publisher_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     checksum = db.Column(db.Unicode(32))
     extract_size = db.Column(db.Integer)
@@ -343,16 +346,31 @@ class Build(db.Model):
         order_by="Architecture.code",
         lazy=False,
     )
-    firmware = db.relationship("Firmware", lazy=False)
+    firmware_min = db.relationship(
+        "Firmware", foreign_keys=[firmware_min_id], lazy=False, backref="builds_min"
+    )
+    firmware_max = db.relationship(
+        "Firmware", foreign_keys=[firmware_max_id], lazy=False, backref="builds_max"
+    )
     publisher = db.relationship("User", foreign_keys=[publisher_user_id])
     downloads = db.relationship(
         "Download",
         back_populates="build",
         cascade="save-update, merge, delete, delete-orphan",
     )
+    buildmanifest = db.relationship(
+        "BuildManifest",
+        back_populates="build",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
     @classmethod
     def generate_filename(cls, package, version, firmware, architectures):
+        """
+        Backward-compatible signature.
+        Pass the intended firmware (typically firmware_min) from the caller.
+        """
         return "%s.v%d.f%d[%s].spk" % (
             package.name,
             version.version,
@@ -399,6 +417,26 @@ class Build(db.Model):
         return "<{} {}>".format(self.__class__.__name__, self.path)
 
 
+class BuildManifest(db.Model):
+    __tablename__ = "buildmanifest"
+
+    # Columns
+    id = db.Column(db.Integer, primary_key=True)
+    build_id = db.Column(db.Integer, db.ForeignKey("build.id"), nullable=False, unique=True)
+    dependencies = db.Column(db.Unicode(255))
+    conf_dependencies = db.Column(db.UnicodeText)
+    conflicts = db.Column(db.Unicode(255))
+    conf_conflicts = db.Column(db.UnicodeText)
+    conf_privilege = db.Column(db.UnicodeText)
+    conf_resource = db.Column(db.UnicodeText)
+
+    # Relationships
+    build = db.relationship("Build", back_populates="buildmanifest")
+
+    def __repr__(self):
+        return "<{} build_id={}>".format(self.__class__.__name__, self.build_id)
+
+
 class Version(db.Model):
     __tablename__ = "version"
 
@@ -413,12 +451,6 @@ class Version(db.Model):
     distributor_url = db.Column(db.Unicode(255))
     maintainer = db.Column(db.Unicode(50))
     maintainer_url = db.Column(db.Unicode(255))
-    dependencies = db.Column(db.Unicode(255))
-    conf_dependencies = db.Column(db.UnicodeText)
-    conflicts = db.Column(db.Unicode(255))
-    conf_conflicts = db.Column(db.UnicodeText)
-    conf_privilege = db.Column(db.UnicodeText)
-    conf_resource = db.Column(db.UnicodeText)
     install_wizard = db.Column(db.Boolean)
     upgrade_wizard = db.Column(db.Boolean)
     startable = db.Column(db.Boolean)
@@ -510,7 +542,7 @@ class Version(db.Model):
     def builds_per_dsm(self):
         result = {}
         for build in self.builds:
-            result.setdefault(build.firmware.version[0:1], []).append(build)
+            result.setdefault(build.firmware_min.version[0:1], []).append(build)
         return result
 
 

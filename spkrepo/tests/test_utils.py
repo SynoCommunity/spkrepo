@@ -61,9 +61,13 @@ class SPKParseTestCase(BaseTestCase):
         )
         self.assertEqual(build.version.distributor, spk.info["distributor"])
         self.assertEqual(build.version.distributor_url, spk.info["distributor_url"])
-        self.assertEqual(build.firmware.firmware_string, spk.info["firmware"])
-        self.assertEqual(build.version.conflicts, spk.info["install_conflict_packages"])
-        self.assertEqual(build.version.dependencies, spk.info["install_dep_packages"])
+        self.assertEqual(build.firmware_min.firmware_string, spk.info["firmware"])
+        self.assertEqual(
+            build.buildmanifest.conflicts, spk.info["install_conflict_packages"]
+        )
+        self.assertEqual(
+            build.buildmanifest.dependencies, spk.info["install_dep_packages"]
+        )
         self.assertEqual(
             " ".join(s.code for s in build.version.service_dependencies),
             spk.info["install_dep_services"],
@@ -73,10 +77,12 @@ class SPKParseTestCase(BaseTestCase):
         self.assertEqual(build.version.package.name, spk.info["package"])
         self.assertEqual(build.version.report_url, spk.info["report_url"])
         self.assertEqual(
-            build.version.conf_dependencies is not None
-            or build.version.conf_conflicts is not None
-            or build.version.conf_privilege is not None
-            or build.version.conf_resource is not None,
+            (
+                build.buildmanifest.conf_dependencies is not None
+                or build.buildmanifest.conf_conflicts is not None
+                or build.buildmanifest.conf_privilege is not None
+                or build.buildmanifest.conf_resource is not None
+            ),
             spk.info["support_conf_folder"],
         )
         self.assertEqual(build.version.version_string, spk.info["version"])
@@ -232,10 +238,10 @@ class SPKParseTestCase(BaseTestCase):
 
     def test_missing_conf_folder(self):
         build = BuildFactory.build(
-            version__conf_dependencies=None,
-            version__conf_conflicts=None,
-            version__conf_privilege=None,
-            version__conf_resource=None,
+            buildmanifest__conf_dependencies=None,
+            buildmanifest__conf_conflicts=None,
+            buildmanifest__conf_privilege=None,
+            buildmanifest__conf_resource=None,
         )
         info = create_info(build)
         info["support_conf_folder"] = "yes"
@@ -246,7 +252,7 @@ class SPKParseTestCase(BaseTestCase):
 
     def test_wrong_conf_dependencies_encoding(self):
         build = BuildFactory.build(
-            version__conf_dependencies=json.dumps({"déçu": {"dsm_min_ver": "5.0-4300"}})
+            buildmanifest__conf_dependencies=json.dumps({"déçu": {"dsm_min_ver": "5.0-4300"}})
         )
         with create_spk(build, conf_dependencies_encoding="latin-1") as f:
             with self.assertRaises(SPKParseError) as cm:
@@ -255,7 +261,7 @@ class SPKParseTestCase(BaseTestCase):
 
     def test_wrong_conf_conflicts_encoding(self):
         build = BuildFactory.build(
-            version__conf_conflicts=json.dumps({"déçu": {"dsm_min_ver": "5.0-4300"}})
+            buildmanifest__conf_conflicts=json.dumps({"déçu": {"dsm_min_ver": "5.0-4300"}})
         )
         with create_spk(build, conf_conflicts_encoding="latin-1") as f:
             with self.assertRaises(SPKParseError) as cm:
@@ -264,7 +270,7 @@ class SPKParseTestCase(BaseTestCase):
 
     def test_wrong_conf_privilege_encoding(self):
         build = BuildFactory.build(
-            version__conf_privilege=json.dumps(
+            buildmanifest__conf_privilege=json.dumps(
                 {"déçu": {"run-as": "<run-as>"}}, ensure_ascii=False
             )
         )
@@ -275,7 +281,7 @@ class SPKParseTestCase(BaseTestCase):
 
     def test_wrong_conf_resource_encoding(self):
         build = BuildFactory.build(
-            version__conf_resource=json.dumps(
+            buildmanifest__conf_resource=json.dumps(
                 {"déçu": {"<resource-id>": "<specification>"}}, ensure_ascii=False
             )
         )
@@ -285,7 +291,7 @@ class SPKParseTestCase(BaseTestCase):
         self.assertEqual("Wrong conf/resource encoding", str(cm.exception))
 
     def test_post_conf_privilege_invalid_json(self):
-        build = BuildFactory.build(version__conf_privilege='{"invalid": "json}')
+        build = BuildFactory.build(buildmanifest__conf_privilege='{"invalid": "json}')
         with create_spk(build) as f:
             with self.assertRaises(SPKParseError) as cm:
                 SPK(f)
@@ -295,7 +301,7 @@ class SPKParseTestCase(BaseTestCase):
         )
 
     def test_post_conf_resource_invalid_json(self):
-        build = BuildFactory.build(version__conf_resource='{"invalid": "json}')
+        build = BuildFactory.build(buildmanifest__conf_resource='{"invalid": "json}')
         with create_spk(build) as f:
             with self.assertRaises(SPKParseError) as cm:
                 SPK(f)
@@ -306,10 +312,10 @@ class SPKParseTestCase(BaseTestCase):
 
     def test_empty_conf_folder(self):
         build = BuildFactory.build(
-            version__conf_dependencies=None,
-            version__conf_conflicts=None,
-            version__conf_privilege=None,
-            version__conf_resource=None,
+            buildmanifest__conf_dependencies=None,
+            buildmanifest__conf_conflicts=None,
+            buildmanifest__conf_privilege=None,
+            buildmanifest__conf_resource=None,
         )
         info = create_info(build)
         info["support_conf_folder"] = "yes"

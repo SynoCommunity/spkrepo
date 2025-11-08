@@ -12,6 +12,8 @@ from flask import (
     url_for,
 )
 
+from sqlalchemy.orm import aliased
+
 from ..ext import cache, db
 from ..models import (
     Architecture,
@@ -44,6 +46,9 @@ def is_valid_language(language):
 
 @cache.memoize(timeout=600)
 def get_catalog(arch, build, major, language, beta):
+    firmware_min_alias = aliased(Firmware)
+    firmware_max_alias = aliased(Firmware)
+
     # Step 1: Get the latest version for each package
     latest_version = db.session.query(
         Version.package_id, db.func.max(Version.version).label("latest_version")
@@ -61,15 +66,19 @@ def get_catalog(arch, build, major, language, beta):
         .filter(Build.active)
         .join(Build.architectures)
         .filter(db.or_(Architecture.code == arch, Architecture.code == "noarch"))
-        .join(Build.firmware)
-        .filter(Firmware.build <= build)
+        .join(firmware_min_alias, Build.firmware_min)
+        .outerjoin(firmware_max_alias, Build.firmware_max)
+        .filter(firmware_min_alias.build <= build)
+        .filter(
+            db.or_(Build.firmware_max_id.is_(None), firmware_max_alias.build >= build)
+        )
         .filter(
             db.or_(
-                Firmware.version.startswith(f"{major}."),
+                firmware_min_alias.version.startswith(f"{major}."),
                 db.and_(
                     Architecture.code == "noarch",
                     major < 6,
-                    Firmware.version.startswith("3."),
+                    firmware_min_alias.version.startswith("3."),
                 ),
             )
         )
@@ -82,15 +91,19 @@ def get_catalog(arch, build, major, language, beta):
         db.session.query(
             Version.package_id,
             latest_version.c.latest_version,
-            db.func.max(Firmware.build).label("latest_firmware"),
+            db.func.max(firmware_min_alias.build).label("latest_firmware"),
         )
         .select_from(Version)
         .join(Build)
         .filter(Build.active)
         .join(Build.architectures)
         .filter(db.or_(Architecture.code == arch, Architecture.code == "noarch"))
-        .join(Build.firmware)
-        .filter(Firmware.build <= build)
+        .join(firmware_min_alias, Build.firmware_min)
+        .outerjoin(firmware_max_alias, Build.firmware_max)
+        .filter(firmware_min_alias.build <= build)
+        .filter(
+            db.or_(Build.firmware_max_id.is_(None), firmware_max_alias.build >= build)
+        )
         .join(
             latest_version,
             db.and_(
@@ -103,10 +116,12 @@ def get_catalog(arch, build, major, language, beta):
     )
 
     # Step 3: Get the latest builds for versions
+    firmware_min_for_build = aliased(Firmware)
     latest_build = (
         Build.query.options(
             db.joinedload(Build.architectures),
-            db.joinedload(Build.firmware),
+            db.joinedload(Build.firmware_min),
+            db.joinedload(Build.firmware_max),
             db.joinedload(Build.version).joinedload(Version.package),
             db.joinedload(Build.version).joinedload(Version.service_dependencies),
             db.joinedload(Build.version).joinedload(Version.icons),
@@ -115,17 +130,18 @@ def get_catalog(arch, build, major, language, beta):
             .joinedload(DisplayName.language),
             db.joinedload(Build.version, Version.descriptions, Description.language),
             db.joinedload(Build.version, Version.package, Package.screenshots),
+            db.joinedload(Build.buildmanifest),
         )
         .join(Build.architectures)
         .filter(db.or_(Architecture.code == arch, Architecture.code == "noarch"))
-        .join(Firmware)
+        .join(firmware_min_for_build, Build.firmware_min)
         .join(Version)
         .join(
             latest_firmware,
             db.and_(
                 Version.package_id == latest_firmware.c.package_id,
                 Version.version == latest_firmware.c.latest_version,
-                Firmware.build == latest_firmware.c.latest_firmware,
+                firmware_min_for_build.build == latest_firmware.c.latest_firmware,
             ),
         )
     )
@@ -180,8 +196,8 @@ def build_package_entry(b, language, arch, build):
             and b.version.install_wizard is False
             and b.version.startable is not False
         ),
-        "deppkgs": b.version.dependencies,
-        "conflictpkgs": b.version.conflicts,
+        "deppkgs": b.buildmanifest.dependencies if b.buildmanifest else None,
+        "conflictpkgs": b.buildmanifest.conflicts if b.buildmanifest else None,
         "download_count": b.version.package.download_count,
         "recent_download_count": b.version.package.recent_download_count,
     }
@@ -210,14 +226,14 @@ def build_package_entry(b, language, arch, build):
         )
     if b.md5:
         entry["md5"] = b.md5
-    if b.version.conf_dependencies:
-        entry["conf_deppkgs"] = b.version.conf_dependencies
-    if b.version.conf_conflicts:
-        entry["conf_conxpkgs"] = b.version.conf_conflicts
-    if b.version.conf_privilege:
-        entry["conf_privilege"] = b.version.conf_privilege
-    if b.version.conf_resource:
-        entry["conf_resource"] = b.version.conf_resource
+    if b.buildmanifest and b.buildmanifest.conf_dependencies:
+        entry["conf_deppkgs"] = b.buildmanifest.conf_dependencies
+    if b.buildmanifest and b.buildmanifest.conf_conflicts:
+        entry["conf_conxpkgs"] = b.buildmanifest.conf_conflicts
+    if b.buildmanifest and b.buildmanifest.conf_privilege:
+        entry["conf_privilege"] = b.buildmanifest.conf_privilege
+    if b.buildmanifest and b.buildmanifest.conf_resource:
+        entry["conf_resource"] = b.buildmanifest.conf_resource
 
     return entry
 
@@ -283,7 +299,14 @@ def download(architecture_id, firmware_build, build_id):
     architecture = db.get_or_404(Architecture, architecture_id)
 
     # check consistency
-    if architecture not in build.architectures or firmware_build < build.firmware.build:
+    if (
+        architecture not in build.architectures
+        or firmware_build < build.firmware_min.build
+        or (
+            build.firmware_max is not None
+            and firmware_build > build.firmware_max.build
+        )
+    ):
         abort(400)
 
     # insert in database

@@ -57,8 +57,8 @@ class CatalogTestCase(BaseTestCase):
                 and build.version.startable is not False
             ),
         )
-        self.assertEqual(entry["deppkgs"], build.version.dependencies)
-        self.assertEqual(entry["conflictpkgs"], build.version.conflicts)
+        self.assertEqual(entry["deppkgs"], build.buildmanifest.dependencies)
+        self.assertEqual(entry["conflictpkgs"], build.buildmanifest.conflicts)
 
         # download
         download_response = self.client.get(
@@ -141,26 +141,26 @@ class CatalogTestCase(BaseTestCase):
             self.assertNotIn("depsers", entry)
 
         # conf_deppkgs
-        if build.version.conf_dependencies:
-            self.assertEqual(entry["conf_deppkgs"], build.version.conf_dependencies)
+        if build.buildmanifest.conf_dependencies:
+            self.assertEqual(entry["conf_deppkgs"], build.buildmanifest.conf_dependencies)
         else:
             self.assertNotIn("conf_deppkgs", entry)
 
         # conf_conxpkgs
-        if build.version.conf_conflicts:
-            self.assertEqual(entry["conf_conxpkgs"], build.version.conf_conflicts)
+        if build.buildmanifest.conf_conflicts:
+            self.assertEqual(entry["conf_conxpkgs"], build.buildmanifest.conf_conflicts)
         else:
             self.assertNotIn("conf_conxpkgs", entry)
 
         # conf_privilege
-        if build.version.conf_privilege:
-            self.assertEqual(entry["conf_privilege"], build.version.conf_privilege)
+        if build.buildmanifest.conf_privilege:
+            self.assertEqual(entry["conf_privilege"], build.buildmanifest.conf_privilege)
         else:
             self.assertNotIn("conf_privilege", entry)
 
         # conf_resource
-        if build.version.conf_resource:
-            self.assertEqual(entry["conf_resource"], build.version.conf_resource)
+        if build.buildmanifest.conf_resource:
+            self.assertEqual(entry["conf_resource"], build.buildmanifest.conf_resource)
         else:
             self.assertNotIn("conf_resource", entry)
 
@@ -214,7 +214,7 @@ class CatalogTestCase(BaseTestCase):
             active=True,
             version__report_url=None,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(arch="88f6281", build="1594", language="enu")
@@ -232,7 +232,7 @@ class CatalogTestCase(BaseTestCase):
             active=True,
             version__report_url=None,
             architectures=[Architecture.find("noarch", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(arch="88f6281", build="5004", language="enu")
@@ -252,7 +252,7 @@ class CatalogTestCase(BaseTestCase):
             active=True,
             version__report_url=None,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(arch="88f6281", build="5004", language="enu")
@@ -271,7 +271,7 @@ class CatalogTestCase(BaseTestCase):
             version__report_url=None,
             version__package=package,
             architectures=[Architecture.find("cedarview")],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         DownloadFactory.create_batch(1, build=build, date=datetime.now())
         DownloadFactory.create_batch(
@@ -300,11 +300,11 @@ class CatalogTestCase(BaseTestCase):
             version__maintainer=None,
             version__maintainer_url=None,
             version__service_dependencies=[],
-            version__dependencies=None,
-            version__conflicts=None,
+            buildmanifest__dependencies=None,
+            buildmanifest__conflicts=None,
             version__package__add_screenshot=False,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(arch="88f6281", build="1594", language="enu")
@@ -323,7 +323,7 @@ class CatalogTestCase(BaseTestCase):
             version__report_url=None,
             version__distributor=None,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(arch="88f6281", build="1594", language="enu")
@@ -343,7 +343,7 @@ class CatalogTestCase(BaseTestCase):
             version__license=None,
             version__install_wizard=False,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(arch="88f6281", build="1594", language="enu")
@@ -364,7 +364,7 @@ class CatalogTestCase(BaseTestCase):
             version__install_wizard=False,
             version__startable=None,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(arch="88f6281", build="1594", language="enu")
@@ -385,7 +385,7 @@ class CatalogTestCase(BaseTestCase):
             version__install_wizard=False,
             version__startable=True,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(arch="88f6281", build="1594", language="enu")
@@ -403,7 +403,7 @@ class CatalogTestCase(BaseTestCase):
             active=True,
             version__report_url=None,
             architectures=[Architecture.find("cedarview")],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(arch="88f6281", build="1594", language="enu")
@@ -418,7 +418,7 @@ class CatalogTestCase(BaseTestCase):
             active=True,
             version__report_url=None,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(4458),
+            firmware_min=Firmware.find(4458),
         )
         db.session.commit()
         data = dict(arch="88f6281", build="1594", language="enu")
@@ -433,7 +433,7 @@ class CatalogTestCase(BaseTestCase):
             active=False,
             version__report_url=None,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(arch="88f6281", build="1594", language="enu")
@@ -447,7 +447,7 @@ class CatalogTestCase(BaseTestCase):
         BuildFactory(
             active=True,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(arch="88f6281", build="1594", language="enu")
@@ -462,7 +462,7 @@ class CatalogTestCase(BaseTestCase):
             active=True,
             version__report_url=None,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(
@@ -481,7 +481,7 @@ class CatalogTestCase(BaseTestCase):
         build = BuildFactory(
             active=True,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(
@@ -501,7 +501,7 @@ class CatalogTestCase(BaseTestCase):
             active=False,
             version__report_url=None,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(
@@ -517,7 +517,7 @@ class CatalogTestCase(BaseTestCase):
         BuildFactory(
             active=False,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(
@@ -533,7 +533,7 @@ class CatalogTestCase(BaseTestCase):
         BuildFactory(
             active=False,
             architectures=[Architecture.find("88f6281", syno=True)],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         data = dict(
@@ -553,7 +553,7 @@ class DownloadTestCase(BaseTestCase):
             active=True,
             version__report_url=None,
             architectures=[architecture],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         self.assertEqual(Download.query.count(), 0)
@@ -585,7 +585,7 @@ class DownloadTestCase(BaseTestCase):
             active=False,
             version__report_url=None,
             architectures=[architecture],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         self.assertEqual(Download.query.count(), 0)
@@ -606,7 +606,7 @@ class DownloadTestCase(BaseTestCase):
             active=False,
             version__report_url=None,
             architectures=[architecture],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         self.assertEqual(Download.query.count(), 0)
@@ -627,7 +627,7 @@ class DownloadTestCase(BaseTestCase):
             active=True,
             version__report_url=None,
             architectures=[architecture],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         self.assertEqual(Download.query.count(), 0)
@@ -648,7 +648,7 @@ class DownloadTestCase(BaseTestCase):
             active=True,
             version__report_url=None,
             architectures=[architecture],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         self.assertEqual(Download.query.count(), 0)
@@ -669,7 +669,7 @@ class DownloadTestCase(BaseTestCase):
             active=True,
             version__report_url=None,
             architectures=[architecture],
-            firmware=Firmware.find(1594),
+            firmware_min=Firmware.find(1594),
         )
         db.session.commit()
         self.assertEqual(Download.query.count(), 0)
