@@ -259,8 +259,8 @@ class Packages(Resource):
             checksum=spk.info.get("checksum"),
         )
 
+        build.firmware_min_id = firmware.id
         db.session.add(build)
-        db.session.flush()
         build.firmware_min = firmware
 
         build.buildmanifest = BuildManifest(
