@@ -249,46 +249,39 @@ class BuildFactory(SQLAlchemyModelFactory):
             )
         ]
     )
-    manifest_dependencies = factory.LazyAttribute(lambda x: fake.word())
-    manifest_conf_dependencies = factory.LazyAttribute(
-        lambda x: json.dumps({fake.word(): {"dsm_min_ver": "5.0-4300"}})
-    )
-    manifest_conflicts = factory.LazyAttribute(lambda x: fake.word())
-    manifest_conf_conflicts = factory.LazyAttribute(
-        lambda x: json.dumps({fake.word(): {"dsm_min_ver": "5.0-4300"}})
-    )
-    manifest_conf_privilege = factory.LazyAttribute(
-        lambda x: json.dumps({"defaults": {"run-as": "root"}})
-    )
-    manifest_conf_resource = factory.LazyAttribute(
-        lambda x: json.dumps(
-            {
-                "usr-local-linker": {
-                    "lib": ["lib/foo"],
-                    "bin": ["bin/foo"],
-                    "etc": ["etc/foo"],
-                }
-            }
-        )
-    )
 
     @factory.post_generation
-    def buildmanifest(self, create, extracted, **kwargs):
+    def buildmanifest(self, create, extracted, **_):
         if extracted is False:
             return
-        manifest_kwargs = {
-            "dependencies": self.manifest_dependencies,
-            "conf_dependencies": self.manifest_conf_dependencies,
-            "conflicts": self.manifest_conflicts,
-            "conf_conflicts": self.manifest_conf_conflicts,
-            "conf_privilege": self.manifest_conf_privilege,
-            "conf_resource": self.manifest_conf_resource,
+
+        default_manifest = {
+            "dependencies": fake.word(),
+            "conf_dependencies": json.dumps({fake.word(): {"dsm_min_ver": "5.0-4300"}}),
+            "conflicts": fake.word(),
+            "conf_conflicts": json.dumps({fake.word(): {"dsm_min_ver": "5.0-4300"}}),
+            "conf_privilege": json.dumps({"defaults": {"run-as": "root"}}),
+            "conf_resource": json.dumps(
+                {
+                    "usr-local-linker": {
+                        "lib": ["lib/foo"],
+                        "bin": ["bin/foo"],
+                        "etc": ["etc/foo"],
+                    }
+                }
+            ),
         }
+
+        manifest_kwargs = dict(default_manifest)
+
         if isinstance(extracted, dict):
             manifest_kwargs.update(extracted)
-        manifest_kwargs.update(kwargs)
+        elif extracted not in (None, True):
+            raise ValueError("buildmanifest expects a dict, True, False, or None")
+
         manifest = BuildManifest(**manifest_kwargs)
         self.buildmanifest = manifest
+
         if create:
             db.session.add(manifest)
 
