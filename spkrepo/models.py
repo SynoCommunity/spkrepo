@@ -347,10 +347,16 @@ class Build(db.Model):
         lazy=False,
     )
     firmware_min = db.relationship(
-        "Firmware", foreign_keys=[firmware_min_id], lazy=False, backref="builds_min"
+        "Firmware",
+        foreign_keys=[firmware_min_id],
+        lazy=False,
+        backref=db.backref("builds_min", cascade_backrefs=False),
     )
     firmware_max = db.relationship(
-        "Firmware", foreign_keys=[firmware_max_id], lazy=False, backref="builds_max"
+        "Firmware",
+        foreign_keys=[firmware_max_id],
+        lazy=False,
+        backref=db.backref("builds_max", cascade_backrefs=False),
     )
     publisher = db.relationship("User", foreign_keys=[publisher_user_id])
     downloads = db.relationship(
