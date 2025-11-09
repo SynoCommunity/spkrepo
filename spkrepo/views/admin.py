@@ -4,7 +4,7 @@ import os
 import re
 import shutil
 
-from flask import abort, current_app, flash, redirect, url_for
+from flask import abort, current_app, flash, redirect, request, url_for
 from flask_admin import AdminIndexView, expose
 from flask_admin.actions import action
 from flask_admin.contrib.sqla import ModelView
@@ -769,6 +769,12 @@ class VersionView(ModelView):
 
         return super(VersionView, self).is_action_allowed(name)
 
+    def handle_action(self, return_view=None):
+        action = request.form.get("action")
+        if action == "resync_info" and not current_user.has_role("admin"):
+            abort(403)
+        return super(VersionView, self).handle_action(return_view)
+
 
 class BuildView(ModelView):
     """View for :class:`~spkrepo.models.Build`"""
@@ -1083,6 +1089,12 @@ class BuildView(ModelView):
             return False
 
         return super(BuildView, self).is_action_allowed(name)
+
+    def handle_action(self, return_view=None):
+        action = request.form.get("action")
+        if action == "resync_info" and not current_user.has_role("admin"):
+            abort(403)
+        return super(BuildView, self).handle_action(return_view)
 
 
 class IndexView(AdminIndexView):
