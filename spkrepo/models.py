@@ -53,7 +53,7 @@ class User(db.Model, UserMixin):
         return self.username
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.username)
+        return f"<{self.__class__.__name__} {self.username}>"
 
 
 class Role(db.Model, RoleMixin):
@@ -75,7 +75,7 @@ class Role(db.Model, RoleMixin):
         return self.name
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.name)
+        return f"<{self.__class__.__name__} {self.name}>"
 
 
 user_datastore = SQLAlchemyUserDatastore(db, User, Role)
@@ -107,7 +107,7 @@ class Architecture(db.Model):
         return self.code
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.code)
+        return f"<{self.__class__.__name__} {self.code}>"
 
 
 class Language(db.Model):
@@ -126,7 +126,7 @@ class Language(db.Model):
         return self.name
 
     def __repr__(self):
-        return "<{} [{}] {}>".format(self.__class__.__name__, self.code, self.name)
+        return f"<{self.__class__.__name__} [{self.code}] {self.name}>"
 
 
 class Firmware(db.Model):
@@ -150,7 +150,7 @@ class Firmware(db.Model):
         return self.firmware_string
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.firmware_string)
+        return f"<{self.__class__.__name__} {self.firmware_string}>"
 
 
 class Screenshot(db.Model):
@@ -182,7 +182,7 @@ class Screenshot(db.Model):
         return self.path
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.path)
+        return f"<{self.__class__.__name__} {self.path}>"
 
 
 class Icon(db.Model):
@@ -218,7 +218,7 @@ class Icon(db.Model):
         return self.path
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.path)
+        return f"<{self.__class__.__name__} {self.path}>"
 
 
 class Service(db.Model):
@@ -236,7 +236,7 @@ class Service(db.Model):
         return self.code
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.code)
+        return f"<{self.__class__.__name__} {self.code}>"
 
 
 class DisplayName(db.Model):
@@ -257,7 +257,7 @@ class DisplayName(db.Model):
         return self.displayname
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.language.name)
+        return f"<{self.__class__.__name__} {self.language.name}>"
 
 
 class Description(db.Model):
@@ -278,7 +278,7 @@ class Description(db.Model):
         return self.description
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.language.name)
+        return f"<{self.__class__.__name__} {self.language.name}>"
 
 
 version_service_dependency = db.Table(
@@ -310,7 +310,7 @@ class Download(db.Model):
         return self.ip_address
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.ip_address)
+        return f"<{self.__class__.__name__} {self.ip_address}>"
 
 
 build_architecture = db.Table(
@@ -418,7 +418,7 @@ class Build(db.Model):
         return self.path
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.path)
+        return f"<{self.__class__.__name__} {self.path}>"
 
 
 class BuildManifest(db.Model):
@@ -438,7 +438,7 @@ class BuildManifest(db.Model):
     build = db.relationship("Build", back_populates="buildmanifest")
 
     def __repr__(self):
-        return "<{} build_id={}>".format(self.__class__.__name__, self.build_id)
+        return f"<{self.__class__.__name__} build_id={self.build_id}>"
 
 
 class Version(db.Model):
@@ -540,7 +540,7 @@ class Version(db.Model):
         return self.version_string
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.version_string)
+        return f"<{self.__class__.__name__} {self.version_string}>"
 
     @hybrid_property
     def builds_per_dsm(self):
@@ -614,7 +614,7 @@ class Package(db.Model):
         return self.name
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.name)
+        return f"<{self.__class__.__name__} {self.name}>"
 
 
 @track_modifications.models_committed.connect
