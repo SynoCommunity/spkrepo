@@ -217,6 +217,176 @@ firmware_re = re.compile(r"^(?P<version>\d\.\d)-(?P<build>\d{3,6})$")
 version_re = re.compile(r"^(?P<upstream_version>.*)-(?P<version>\d+)$")
 
 
+def _resolve_firmware(session, value, allow_none=False):
+    if not value:
+        if allow_none:
+            return None
+        raise ValueError("Missing firmware information in INFO")
+
+    match = firmware_re.match(value)
+    if not match:
+        raise ValueError(f"Invalid firmware value: {value}")
+
+    firmware = Firmware.find(int(match.group("build")))
+    if firmware is None:
+        raise ValueError(f"Unknown firmware: {value}")
+
+    return session.merge(firmware, load=False)
+
+
+def _apply_info_from_spk(session, build, spk, md5_hash):
+    info = spk.info
+    package = build.version.package
+
+    if info.get("package") != package.name:
+        raise ValueError("INFO package does not match build package")
+
+    version_match = version_re.match(info.get("version", ""))
+    if not version_match:
+        raise ValueError("Invalid INFO version value")
+
+    version_number = int(version_match.group("version"))
+    if version_number != build.version.version:
+        raise ValueError("INFO version does not match build version")
+
+    version = build.version
+    version.upstream_version = version_match.group("upstream_version")
+    version.changelog = info.get("changelog")
+    version.report_url = info.get("report_url")
+    version.distributor = info.get("distributor")
+    version.distributor_url = info.get("distributor_url")
+    version.maintainer = info.get("maintainer")
+    version.maintainer_url = info.get("maintainer_url")
+    version.install_wizard = "install" in spk.wizards
+    version.upgrade_wizard = "upgrade" in spk.wizards
+
+    startable = None
+    if info.get("startable") is False or info.get("ctl_stop") is False:
+        startable = False
+    elif info.get("startable") is True or info.get("ctl_stop") is True:
+        startable = True
+    version.startable = startable
+
+    version.license = spk.license
+
+    install_services = info.get("install_dep_services")
+    services = []
+    if install_services:
+        for service_code in install_services.split():
+            service = Service.find(service_code)
+            if service is None:
+                raise ValueError(f"Unknown dependent service: {service_code}")
+            services.append(service)
+    version.service_dependencies = services
+
+    version.displaynames.clear()
+    default_display = info.get("displayname")
+    if default_display:
+        language = Language.find("enu")
+        if language is None:
+            raise ValueError("Language 'enu' is not defined")
+        version.displaynames[language.code] = DisplayName(
+            language=language, displayname=default_display
+        )
+
+    for key, value in info.items():
+        if key.startswith("displayname_"):
+            language_code = key.split("_", 1)[1]
+            language = Language.find(language_code)
+            if language is None:
+                raise ValueError(
+                    f"Unknown INFO displayname language: {language_code}"
+                )
+            version.displaynames[language.code] = DisplayName(
+                language=language, displayname=value
+            )
+
+    version.descriptions.clear()
+    default_description = info.get("description")
+    if default_description:
+        language = Language.find("enu")
+        if language is None:
+            raise ValueError("Language 'enu' is not defined")
+        version.descriptions[language.code] = Description(
+            language=language, description=default_description
+        )
+
+    for key, value in info.items():
+        if key.startswith("description_"):
+            language_code = key.split("_", 1)[1]
+            language = Language.find(language_code)
+            if language is None:
+                raise ValueError(
+                    f"Unknown INFO description language: {language_code}"
+                )
+            version.descriptions[language.code] = Description(
+                language=language, description=value
+            )
+
+    version.icons.clear()
+    if spk.icons:
+        version_path = os.path.join(
+            current_app.config["DATA_PATH"], package.name, str(version.version)
+        )
+        os.makedirs(version_path, exist_ok=True)
+        for size, icon_stream in spk.icons.items():
+            icon_stream.seek(0)
+            icon = Icon(
+                path=os.path.join(package.name, str(version.version), f"icon_{size}.png"),
+                size=size,
+            )
+            icon.save(icon_stream)
+            version.icons[size] = icon
+
+    architectures = []
+    for info_arch in info["arch"].split():
+        architecture = Architecture.find(info_arch, syno=True)
+        if architecture is None:
+            raise ValueError(f"Unknown architecture: {info_arch}")
+        architectures.append(session.merge(architecture, load=False))
+    build.architectures = architectures
+
+    firmware = _resolve_firmware(session, info.get("firmware") or info.get("os_min_ver"))
+    build.firmware_min = firmware
+
+    firmware_max_value = info.get("firmware_max") or info.get("os_max_ver")
+    firmware_max = _resolve_firmware(session, firmware_max_value, allow_none=True)
+    if firmware_max and firmware_max.build < firmware.build:
+        raise ValueError("Maximum firmware must be greater than or equal to minimum firmware")
+    build.firmware_max = firmware_max
+
+    build.checksum = info.get("checksum")
+    build.md5 = md5_hash
+
+    manifest = build.buildmanifest
+    if manifest is None:
+        manifest = BuildManifest()
+        build.buildmanifest = manifest
+
+    manifest.dependencies = info.get("install_dep_packages")
+    manifest.conf_dependencies = spk.conf_dependencies
+    manifest.conflicts = info.get("install_conflict_packages")
+    manifest.conf_conflicts = spk.conf_conflicts
+    manifest.conf_privilege = spk.conf_privilege
+    manifest.conf_resource = spk.conf_resource
+
+    session.flush()
+
+
+def _resync_build_metadata(session, build):
+    if not build.path:
+        raise ValueError("Build has no file path")
+
+    file_path = os.path.join(current_app.config["DATA_PATH"], build.path)
+    if not os.path.exists(file_path):
+        raise ValueError("Build file missing on disk")
+
+    with io.open(file_path, "rb") as stream:
+        spk = SPK(stream)
+        md5 = spk.calculate_md5()
+        _apply_info_from_spk(session, build, spk, md5)
+
+
 class PackageView(ModelView):
     """View for :class:`~spkrepo.models.Package`"""
 
@@ -538,6 +708,49 @@ class VersionView(ModelView):
         except Exception as e:  # pragma: no cover
             flash(f"Failed to unsign builds. {e}", "error")
 
+    @action(
+        "resync_info",
+        "Resync INFO",
+        "Reapply INFO metadata from builds on selected versions?",
+    )
+    def action_resync_info(self, ids):
+        successes = []
+        failures = []
+
+        versions = get_query_for_ids(self.get_query(), self.model, ids).all()
+        for version in versions:
+            for build in version.builds:
+                filename = os.path.basename(build.path) if build.path else str(build.id)
+                try:
+                    _resync_build_metadata(self.session, build)
+                    self.session.commit()
+                    successes.append(filename)
+                except Exception as exc:  # pragma: no cover
+                    self.session.rollback()
+                    failures.append((filename, str(exc)))
+
+        if successes:
+            if len(successes) == 1:
+                flash(f"Build {successes[0]} metadata refreshed from INFO.")
+            else:
+                success_list = ", ".join(successes)
+                flash(
+                    f"Refreshed metadata from INFO for {len(successes)} builds: {success_list}"
+                )
+
+        if failures:
+            if len(failures) == 1:
+                name, message = failures[0]
+                flash(f"Failed to resync build {name}: {message}", "error")
+            else:
+                failure_list = "; ".join(
+                    f"{name}: {message}" for name, message in failures
+                )
+                flash(
+                    f"Failed to resync {len(failures)} builds: {failure_list}",
+                    "error",
+                )
+
     def is_action_allowed(self, name):
         if name == "sign" and not self.can_sign:
             return False
@@ -821,21 +1034,8 @@ class BuildView(ModelView):
                 continue
 
             filename = os.path.basename(build.path) if build.path else str(build_id)
-            if not build.path:
-                failures.append((filename, "Build has no file path"))
-                continue
-
-            file_path = os.path.join(current_app.config["DATA_PATH"], build.path)
-            if not os.path.exists(file_path):
-                failures.append((filename, "Build file missing on disk"))
-                continue
-
             try:
-                with io.open(file_path, "rb") as stream:
-                    spk = SPK(stream)
-                    md5 = spk.calculate_md5()
-
-                self._apply_info_from_spk(build, spk, md5)
+                _resync_build_metadata(self.session, build)
                 self.session.commit()
                 successes.append(filename)
             except Exception as exc:  # pragma: no cover
@@ -863,164 +1063,6 @@ class BuildView(ModelView):
                     f"Failed to resync {len(failures)} builds: {failure_list}",
                     "error",
                 )
-
-    def _apply_info_from_spk(self, build, spk, md5_hash):
-        info = spk.info
-        package = build.version.package
-
-        if info.get("package") != package.name:
-            raise ValueError("INFO package does not match build package")
-
-        version_match = version_re.match(info.get("version", ""))
-        if not version_match:
-            raise ValueError("Invalid INFO version value")
-
-        version_number = int(version_match.group("version"))
-        if version_number != build.version.version:
-            raise ValueError("INFO version does not match build version")
-
-        version = build.version
-        version.upstream_version = version_match.group("upstream_version")
-        version.changelog = info.get("changelog")
-        version.report_url = info.get("report_url")
-        version.distributor = info.get("distributor")
-        version.distributor_url = info.get("distributor_url")
-        version.maintainer = info.get("maintainer")
-        version.maintainer_url = info.get("maintainer_url")
-        version.install_wizard = "install" in spk.wizards
-        version.upgrade_wizard = "upgrade" in spk.wizards
-
-        startable = None
-        if info.get("startable") is False or info.get("ctl_stop") is False:
-            startable = False
-        elif info.get("startable") is True or info.get("ctl_stop") is True:
-            startable = True
-        version.startable = startable
-
-        version.license = spk.license
-
-        install_services = info.get("install_dep_services")
-        services = []
-        if install_services:
-            for service_code in install_services.split():
-                service = Service.find(service_code)
-                if service is None:
-                    raise ValueError(f"Unknown dependent service: {service_code}")
-                services.append(service)
-        version.service_dependencies = services
-
-        version.displaynames.clear()
-        default_display = info.get("displayname")
-        if default_display:
-            language = Language.find("enu")
-            if language is None:
-                raise ValueError("Language 'enu' is not defined")
-            version.displaynames[language.code] = DisplayName(
-                language=language, displayname=default_display
-            )
-
-        for key, value in info.items():
-            if key.startswith("displayname_"):
-                language_code = key.split("_", 1)[1]
-                language = Language.find(language_code)
-                if language is None:
-                    raise ValueError(
-                        f"Unknown INFO displayname language: {language_code}"
-                    )
-                version.displaynames[language.code] = DisplayName(
-                    language=language, displayname=value
-                )
-
-        version.descriptions.clear()
-        default_description = info.get("description")
-        if default_description:
-            language = Language.find("enu")
-            if language is None:
-                raise ValueError("Language 'enu' is not defined")
-            version.descriptions[language.code] = Description(
-                language=language, description=default_description
-            )
-
-        for key, value in info.items():
-            if key.startswith("description_"):
-                language_code = key.split("_", 1)[1]
-                language = Language.find(language_code)
-                if language is None:
-                    raise ValueError(
-                        f"Unknown INFO description language: {language_code}"
-                    )
-                version.descriptions[language.code] = Description(
-                    language=language, description=value
-                )
-
-        version.icons.clear()
-        if spk.icons:
-            version_path = os.path.join(
-                current_app.config["DATA_PATH"], package.name, str(version.version)
-            )
-            os.makedirs(version_path, exist_ok=True)
-            for size, icon_stream in spk.icons.items():
-                icon_stream.seek(0)
-                icon = Icon(
-                    path=os.path.join(
-                        package.name, str(version.version), f"icon_{size}.png"
-                    ),
-                    size=size,
-                )
-                icon.save(icon_stream)
-                version.icons[size] = icon
-
-        architectures = []
-        for info_arch in info["arch"].split():
-            architecture = Architecture.find(info_arch, syno=True)
-            if architecture is None:
-                raise ValueError(f"Unknown architecture: {info_arch}")
-            architectures.append(self.session.merge(architecture, load=False))
-        build.architectures = architectures
-
-        firmware = self._resolve_firmware(info.get("firmware") or info.get("os_min_ver"))
-        build.firmware_min = firmware
-
-        firmware_max_value = info.get("firmware_max") or info.get("os_max_ver")
-        firmware_max = self._resolve_firmware(firmware_max_value, allow_none=True)
-        if firmware_max and firmware_max.build < firmware.build:
-            raise ValueError(
-                "Maximum firmware must be greater than or equal to minimum firmware"
-            )
-        build.firmware_max = firmware_max
-
-        build.checksum = info.get("checksum")
-        build.md5 = md5_hash
-
-        manifest = build.buildmanifest
-        if manifest is None:
-            manifest = BuildManifest()
-            build.buildmanifest = manifest
-
-        manifest.dependencies = info.get("install_dep_packages")
-        manifest.conf_dependencies = spk.conf_dependencies
-        manifest.conflicts = info.get("install_conflict_packages")
-        manifest.conf_conflicts = spk.conf_conflicts
-        manifest.conf_privilege = spk.conf_privilege
-        manifest.conf_resource = spk.conf_resource
-
-        self.session.flush()
-
-    def _resolve_firmware(self, value, allow_none=False):
-        if not value:
-            if allow_none:
-                return None
-            raise ValueError("Missing firmware information in INFO")
-
-        match = firmware_re.match(value)
-        if not match:
-            raise ValueError(f"Invalid firmware value: {value}")
-
-        firmware = Firmware.find(int(match.group("build")))
-        if firmware is None:
-            raise ValueError(f"Unknown firmware: {value}")
-
-        return self.session.merge(firmware, load=False)
 
     def is_action_allowed(self, name):
         if name == "sign" and not self.can_sign:
