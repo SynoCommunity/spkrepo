@@ -142,7 +142,8 @@ class Packages(Resource):
                 abort(422, message="Unknown maximum firmware")
             if firmware_max.build < firmware.build:
                 abort(
-                    422, message=(
+                    422,
+                    message=(
                         "Maximum firmware must be greater than or equal to "
                         "minimum firmware"
                     ),
