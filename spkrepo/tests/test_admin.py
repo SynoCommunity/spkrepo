@@ -211,9 +211,6 @@ class VersionTestCase(BaseTestCase):
         self.assertTrue(not os.path.exists(version_path))
 
     def test_action_resync_requires_admin(self):
-        build = BuildFactory()
-        db.session.commit()
-
         with self.logged_user("package_admin"):
             response = self.client.get(url_for("version.index_view"))
             self.assert200(response)
@@ -398,9 +395,6 @@ class BuildTestCase(BaseTestCase):
             self.assertFalse(build2.active)
 
     def test_action_resync_requires_admin(self):
-        build = BuildFactory()
-        db.session.commit()
-
         with self.logged_user("package_admin"):
             response = self.client.get(url_for("build.index_view"))
             self.assert200(response)

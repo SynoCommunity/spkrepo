@@ -171,7 +171,11 @@ class VersionFactory(SQLAlchemyModelFactory):
     package = factory.SubFactory(PackageFactory)
     version = factory.Sequence(lambda n: n)
     upstream_version = factory.LazyAttribute(
-        lambda x: f"{fake.random_int(0, 5)}.{fake.random_int(0, 10)}.{fake.random_int(0, 15)}"
+        lambda x: (
+            f"{fake.random_int(0, 5)}."
+            f"{fake.random_int(0, 10)}."
+            f"{fake.random_int(0, 15)}"
+        )
     )
     changelog = factory.LazyAttribute(lambda x: fake.sentence())
     report_url = factory.LazyAttribute(lambda x: fake.url())

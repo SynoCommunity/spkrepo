@@ -142,9 +142,9 @@ class Packages(Resource):
                 abort(422, message="Unknown maximum firmware")
             if firmware_max.build < firmware.build:
                 abort(
-                    422,
-                    message=(
-                        "Maximum firmware must be greater than or equal to minimum firmware"
+                    422, message=(
+                        "Maximum firmware must be greater than or equal to "
+                        "minimum firmware"
                     ),
                 )
             firmware_max = db.session.merge(firmware_max, load=False)

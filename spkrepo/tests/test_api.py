@@ -218,7 +218,10 @@ class PackagesTestCase(BaseTestCase):
         base_sa_warnings = [w for w in base_warns if issubclass(w.category, SAWarning)]
         self.assertFalse(
             base_sa_warnings,
-            f"Unexpected SAWarnings encountered: {[str(w.message) for w in base_sa_warnings]}",
+            (
+                "Unexpected SAWarnings encountered: "
+                f"{[str(w.message) for w in base_sa_warnings]}"
+            ),
         )
 
         newer_firmware = (
@@ -248,7 +251,10 @@ class PackagesTestCase(BaseTestCase):
         sa_warnings = [w for w in caught if issubclass(w.category, SAWarning)]
         self.assertFalse(
             sa_warnings,
-            f"Unexpected SAWarnings encountered: {[str(w.message) for w in sa_warnings]}",
+            (
+                "Unexpected SAWarnings encountered: "
+                f"{[str(w.message) for w in sa_warnings]}"
+            ),
         )
 
     def test_post_new_package_not_author_not_maintainer_user(self):

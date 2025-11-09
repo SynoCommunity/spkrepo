@@ -578,7 +578,10 @@ class VersionView(ModelView):
             flash(
                 "Builds on version were successfully activated."
                 if len(versions) == 1
-                else f"Builds have been successfully activated for {len(versions)} versions."
+                else (
+                    "Builds have been successfully activated for "
+                    f"{len(versions)} versions."
+                )
             )
         except Exception as e:  # pragma: no cover
             self.session.rollback()
@@ -599,7 +602,10 @@ class VersionView(ModelView):
             flash(
                 "Builds on version were successfully deactivated."
                 if len(versions) == 1
-                else f"Builds have been successfully deactivated for {len(versions)} versions."
+                else (
+                    "Builds have been successfully deactivated for "
+                    f"{len(versions)} versions."
+                )
             )
         except Exception as e:  # pragma: no cover
             self.session.rollback()
@@ -648,7 +654,10 @@ class VersionView(ModelView):
                     else:
                         already_list = ", ".join(already_signed)
                         flash(
-                            f"{len(already_signed)} builds already signed: {already_list}",
+                            (
+                                f"{len(already_signed)} builds already signed: "
+                                f"{already_list}"
+                            ),
                             "info",
                         )
                 if success:
@@ -711,7 +720,10 @@ class VersionView(ModelView):
                     else:
                         success_list = ", ".join(success)
                         flash(
-                            f"Successfully unsigned {len(success)} builds: {success_list}"
+                            (
+                                f"Successfully unsigned {len(success)} builds: "
+                                f"{success_list}"
+                            )
                         )
         except Exception as e:  # pragma: no cover
             flash(f"Failed to unsign builds. {e}", "error")
@@ -743,7 +755,10 @@ class VersionView(ModelView):
             else:
                 success_list = ", ".join(successes)
                 flash(
-                    f"Refreshed metadata from INFO for {len(successes)} builds: {success_list}"
+                    (
+                        f"Refreshed metadata from INFO for {len(successes)} builds: "
+                        f"{success_list}"
+                    )
                 )
 
         if failures:
@@ -1062,7 +1077,10 @@ class BuildView(ModelView):
             else:
                 success_list = ", ".join(successes)
                 flash(
-                    f"Refreshed metadata from INFO for {len(successes)} builds: {success_list}"
+                    (
+                        f"Refreshed metadata from INFO for {len(successes)} builds: "
+                        f"{success_list}"
+                    )
                 )
 
         if failures:
