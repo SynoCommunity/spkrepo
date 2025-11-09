@@ -461,7 +461,7 @@ class VersionView(ModelView):
     # Permissions
     def is_accessible(self):
         return current_user.is_authenticated and any(
-            map(current_user.has_role, ("developer", "package_admin", "admin"))
+            map(current_user.has_role, ("developer", "package_admin"))
         )
 
     can_create = False
@@ -752,6 +752,8 @@ class VersionView(ModelView):
                 )
 
     def is_action_allowed(self, name):
+        if name == "resync_info" and not current_user.has_role("admin"):
+            return False
         if name == "sign" and not self.can_sign:
             return False
         if name == "unsign" and not self.can_unsign:
@@ -769,7 +771,7 @@ class BuildView(ModelView):
     # Permissions
     def is_accessible(self):
         return current_user.is_authenticated and any(
-            map(current_user.has_role, ("developer", "package_admin", "admin"))
+            map(current_user.has_role, ("developer", "package_admin"))
         )
 
     can_create = False
@@ -1065,6 +1067,8 @@ class BuildView(ModelView):
                 )
 
     def is_action_allowed(self, name):
+        if name == "resync_info" and not current_user.has_role("admin"):
+            return False
         if name == "sign" and not self.can_sign:
             return False
         if name == "unsign" and not self.can_unsign:
