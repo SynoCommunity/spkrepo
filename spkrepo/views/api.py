@@ -118,23 +118,21 @@ class Packages(Resource):
             architecture = Architecture.find(info_arch, syno=True)
             if architecture is None:
                 abort(422, message="Unknown architecture: %s" % info_arch)
-            architectures.append(architecture)
+            # ensure the architecture is bound to the current session
+            architectures.append(db.session.merge(architecture, load=False))
 
         # Firmware
-        input_firmware = spk.info.get("firmware")
-        if input_firmware is None:
-            input_firmware = spk.info.get("os_min_ver")
+        input_firmware = spk.info.get("firmware") or spk.info.get("os_min_ver")
         match = firmware_re.match(input_firmware)
         if not match:
             abort(422, message="Invalid firmware")
         firmware = Firmware.find(int(match.group("build")))
         if firmware is None:
             abort(422, message="Unknown firmware")
+        firmware = db.session.merge(firmware, load=False)
 
         firmware_max = None
-        input_firmware_max = spk.info.get("firmware_max")
-        if input_firmware_max is None:
-            input_firmware_max = spk.info.get("os_max_ver")
+        input_firmware_max = spk.info.get("firmware_max") or spk.info.get("os_max_ver")
         if input_firmware_max:
             max_match = firmware_re.match(input_firmware_max)
             if not max_match:
@@ -149,6 +147,7 @@ class Packages(Resource):
                         "Maximum firmware must be greater than or equal to minimum firmware"
                     ),
                 )
+            firmware_max = db.session.merge(firmware_max, load=False)
 
         # Services
         input_install_dep_services = spk.info.get("install_dep_services", None)
@@ -241,7 +240,7 @@ class Packages(Resource):
             for size, icon in spk.icons.items():
                 version.icons[size] = Icon(
                     path=os.path.join(
-                        package.name, str(version.version), "icon_%s.png" % size
+                        package.name, str(version.version), f"icon_{size}.png"
                     ),
                     size=size,
                 )
@@ -289,7 +288,7 @@ class Packages(Resource):
         db.session.add(build)
 
         build.firmware_min_id = firmware.id
-        build.firmware_max_id = firmware_max.id if firmware_max is not None else None
+        build.firmware_max_id = firmware_max.id if firmware_max else None
         build.architectures = architectures
 
         build.buildmanifest = BuildManifest(
