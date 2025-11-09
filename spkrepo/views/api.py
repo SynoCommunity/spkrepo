@@ -191,7 +191,6 @@ class Packages(Resource):
             elif spk.info.get("startable") is True or spk.info.get("ctl_stop") is True:
                 version_startable = True
             version = Version(
-                package=package,
                 upstream_version=match.group("upstream_version"),
                 version=int(match.group("version")),
                 changelog=spk.info.get("changelog"),
@@ -207,6 +206,8 @@ class Packages(Resource):
             )
 
             db.session.add(version)
+
+            version.package = package
 
             for key, value in spk.info.items():
                 if key == "install_dep_services":
@@ -282,12 +283,12 @@ class Packages(Resource):
             publisher=current_user,
             path=os.path.join(package.name, str(version.version), build_filename),
             checksum=spk.info.get("checksum"),
-            firmware_min=firmware,
-            firmware_max=firmware_max,
         )
 
         db.session.add(build)
 
+        build.firmware_min = firmware
+        build.firmware_max = firmware_max
         build.architectures = architectures
 
         build.buildmanifest = BuildManifest(
