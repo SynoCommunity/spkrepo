@@ -148,18 +148,17 @@ class ServiceView(ModelView):
 
 
 def screenshot_namegen(obj, file_data):
-    pattern = "screenshot_{:d}{}"
     ext = os.path.splitext(file_data.filename)[1]
     i = 1
     while os.path.exists(
         os.path.join(
             current_app.config["DATA_PATH"],
             obj.package.name,
-            pattern.format(i, ext),
+            f"screenshot_{i}{ext}",
         )
     ):
         i += 1
-    return os.path.join(obj.package.name, pattern.format(i, ext))
+    return os.path.join(obj.package.name, f"screenshot_{i}{ext}")
 
 
 class ScreenshotView(ModelView):
