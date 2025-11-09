@@ -422,7 +422,9 @@ class BuildManifest(db.Model):
 
     # Columns
     id = db.Column(db.Integer, primary_key=True)
-    build_id = db.Column(db.Integer, db.ForeignKey("build.id"), nullable=False, unique=True)
+    build_id = db.Column(
+        db.Integer, db.ForeignKey("build.id"), nullable=False, unique=True
+    )
     dependencies = db.Column(db.Unicode(255))
     conf_dependencies = db.Column(db.UnicodeText)
     conflicts = db.Column(db.Unicode(255))

@@ -142,7 +142,9 @@ class CatalogTestCase(BaseTestCase):
 
         # conf_deppkgs
         if build.buildmanifest.conf_dependencies:
-            self.assertEqual(entry["conf_deppkgs"], build.buildmanifest.conf_dependencies)
+            self.assertEqual(
+                entry["conf_deppkgs"], build.buildmanifest.conf_dependencies
+            )
         else:
             self.assertNotIn("conf_deppkgs", entry)
 
@@ -154,7 +156,9 @@ class CatalogTestCase(BaseTestCase):
 
         # conf_privilege
         if build.buildmanifest.conf_privilege:
-            self.assertEqual(entry["conf_privilege"], build.buildmanifest.conf_privilege)
+            self.assertEqual(
+                entry["conf_privilege"], build.buildmanifest.conf_privilege
+            )
         else:
             self.assertNotIn("conf_privilege", entry)
 

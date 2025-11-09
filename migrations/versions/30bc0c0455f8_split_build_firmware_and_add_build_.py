@@ -5,8 +5,8 @@ Revises: f95855ce9471
 Create Date: 2025-11-05 20:43:32.593098
 
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 
 # revision identifiers, used by Alembic.
@@ -30,7 +30,9 @@ def upgrade():
     op.execute("UPDATE build SET firmware_min_id = firmware_id")
 
     # 3) Make firmware_min_id NOT NULL
-    op.alter_column("build", "firmware_min_id", existing_type=sa.Integer(), nullable=False)
+    op.alter_column(
+        "build", "firmware_min_id", existing_type=sa.Integer(), nullable=False
+    )
 
     # 4) Drop old FK and legacy column firmware_id
     op.drop_constraint(op.f("build_firmware_id_fkey"), "build", type_="foreignkey")
@@ -120,21 +122,18 @@ def downgrade():
         .cte("first_build")
     )
 
-    sel = (
-        sa.select(
-            version.c.id.label("version_id"),
-            buildmanifest.c.dependencies,
-            buildmanifest.c.conf_dependencies,
-            buildmanifest.c.conflicts,
-            buildmanifest.c.conf_conflicts,
-            buildmanifest.c.conf_privilege,
-            buildmanifest.c.conf_resource,
-        )
-        .select_from(
-            version.join(first_build_cte, first_build_cte.c.version_id == version.c.id)
-            .join(build, build.c.id == first_build_cte.c.first_build_id)
-            .join(buildmanifest, buildmanifest.c.build_id == build.c.id)
-        )
+    sel = sa.select(
+        version.c.id.label("version_id"),
+        buildmanifest.c.dependencies,
+        buildmanifest.c.conf_dependencies,
+        buildmanifest.c.conflicts,
+        buildmanifest.c.conf_conflicts,
+        buildmanifest.c.conf_privilege,
+        buildmanifest.c.conf_resource,
+    ).select_from(
+        version.join(first_build_cte, first_build_cte.c.version_id == version.c.id)
+        .join(build, build.c.id == first_build_cte.c.first_build_id)
+        .join(buildmanifest, buildmanifest.c.build_id == build.c.id)
     )
 
     rows = bind.execute(sel).fetchall()

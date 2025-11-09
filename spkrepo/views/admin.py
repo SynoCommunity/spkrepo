@@ -188,7 +188,7 @@ class ScreenshotView(ModelView):
     def _display(view, context, model, name):
         return Markup(
             f'<img src="{url_for("nas.data", path=model.path)}" '
-            "alt=\"screenshot\" height=\"100\" width=\"100\">"
+            'alt="screenshot" height="100" width="100">'
         )
 
     column_formatters = {"path": _display}
@@ -294,9 +294,7 @@ def _apply_info_from_spk(session, build, spk, md5_hash):
             language_code = key.split("_", 1)[1]
             language = Language.find(language_code)
             if language is None:
-                raise ValueError(
-                    f"Unknown INFO displayname language: {language_code}"
-                )
+                raise ValueError(f"Unknown INFO displayname language: {language_code}")
             version.displaynames[language.code] = DisplayName(
                 language=language, displayname=value
             )
@@ -316,9 +314,7 @@ def _apply_info_from_spk(session, build, spk, md5_hash):
             language_code = key.split("_", 1)[1]
             language = Language.find(language_code)
             if language is None:
-                raise ValueError(
-                    f"Unknown INFO description language: {language_code}"
-                )
+                raise ValueError(f"Unknown INFO description language: {language_code}")
             version.descriptions[language.code] = Description(
                 language=language, description=value
             )
@@ -354,13 +350,17 @@ def _apply_info_from_spk(session, build, spk, md5_hash):
         architectures.append(session.merge(architecture, load=False))
     build.architectures = architectures
 
-    firmware = _resolve_firmware(session, info.get("firmware") or info.get("os_min_ver"))
+    firmware = _resolve_firmware(
+        session, info.get("firmware") or info.get("os_min_ver")
+    )
     build.firmware_min = firmware
 
     firmware_max_value = info.get("os_max_ver")
     firmware_max = _resolve_firmware(session, firmware_max_value, allow_none=True)
     if firmware_max and firmware_max.build < firmware.build:
-        raise ValueError("Maximum firmware must be greater than or equal to minimum firmware")
+        raise ValueError(
+            "Maximum firmware must be greater than or equal to minimum firmware"
+        )
     build.firmware_max = firmware_max
 
     build.checksum = info.get("checksum")
@@ -656,9 +656,7 @@ class VersionView(ModelView):
                         flash(f"Build {success[0]} successfully signed")
                     else:
                         success_list = ", ".join(success)
-                        flash(
-                            f"Successfully signed {len(success)} builds: {success_list}"
-                        )
+                        flash(f"Successfully signed {len(success)} builds: {success_list}")
         except Exception as e:  # pragma: no cover
             flash(f"Failed to sign builds. {e}", "error")
 

@@ -226,7 +226,9 @@ class VersionTestCase(BaseTestCase):
         version = build.version
         original_display = version.displaynames["enu"].displayname
         original_description = version.descriptions["enu"].description
-        original_services = sorted(service.code for service in version.service_dependencies)
+        original_services = sorted(
+            service.code for service in version.service_dependencies
+        )
         original_upstream = version.upstream_version
         original_license = version.license
         original_architectures = sorted(arch.code for arch in build.architectures)
@@ -244,9 +246,9 @@ class VersionTestCase(BaseTestCase):
         for key in list(version.icons.keys()):
             del version.icons[key]
 
-        alternative_firmware = (
-            Firmware.query.filter(Firmware.id != original_firmware_min.id).first()
-        )
+        alternative_firmware = Firmware.query.filter(
+            Firmware.id != original_firmware_min.id
+        ).first()
         if alternative_firmware is not None:
             build.firmware_min = alternative_firmware
         build.firmware_max = None

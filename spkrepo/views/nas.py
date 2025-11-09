@@ -11,7 +11,6 @@ from flask import (
     send_from_directory,
     url_for,
 )
-
 from sqlalchemy.orm import aliased
 
 from ..ext import cache, db
@@ -303,8 +302,7 @@ def download(architecture_id, firmware_build, build_id):
         architecture not in build.architectures
         or firmware_build < build.firmware_min.build
         or (
-            build.firmware_max is not None
-            and firmware_build > build.firmware_max.build
+            build.firmware_max is not None and firmware_build > build.firmware_max.build
         )
     ):
         abort(400)

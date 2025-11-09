@@ -236,9 +236,7 @@ class BuildFactory(SQLAlchemyModelFactory):
         model = Build
 
     version = factory.SubFactory(VersionFactory)
-    firmware_min = factory.LazyAttribute(
-        lambda x: random.choice(Firmware.query.all())
-    )
+    firmware_min = factory.LazyAttribute(lambda x: random.choice(Firmware.query.all()))
     firmware_max = None
     architectures = factory.LazyAttribute(
         lambda x: [
@@ -325,8 +323,6 @@ class BuildFactory(SQLAlchemyModelFactory):
                 )
             return batch
         return super(BuildFactory, cls).create_batch(size, **kwargs)
-
-
 
 
 class DownloadFactory(SQLAlchemyModelFactory):
@@ -825,9 +821,7 @@ def create_spk(
         if isinstance(info, io.BytesIO):
             info_stream = info
         else:
-            b = "\n".join([f'{k}="{v}"' for k, v in info.items()]).encode(
-                info_encoding
-            )
+            b = "\n".join([f'{k}="{v}"' for k, v in info.items()]).encode(info_encoding)
             info_stream = io.BytesIO(b)
         info_tarinfo = tarfile.TarInfo("INFO")
         info_stream.seek(0, io.SEEK_END)

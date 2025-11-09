@@ -155,9 +155,7 @@ class Packages(Resource):
             for info_dep_service in input_install_dep_services.split():
                 service_name = Service.find(info_dep_service)
                 if service_name is None:
-                    abort(
-                        422, message=f"Unknown dependent service: {info_dep_service}"
-                    )
+                    abort(422, message=f"Unknown dependent service: {info_dep_service}")
 
         # Package
         create_package = False
@@ -263,9 +261,14 @@ class Packages(Resource):
                 )
                 candidate_min_build = firmware.build
                 candidate_max_build = (
-                    firmware_max.build if firmware_max is not None else candidate_min_build
+                    firmware_max.build
+                    if firmware_max is not None
+                    else candidate_min_build
                 )
-                if candidate_min_build > existing_max_build or candidate_max_build < existing_min_build:
+                if (
+                    candidate_min_build > existing_max_build
+                    or candidate_max_build < existing_min_build
+                ):
                     continue
                 conflicts |= overlapping_architectures
             if conflicts:

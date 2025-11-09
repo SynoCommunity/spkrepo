@@ -109,9 +109,9 @@ class SPKParseTestCase(BaseTestCase):
     def test_info_blank_like(self):
         build = BuildFactory.build()
         info = io.BytesIO(
-            "\n".join(
-                [f'{k}="{v}"\n' for k, v in create_info(build).items()]
-            ).encode("utf-8")
+            "\n".join([f'{k}="{v}"\n' for k, v in create_info(build).items()]).encode(
+                "utf-8"
+            )
         )
         with create_spk(build, info=info) as f:
             SPK(f)
@@ -252,7 +252,9 @@ class SPKParseTestCase(BaseTestCase):
 
     def test_wrong_conf_dependencies_encoding(self):
         build = BuildFactory.build(
-            buildmanifest__conf_dependencies=json.dumps({"déçu": {"dsm_min_ver": "5.0-4300"}})
+            buildmanifest__conf_dependencies=json.dumps(
+                {"déçu": {"dsm_min_ver": "5.0-4300"}}
+            )
         )
         with create_spk(build, conf_dependencies_encoding="latin-1") as f:
             with self.assertRaises(SPKParseError) as cm:
@@ -261,7 +263,9 @@ class SPKParseTestCase(BaseTestCase):
 
     def test_wrong_conf_conflicts_encoding(self):
         build = BuildFactory.build(
-            buildmanifest__conf_conflicts=json.dumps({"déçu": {"dsm_min_ver": "5.0-4300"}})
+            buildmanifest__conf_conflicts=json.dumps(
+                {"déçu": {"dsm_min_ver": "5.0-4300"}}
+            )
         )
         with create_spk(build, conf_conflicts_encoding="latin-1") as f:
             with self.assertRaises(SPKParseError) as cm:

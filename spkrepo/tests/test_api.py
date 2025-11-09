@@ -204,7 +204,10 @@ class PackagesTestCase(BaseTestCase):
         db.session.commit()
 
         base_build = BuildFactory.build(architectures=[Architecture.find("noarch")])
-        with create_spk(base_build) as spk, warnings.catch_warnings(record=True) as base_warns:
+        with (
+            create_spk(base_build) as spk,
+            warnings.catch_warnings(record=True) as base_warns,
+        ):
             warnings.simplefilter("always", SAWarning)
             first_response = self.client.post(
                 url_for("api.packages"),
@@ -230,9 +233,10 @@ class PackagesTestCase(BaseTestCase):
             architectures=base_build.architectures,
             firmware_min=newer_firmware,
         )
-        with create_spk(followup_build) as spk, warnings.catch_warnings(
-            record=True
-        ) as caught:
+        with (
+            create_spk(followup_build) as spk,
+            warnings.catch_warnings(record=True) as caught,
+        ):
             warnings.simplefilter("always", SAWarning)
             response = self.client.post(
                 url_for("api.packages"),
