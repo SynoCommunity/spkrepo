@@ -323,7 +323,11 @@ def _apply_info_from_spk(session, build, spk, md5_hash):
                 language=language, description=value
             )
 
-    version.icons.clear()
+    existing_icons = dict(version.icons)
+    new_sizes = set(spk.icons.keys()) if spk.icons else set()
+    for stale_size in set(existing_icons) - new_sizes:
+        del version.icons[stale_size]
+
     if spk.icons:
         version_path = os.path.join(
             current_app.config["DATA_PATH"], package.name, str(version.version)
@@ -331,12 +335,16 @@ def _apply_info_from_spk(session, build, spk, md5_hash):
         os.makedirs(version_path, exist_ok=True)
         for size, icon_stream in spk.icons.items():
             icon_stream.seek(0)
-            icon = Icon(
-                path=os.path.join(package.name, str(version.version), f"icon_{size}.png"),
-                size=size,
+            icon_path = os.path.join(
+                package.name, str(version.version), f"icon_{size}.png"
             )
+            icon = version.icons.get(size)
+            if icon is None:
+                icon = Icon(path=icon_path, size=size)
+                version.icons[size] = icon
+            else:
+                icon.path = icon_path
             icon.save(icon_stream)
-            version.icons[size] = icon
 
     architectures = []
     for info_arch in info["arch"].split():
