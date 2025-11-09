@@ -131,6 +131,25 @@ class Packages(Resource):
         if firmware is None:
             abort(422, message="Unknown firmware")
 
+        firmware_max = None
+        input_firmware_max = spk.info.get("firmware_max")
+        if input_firmware_max is None:
+            input_firmware_max = spk.info.get("os_max_ver")
+        if input_firmware_max:
+            max_match = firmware_re.match(input_firmware_max)
+            if not max_match:
+                abort(422, message="Invalid maximum firmware")
+            firmware_max = Firmware.find(int(max_match.group("build")))
+            if firmware_max is None:
+                abort(422, message="Unknown maximum firmware")
+            if firmware_max.build < firmware.build:
+                abort(
+                    422,
+                    message=(
+                        "Maximum firmware must be greater than or equal to minimum firmware"
+                    ),
+                )
+
         # Services
         input_install_dep_services = spk.info.get("install_dep_services", None)
         if input_install_dep_services:
@@ -233,12 +252,17 @@ class Packages(Resource):
                 )
                 if not overlapping_architectures:
                     continue
-                if existing_build.firmware_min.build > firmware.build:
-                    continue
-                if (
-                    existing_build.firmware_max
-                    and existing_build.firmware_max.build < firmware.build
-                ):
+                existing_min_build = existing_build.firmware_min.build
+                existing_max_build = (
+                    existing_build.firmware_max.build
+                    if existing_build.firmware_max
+                    else existing_min_build
+                )
+                candidate_min_build = firmware.build
+                candidate_max_build = (
+                    firmware_max.build if firmware_max is not None else candidate_min_build
+                )
+                if candidate_min_build > existing_max_build or candidate_max_build < existing_min_build:
                     continue
                 conflicts |= overlapping_architectures
             if conflicts:
@@ -262,6 +286,7 @@ class Packages(Resource):
 
         build.architectures = architectures
         build.firmware_min = firmware
+        build.firmware_max = firmware_max
 
         build.buildmanifest = BuildManifest(
             dependencies=spk.info.get("install_dep_packages"),

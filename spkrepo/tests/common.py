@@ -512,6 +512,8 @@ def create_info(build):
         "description": build.version.descriptions["enu"].description,
         "firmware": build.firmware_min.firmware_string,
     }
+    if build.firmware_max:
+        info["firmware_max"] = build.firmware_max.firmware_string
     if build.version.changelog:
         info["changelog"] = build.version.changelog
     if build.version.report_url:

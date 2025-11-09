@@ -197,6 +197,41 @@ class PackagesTestCase(BaseTestCase):
             response.data.decode(),
         )
 
+    def test_post_allows_different_firmware_same_architecture(self):
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        base_build = BuildFactory.build(architectures=[Architecture.find("noarch")])
+        with create_spk(base_build) as spk:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            )
+
+        newer_firmware = (
+            Firmware.query.filter(Firmware.build != base_build.firmware_min.build)
+            .order_by(Firmware.build.desc())
+            .first()
+        )
+        self.assertIsNotNone(newer_firmware)
+
+        followup_build = BuildFactory.build(
+            version=base_build.version,
+            architectures=base_build.architectures,
+            firmware_min=newer_firmware,
+        )
+        with create_spk(followup_build) as spk:
+            response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
+            )
+
+        self.assert201(response)
+
     def test_post_new_package_not_author_not_maintainer_user(self):
         user = UserFactory(roles=[Role.find("developer")])
         db.session.commit()
