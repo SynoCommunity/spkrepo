@@ -206,6 +206,8 @@ class Packages(Resource):
                 license=spk.license,
             )
 
+            db.session.add(version)
+
             for key, value in spk.info.items():
                 if key == "install_dep_services":
                     for service_name in value.split():
@@ -284,6 +286,8 @@ class Packages(Resource):
             firmware_max_id=firmware_max.id if firmware_max else None,
         )
 
+        db.session.add(build)
+
         build.architectures = architectures
 
         build.buildmanifest = BuildManifest(
@@ -294,8 +298,6 @@ class Packages(Resource):
             conf_privilege=spk.conf_privilege,
             conf_resource=spk.conf_resource,
         )
-
-        db.session.add(build)
 
         # sign
         if current_app.config["GNUPG_PATH"] is not None:  # pragma: no cover
