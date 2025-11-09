@@ -357,7 +357,7 @@ def _apply_info_from_spk(session, build, spk, md5_hash):
     firmware = _resolve_firmware(session, info.get("firmware") or info.get("os_min_ver"))
     build.firmware_min = firmware
 
-    firmware_max_value = info.get("firmware_max") or info.get("os_max_ver")
+    firmware_max_value = info.get("os_max_ver")
     firmware_max = _resolve_firmware(session, firmware_max_value, allow_none=True)
     if firmware_max and firmware_max.build < firmware.build:
         raise ValueError("Maximum firmware must be greater than or equal to minimum firmware")

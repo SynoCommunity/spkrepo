@@ -132,7 +132,7 @@ class Packages(Resource):
         firmware = db.session.merge(firmware, load=False)
 
         firmware_max = None
-        input_firmware_max = spk.info.get("firmware_max") or spk.info.get("os_max_ver")
+        input_firmware_max = spk.info.get("os_max_ver")
         if input_firmware_max:
             max_match = firmware_re.match(input_firmware_max)
             if not max_match:

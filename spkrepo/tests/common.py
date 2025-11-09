@@ -511,7 +511,7 @@ def create_info(build):
         "firmware": build.firmware_min.firmware_string,
     }
     if build.firmware_max:
-        info["firmware_max"] = build.firmware_max.firmware_string
+        info["os_max_ver"] = build.firmware_max.firmware_string
     if build.version.changelog:
         info["changelog"] = build.version.changelog
     if build.version.report_url:
