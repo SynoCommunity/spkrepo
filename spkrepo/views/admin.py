@@ -656,7 +656,9 @@ class VersionView(ModelView):
                         flash(f"Build {success[0]} successfully signed")
                     else:
                         success_list = ", ".join(success)
-                        flash(f"Successfully signed {len(success)} builds: {success_list}")
+                        flash(
+                            f"Successfully signed {len(success)} builds: {success_list}"
+                        )
         except Exception as e:  # pragma: no cover
             flash(f"Failed to sign builds. {e}", "error")
 
@@ -970,9 +972,7 @@ class BuildView(ModelView):
                     flash(f"Build {success[0]} successfully signed")
                 else:
                     success_list = ", ".join(success)
-                    flash(
-                        f"Successfully signed {len(success)} builds: {success_list}"
-                    )
+                    flash(f"Successfully signed {len(success)} builds: {success_list}")
         except Exception as e:  # pragma: no cover
             flash(f"Failed to sign builds. {e}", "error")
 
