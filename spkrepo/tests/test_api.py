@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 import base64
 import os
+import warnings
 from datetime import datetime, timedelta, timezone
 
 from flask import current_app, url_for
+from sqlalchemy.exc import SAWarning
 
 from spkrepo.ext import db
 from spkrepo.models import Architecture, Build, Firmware, Role
@@ -202,14 +204,20 @@ class PackagesTestCase(BaseTestCase):
         db.session.commit()
 
         base_build = BuildFactory.build(architectures=[Architecture.find("noarch")])
-        with create_spk(base_build) as spk:
-            self.assert201(
-                self.client.post(
-                    url_for("api.packages"),
-                    headers=authorization_header(user),
-                    data=spk.read(),
-                )
+        with create_spk(base_build) as spk, warnings.catch_warnings(record=True) as base_warns:
+            warnings.simplefilter("always", SAWarning)
+            first_response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
             )
+        self.assert201(first_response)
+        base_sa_warnings = [w for w in base_warns if issubclass(w.category, SAWarning)]
+        self.assertFalse(
+            base_sa_warnings,
+            "Unexpected SAWarnings encountered: %s"
+            % [str(w.message) for w in base_sa_warnings],
+        )
 
         newer_firmware = (
             Firmware.query.filter(Firmware.build != base_build.firmware_min.build)
@@ -223,7 +231,10 @@ class PackagesTestCase(BaseTestCase):
             architectures=base_build.architectures,
             firmware_min=newer_firmware,
         )
-        with create_spk(followup_build) as spk:
+        with create_spk(followup_build) as spk, warnings.catch_warnings(
+            record=True
+        ) as caught:
+            warnings.simplefilter("always", SAWarning)
             response = self.client.post(
                 url_for("api.packages"),
                 headers=authorization_header(user),
@@ -231,6 +242,12 @@ class PackagesTestCase(BaseTestCase):
             )
 
         self.assert201(response)
+        sa_warnings = [w for w in caught if issubclass(w.category, SAWarning)]
+        self.assertFalse(
+            sa_warnings,
+            "Unexpected SAWarnings encountered: %s"
+            % [str(w.message) for w in sa_warnings],
+        )
 
     def test_post_new_package_not_author_not_maintainer_user(self):
         user = UserFactory(roles=[Role.find("developer")])
