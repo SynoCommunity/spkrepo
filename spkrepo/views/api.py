@@ -168,6 +168,7 @@ class Packages(Resource):
                 abort(403, message="Insufficient permissions to create new packages")
             create_package = True
             package = Package(name=spk.info["package"], author=current_user)
+            db.session.add(package)
         elif (
             not current_user.has_role("package_admin")
             and current_user not in package.maintainers
@@ -287,8 +288,8 @@ class Packages(Resource):
 
         db.session.add(build)
 
-        build.firmware_min = firmware
-        build.firmware_max = firmware_max
+        build.firmware_min_id = firmware.id
+        build.firmware_max_id = firmware_max.id if firmware_max is not None else None
         build.architectures = architectures
 
         build.buildmanifest = BuildManifest(
