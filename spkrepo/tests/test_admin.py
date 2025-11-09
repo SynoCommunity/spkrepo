@@ -215,12 +215,9 @@ class VersionTestCase(BaseTestCase):
         db.session.commit()
 
         with self.logged_user("package_admin"):
-            response = self.client.post(
-                url_for("version.action_view"),
-                follow_redirects=False,
-                data=dict(action="resync_info", rowid=[build.version.id]),
-            )
-            self.assert403(response)
+            response = self.client.get(url_for("version.index_view"))
+            self.assert200(response)
+            self.assertNotIn("Resync INFO", response.data.decode())
 
     def test_action_resync_refreshes_metadata(self):
         build = BuildFactory()
@@ -403,12 +400,9 @@ class BuildTestCase(BaseTestCase):
         db.session.commit()
 
         with self.logged_user("package_admin"):
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=False,
-                data=dict(action="resync_info", rowid=[build.id]),
-            )
-            self.assert403(response)
+            response = self.client.get(url_for("build.index_view"))
+            self.assert200(response)
+            self.assertNotIn("Resync INFO", response.data.decode())
 
     def test_action_resync_refreshes_single_build(self):
         build = BuildFactory()
