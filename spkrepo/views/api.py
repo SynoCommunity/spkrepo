@@ -280,8 +280,8 @@ class Packages(Resource):
             publisher=current_user,
             path=os.path.join(package.name, str(version.version), build_filename),
             checksum=spk.info.get("checksum"),
-            firmware_min=firmware,
-            firmware_max=firmware_max,
+            firmware_min_id=firmware.id,
+            firmware_max_id=firmware_max.id if firmware_max else None,
         )
 
         build.architectures = architectures
