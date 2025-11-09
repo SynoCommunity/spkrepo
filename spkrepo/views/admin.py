@@ -461,7 +461,7 @@ class VersionView(ModelView):
     # Permissions
     def is_accessible(self):
         return current_user.is_authenticated and any(
-            map(current_user.has_role, ("developer", "package_admin"))
+            map(current_user.has_role, ("developer", "package_admin", "admin"))
         )
 
     can_create = False
@@ -769,7 +769,7 @@ class BuildView(ModelView):
     # Permissions
     def is_accessible(self):
         return current_user.is_authenticated and any(
-            map(current_user.has_role, ("developer", "package_admin"))
+            map(current_user.has_role, ("developer", "package_admin", "admin"))
         )
 
     can_create = False
