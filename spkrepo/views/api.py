@@ -280,13 +280,11 @@ class Packages(Resource):
             publisher=current_user,
             path=os.path.join(package.name, str(version.version), build_filename),
             checksum=spk.info.get("checksum"),
+            firmware_min=firmware,
+            firmware_max=firmware_max,
         )
 
-        db.session.add(build)
-
         build.architectures = architectures
-        build.firmware_min_id = firmware.id
-        build.firmware_max_id = firmware_max.id if firmware_max is not None else None
 
         build.buildmanifest = BuildManifest(
             dependencies=spk.info.get("install_dep_packages"),
@@ -296,6 +294,8 @@ class Packages(Resource):
             conf_privilege=spk.conf_privilege,
             conf_resource=spk.conf_resource,
         )
+
+        db.session.add(build)
 
         # sign
         if current_app.config["GNUPG_PATH"] is not None:  # pragma: no cover
