@@ -110,7 +110,7 @@ class SPKParseTestCase(BaseTestCase):
         build = BuildFactory.build()
         info = io.BytesIO(
             "\n".join(
-                ['%s="%s"\n' % (k, v) for k, v in create_info(build).items()]
+                [f'{k}="{v}"\n' for k, v in create_info(build).items()]
             ).encode("utf-8")
         )
         with create_spk(build, info=info) as f:
@@ -168,7 +168,7 @@ class SPKParseTestCase(BaseTestCase):
     def test_invalid_info(self):
         build = BuildFactory.build()
         info = io.BytesIO(
-            "\n".join(["%s=%s" % (k, v) for k, v in create_info(build).items()]).encode(
+            "\n".join([f"{k}={v}" for k, v in create_info(build).items()]).encode(
                 "utf-8"
             )
         )

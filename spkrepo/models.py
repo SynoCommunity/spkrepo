@@ -144,7 +144,7 @@ class Firmware(db.Model):
 
     @property
     def firmware_string(self):
-        return "%s-%d" % (self.version, self.build)
+        return f"{self.version}-{self.build}"
 
     def __str__(self):
         return self.firmware_string
@@ -375,12 +375,8 @@ class Build(db.Model):
         Backward-compatible signature.
         Pass the intended firmware (typically firmware_min) from the caller.
         """
-        return "%s.v%d.f%d[%s].spk" % (
-            package.name,
-            version.version,
-            firmware.build,
-            "-".join(a.code for a in architectures),
-        )
+        arch_codes = "-".join(a.code for a in architectures)
+        return f"{package.name}.v{version.version}.f{firmware.build}[{arch_codes}].spk"
 
     def save(self, stream):
         with io.open(

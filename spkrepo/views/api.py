@@ -117,7 +117,7 @@ class Packages(Resource):
         for info_arch in spk.info["arch"].split():
             architecture = Architecture.find(info_arch, syno=True)
             if architecture is None:
-                abort(422, message="Unknown architecture: %s" % info_arch)
+                abort(422, message=f"Unknown architecture: {info_arch}")
             # ensure the architecture is bound to the current session
             architectures.append(db.session.merge(architecture, load=False))
 
@@ -156,7 +156,7 @@ class Packages(Resource):
                 service_name = Service.find(info_dep_service)
                 if service_name is None:
                     abort(
-                        422, message="Unknown dependent service: %s" % info_dep_service
+                        422, message=f"Unknown dependent service: {info_dep_service}"
                     )
 
         # Package
@@ -269,11 +269,8 @@ class Packages(Resource):
                     continue
                 conflicts |= overlapping_architectures
             if conflicts:
-                abort(
-                    409,
-                    message="Conflicting architectures: %s"
-                    % (", ".join(sorted(a.code for a in conflicts))),
-                )
+                conflict_codes = ", ".join(sorted(a.code for a in conflicts))
+                abort(409, message=f"Conflicting architectures: {conflict_codes}")
 
         build_filename = Build.generate_filename(
             package, version, firmware, architectures

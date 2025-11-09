@@ -70,12 +70,11 @@ class QueryFactory(factory.DictFactory):
         lambda x: int(Firmware.find(x.build).version.split(".")[1])
     )
     unique = factory.LazyAttribute(
-        lambda x: "synology_%s_%s"
-        % (
-            x.arch,
-            str(random.choice([1, 2, 4, 15, 18, 24]))
-            + str(random.choice([12, 13, 14, 15]))
-            + random.choice(["", "j", "+"]),
+        lambda x: (
+            f"synology_{x.arch}_"
+            f"{random.choice([1, 2, 4, 15, 18, 24])}"
+            f"{random.choice([12, 13, 14, 15])}"
+            f"{random.choice(['', 'j', '+'])}"
         )
     )
     package_update_channel = factory.fuzzy.FuzzyChoice(["stable", "beta"])
@@ -140,7 +139,7 @@ class PackageFactory(SQLAlchemyModelFactory):
         sqlalchemy_session = db.session
         model = Package
 
-    name = factory.Sequence(lambda n: "test_%d" % n)
+    name = factory.Sequence(lambda n: f"test_{n}")
 
     @factory.post_generation
     def add_screenshot(self, create, extracted, **kwargs):
@@ -161,7 +160,7 @@ class PackageFactory(SQLAlchemyModelFactory):
                 current_app.config["DATA_PATH"], screenshot.path
             )
             if not os.path.exists(screenshot_path):
-                screenshot.save(create_image("Screenshot %s" % obj.name))
+                screenshot.save(create_image(f"Screenshot {obj.name}"))
 
 
 class VersionFactory(SQLAlchemyModelFactory):
@@ -172,8 +171,7 @@ class VersionFactory(SQLAlchemyModelFactory):
     package = factory.SubFactory(PackageFactory)
     version = factory.Sequence(lambda n: n)
     upstream_version = factory.LazyAttribute(
-        lambda x: "%d.%d.%d"
-        % (fake.random_int(0, 5), fake.random_int(0, 10), fake.random_int(0, 15))
+        lambda x: f"{fake.random_int(0, 5)}.{fake.random_int(0, 10)}.{fake.random_int(0, 15)}"
     )
     changelog = factory.LazyAttribute(lambda x: fake.sentence())
     report_url = factory.LazyAttribute(lambda x: fake.url())
@@ -355,7 +353,7 @@ class BaseTestCase(TestCase):
     WTF_CSRF_ENABLED = False
     DATA_PATH = tempfile.mkdtemp("spkrepo")
     SQLALCHEMY_ECHO = False
-    SQLALCHEMY_DATABASE_URI = "sqlite:///%s/test.db" % DATA_PATH
+    SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATA_PATH}/test.db"
     CACHE_NO_NULL_WARNING = True
 
     def create_app(self):
@@ -537,9 +535,9 @@ def create_info(build):
     if build.version.startable is not None:
         info["startable"] = "yes" if build.version.startable else "no"
     for language, displayname in build.version.displaynames.items():
-        info["displayname_%s" % language] = displayname.displayname
+        info[f"displayname_{language}"] = displayname.displayname
     for language, description in build.version.descriptions.items():
-        info["description_%s" % language] = description.description
+        info[f"description_{language}"] = description.description
     if build.buildmanifest and any(
         getattr(
             build.buildmanifest,
@@ -580,20 +578,20 @@ def create_image(text, width=640, height=480):
     command = [
         "convert",
         "-size",
-        "%dx%d" % (width, height),
+        f"{width}x{height}",
         "canvas:none",
         "-gravity",
         "Center",
         "-fill",
         "grey",
         "-draw",
-        "roundRectangle 0,0 %d,%d 15,15" % (width, height),
+        f"roundRectangle 0,0 {width},{height} 15,15",
         "-fill",
         "black",
         "-pointsize",
         "12",
         "-draw",
-        "text 0,0 '%s'" % text,
+        f"text 0,0 '{text}'",
         "png:-",
     ]
     screenshot_stream = io.BytesIO()
@@ -746,7 +744,7 @@ def create_spk(
         wizard_folder_tarinfo.mode = 0o755
         spk.addfile(wizard_folder_tarinfo)
         for wizard in wizards:
-            wizard_tarinfo = tarfile.TarInfo("WIZARD_UIFILES/%s_uifile" % wizard)
+            wizard_tarinfo = tarfile.TarInfo(f"WIZARD_UIFILES/{wizard}_uifile")
             wizard_stream = io.BytesIO(wizard.encode("utf-8"))
             wizard_stream.seek(0, io.SEEK_END)
             wizard_tarinfo.size = wizard_stream.tell()
@@ -768,7 +766,7 @@ def create_spk(
             "postupgrade",
             "start-stop-status",
         ):
-            script_tarinfo = tarfile.TarInfo("scripts/%s" % script)
+            script_tarinfo = tarfile.TarInfo(f"scripts/{script}")
             script_stream = io.BytesIO(script.encode("utf-8"))
             script_stream.seek(0, io.SEEK_END)
             script_tarinfo.size = script_stream.tell()
@@ -779,11 +777,10 @@ def create_spk(
     if with_package:
         package_stream = io.BytesIO()
         package = tarfile.TarFile(fileobj=package_stream, mode="w")
-        unique = "%s-%d-%d-[%s]" % (
-            build.version.package.name,
-            build.version.version,
-            build.firmware_min.build,
-            "-".join(a.code for a in build.architectures),
+        arch_codes = "-".join(a.code for a in build.architectures)
+        unique = (
+            f"{build.version.package.name}-{build.version.version}-"
+            f"{build.firmware_min.build}-[{arch_codes}]"
         )
         unique_stream = io.BytesIO(unique.encode("utf-8"))
         unique_tarinfo = tarfile.TarInfo("unique")
@@ -810,16 +807,16 @@ def create_spk(
     if with_package_icons or with_info_icons:
         for size, icon in build.version.icons.items():
             with create_icon(build.version.package.name, int(size)) as f:
-                suffix = "" if size == "72" else "_%s" % size
+                suffix = "" if size == "72" else f"_{size}"
                 if with_package_icons:
-                    icon_tarinfo = tarfile.TarInfo("PACKAGE_ICON%s.PNG" % suffix)
+                    icon_tarinfo = tarfile.TarInfo(f"PACKAGE_ICON{suffix}.PNG")
                     f.seek(0, io.SEEK_END)
                     icon_tarinfo.size = f.tell()
                     f.seek(0)
                     spk.addfile(icon_tarinfo, fileobj=f)
                 if with_info_icons:
                     f.seek(0)
-                    info["package_icon%s" % suffix] = base64.b64encode(f.read()).decode(
+                    info[f"package_icon{suffix}"] = base64.b64encode(f.read()).decode(
                         "utf-8"
                     )
 
@@ -828,7 +825,7 @@ def create_spk(
         if isinstance(info, io.BytesIO):
             info_stream = info
         else:
-            b = "\n".join(['%s="%s"' % (k, v) for k, v in info.items()]).encode(
+            b = "\n".join([f'{k}="{v}"' for k, v in info.items()]).encode(
                 info_encoding
             )
             info_stream = io.BytesIO(b)

@@ -65,11 +65,11 @@ class UserView(ModelView):
             flash(
                 "User was successfully activated."
                 if len(users) == 1
-                else "%d users were successfully activated." % len(users)
+                else f"{len(users)} users were successfully activated."
             )
         except Exception as e:  # pragma: no cover
             self.session.rollback()
-            flash("Failed to activate users. %s" % str(e), "error")
+            flash(f"Failed to activate users. {e}", "error")
 
     @action(
         "deactivate",
@@ -85,11 +85,11 @@ class UserView(ModelView):
             flash(
                 "User was successfully deactivated."
                 if len(users) == 1
-                else "%d users were successfully deactivated." % len(users)
+                else f"{len(users)} users were successfully deactivated."
             )
         except Exception as e:  # pragma: no cover
             self.session.rollback()
-            flash("Failed to deactivate users. %s" % str(e), "error")
+            flash(f"Failed to deactivate users. {e}", "error")
 
 
 class ArchitectureView(ModelView):
@@ -148,16 +148,18 @@ class ServiceView(ModelView):
 
 
 def screenshot_namegen(obj, file_data):
-    pattern = "screenshot_%0d%s"
+    pattern = "screenshot_{:d}{}"
     ext = os.path.splitext(file_data.filename)[1]
     i = 1
     while os.path.exists(
         os.path.join(
-            current_app.config["DATA_PATH"], obj.package.name, pattern % (i, ext)
+            current_app.config["DATA_PATH"],
+            obj.package.name,
+            pattern.format(i, ext),
         )
     ):
         i += 1
-    return os.path.join(obj.package.name, pattern % (i, ext))
+    return os.path.join(obj.package.name, pattern.format(i, ext))
 
 
 class ScreenshotView(ModelView):
@@ -180,8 +182,8 @@ class ScreenshotView(ModelView):
 
     def _display(view, context, model, name):
         return Markup(
-            '<img src="%s" alt="screenshot" height="100" width="100">'
-            % url_for("nas.data", path=model.path)
+            f'<img src="{url_for("nas.data", path=model.path)}" '
+            "alt=\"screenshot\" height=\"100\" width=\"100\">"
         )
 
     column_formatters = {"path": _display}
@@ -389,12 +391,11 @@ class VersionView(ModelView):
             flash(
                 "Builds on version were successfully activated."
                 if len(versions) == 1
-                else "Builds have been successfully activated for %d versions."
-                % len(versions)
+                else f"Builds have been successfully activated for {len(versions)} versions."
             )
         except Exception as e:  # pragma: no cover
             self.session.rollback()
-            flash("Failed to activate versions' builds. %s" % str(e), "error")
+            flash(f"Failed to activate versions' builds. {e}", "error")
 
     @action(
         "deactivate",
@@ -411,12 +412,11 @@ class VersionView(ModelView):
             flash(
                 "Builds on version were successfully deactivated."
                 if len(versions) == 1
-                else "Builds have been successfully deactivated for %d versions."
-                % len(versions)
+                else f"Builds have been successfully deactivated for {len(versions)} versions."
             )
         except Exception as e:  # pragma: no cover
             self.session.rollback()
-            flash("Failed to deactivate versions' builds. %s" % str(e), "error")
+            flash(f"Failed to deactivate versions' builds. {e}", "error")
 
     @action("sign", "Sign", "Are you sure you want to sign selected builds?")
     def action_sign(self, ids):
@@ -448,32 +448,32 @@ class VersionView(ModelView):
                             failed.append(filename)
                 if failed:
                     if len(failed) == 1:
-                        flash("Failed to sign build %s" % failed[0], "error")
+                        flash(f"Failed to sign build {failed[0]}", "error")
                     else:
+                        failed_list = ", ".join(failed)
                         flash(
-                            "Failed to sign %d builds: %s"
-                            % (len(failed), ", ".join(failed)),
+                            f"Failed to sign {len(failed)} builds: {failed_list}",
                             "error",
                         )
                 if already_signed:
                     if len(already_signed) == 1:
-                        flash("Build %s already signed" % already_signed[0], "info")
+                        flash(f"Build {already_signed[0]} already signed", "info")
                     else:
+                        already_list = ", ".join(already_signed)
                         flash(
-                            "%d builds already signed: %s"
-                            % (len(already_signed), ", ".join(already_signed)),
+                            f"{len(already_signed)} builds already signed: {already_list}",
                             "info",
                         )
                 if success:
                     if len(success) == 1:
-                        flash("Build %s successfully signed" % success[0])
+                        flash(f"Build {success[0]} successfully signed")
                     else:
+                        success_list = ", ".join(success)
                         flash(
-                            "Successfully signed %d builds: %s"
-                            % (len(success), ", ".join(success))
+                            f"Successfully signed {len(success)} builds: {success_list}"
                         )
         except Exception as e:  # pragma: no cover
-            flash("Failed to sign builds. %s" % str(e), "error")
+            flash(f"Failed to sign builds. {e}", "error")
 
     @action("unsign", "Unsign", "Are you sure you want to unsign selected builds?")
     def action_unsign(self, ids):
@@ -502,32 +502,32 @@ class VersionView(ModelView):
                             failed.append(filename)
                 if failed:
                     if len(failed) == 1:
-                        flash("Failed to unsign build %s" % failed[0], "error")
+                        flash(f"Failed to unsign build {failed[0]}", "error")
                     else:
+                        failed_list = ", ".join(failed)
                         flash(
-                            "Failed to unsign %d builds: %s"
-                            % (len(failed), ", ".join(failed)),
+                            f"Failed to unsign {len(failed)} builds: {failed_list}",
                             "error",
                         )
                 if not_signed:
                     if len(not_signed) == 1:
-                        flash("Build %s not signed" % not_signed[0], "info")
+                        flash(f"Build {not_signed[0]} not signed", "info")
                     else:
+                        not_signed_list = ", ".join(not_signed)
                         flash(
-                            "%d builds not signed: %s"
-                            % (len(not_signed), ", ".join(not_signed)),
+                            f"{len(not_signed)} builds not signed: {not_signed_list}",
                             "info",
                         )
                 if success:
                     if len(success) == 1:
-                        flash("Build %s successfully unsigned" % success[0])
+                        flash(f"Build {success[0]} successfully unsigned")
                     else:
+                        success_list = ", ".join(success)
                         flash(
-                            "Successfully unsigned %d builds: %s"
-                            % (len(success), ", ".join(success))
+                            f"Successfully unsigned {len(success)} builds: {success_list}"
                         )
         except Exception as e:  # pragma: no cover
-            flash("Failed to unsign builds. %s" % str(e), "error")
+            flash(f"Failed to unsign builds. {e}", "error")
 
     def is_action_allowed(self, name):
         if name == "sign" and not self.can_sign:
@@ -658,11 +658,11 @@ class BuildView(ModelView):
             flash(
                 "Build was successfully activated."
                 if len(builds) == 1
-                else "%d builds were successfully activated." % len(builds)
+                else f"{len(builds)} builds were successfully activated."
             )
         except Exception as e:  # pragma: no cover
             self.session.rollback()
-            flash("Failed to activate builds. %s" % str(e), "error")
+            flash(f"Failed to activate builds. {e}", "error")
 
     @action(
         "deactivate",
@@ -678,11 +678,11 @@ class BuildView(ModelView):
             flash(
                 "Build was successfully deactivated."
                 if len(builds) == 1
-                else "%d builds were successfully deactivated." % len(builds)
+                else f"{len(builds)} builds were successfully deactivated."
             )
         except Exception as e:  # pragma: no cover
             self.session.rollback()
-            flash("Failed to deactivate builds. %s" % str(e), "error")
+            flash(f"Failed to deactivate builds. {e}", "error")
 
     @action("sign", "Sign", "Are you sure you want to sign selected builds?")
     def action_sign(self, ids):
@@ -713,32 +713,32 @@ class BuildView(ModelView):
                         failed.append(filename)
             if failed:
                 if len(failed) == 1:
-                    flash("Failed to sign build %s" % failed[0], "error")
+                    flash(f"Failed to sign build {failed[0]}", "error")
                 else:
+                    failed_list = ", ".join(failed)
                     flash(
-                        "Failed to sign %d builds: %s"
-                        % (len(failed), ", ".join(failed)),
+                        f"Failed to sign {len(failed)} builds: {failed_list}",
                         "error",
                     )
             if already_signed:
                 if len(already_signed) == 1:
-                    flash("Build %s already signed" % already_signed[0], "info")
+                    flash(f"Build {already_signed[0]} already signed", "info")
                 else:
+                    already_list = ", ".join(already_signed)
                     flash(
-                        "%d builds already signed: %s"
-                        % (len(already_signed), ", ".join(already_signed)),
+                        f"{len(already_signed)} builds already signed: {already_list}",
                         "info",
                     )
             if success:
                 if len(success) == 1:
-                    flash("Build %s successfully signed" % success[0])
+                    flash(f"Build {success[0]} successfully signed")
                 else:
+                    success_list = ", ".join(success)
                     flash(
-                        "Successfully signed %d builds: %s"
-                        % (len(success), ", ".join(success))
+                        f"Successfully signed {len(success)} builds: {success_list}"
                     )
         except Exception as e:  # pragma: no cover
-            flash("Failed to sign builds. %s" % str(e), "error")
+            flash(f"Failed to sign builds. {e}", "error")
 
     @action("unsign", "Unsign", "Are you sure you want to unsign selected builds?")
     def action_unsign(self, ids):
@@ -766,32 +766,32 @@ class BuildView(ModelView):
                         failed.append(filename)
             if failed:
                 if len(failed) == 1:
-                    flash("Failed to unsign build %s" % failed[0], "error")
+                    flash(f"Failed to unsign build {failed[0]}", "error")
                 else:
+                    failed_list = ", ".join(failed)
                     flash(
-                        "Failed to unsign %d builds: %s"
-                        % (len(failed), ", ".join(failed)),
+                        f"Failed to unsign {len(failed)} builds: {failed_list}",
                         "error",
                     )
             if not_signed:
                 if len(not_signed) == 1:
-                    flash("Build %s not signed" % not_signed[0], "info")
+                    flash(f"Build {not_signed[0]} not signed", "info")
                 else:
+                    not_signed_list = ", ".join(not_signed)
                     flash(
-                        "%d builds not signed: %s"
-                        % (len(not_signed), ", ".join(not_signed)),
+                        f"{len(not_signed)} builds not signed: {not_signed_list}",
                         "info",
                     )
             if success:
                 if len(success) == 1:
-                    flash("Build %s successfully unsigned" % success[0])
+                    flash(f"Build {success[0]} successfully unsigned")
                 else:
+                    success_list = ", ".join(success)
                     flash(
-                        "Successfully unsigned %d builds: %s"
-                        % (len(success), ", ".join(success))
+                        f"Successfully unsigned {len(success)} builds: {success_list}"
                     )
         except Exception as e:  # pragma: no cover
-            flash("Failed to unsign builds. %s" % str(e), "error")
+            flash(f"Failed to unsign builds. {e}", "error")
 
     def is_action_allowed(self, name):
         if name == "sign" and not self.can_sign:
