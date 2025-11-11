@@ -285,9 +285,6 @@ class BuildFactory(SQLAlchemyModelFactory):
         manifest = BuildManifest(**manifest_kwargs)
         self.buildmanifest = manifest
 
-        if create:
-            db.session.add(manifest)
-
     @factory.post_generation
     def create_spk(self, create, extracted, **kwargs):
         if not create:
