@@ -487,7 +487,7 @@ class VersionView(ModelView):
     @property
     def can_unsign(self):
         return current_user.has_role("admin")
-    
+
     @property
     def can_resync_info(self):
         return current_user.has_role("admin")
