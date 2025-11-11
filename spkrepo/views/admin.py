@@ -487,6 +487,10 @@ class VersionView(ModelView):
     @property
     def can_unsign(self):
         return current_user.has_role("admin")
+    
+    @property
+    def can_resync_info(self):
+        return current_user.has_role("admin")
 
     # Hooks
     def on_model_delete(self, model):
@@ -775,7 +779,7 @@ class VersionView(ModelView):
                 )
 
     def is_action_allowed(self, name):
-        if name == "resync_info" and not current_user.has_role("admin"):
+        if name == "resync_info" and not self.can_resync_info:
             return False
         if name == "sign" and not self.can_sign:
             return False
@@ -786,7 +790,7 @@ class VersionView(ModelView):
 
     def handle_action(self, return_view=None):
         action = request.form.get("action")
-        if action == "resync_info" and not current_user.has_role("admin"):
+        if action == "resync_info" and not self.can_resync_info:
             abort(403)
         return super(VersionView, self).handle_action(return_view)
 
@@ -817,6 +821,10 @@ class BuildView(ModelView):
 
     @property
     def can_unsign(self):
+        return current_user.has_role("admin")
+
+    @property
+    def can_resync_info(self):
         return current_user.has_role("admin")
 
     # View
@@ -1097,7 +1105,7 @@ class BuildView(ModelView):
                 )
 
     def is_action_allowed(self, name):
-        if name == "resync_info" and not current_user.has_role("admin"):
+        if name == "resync_info" and not self.can_resync_info:
             return False
         if name == "sign" and not self.can_sign:
             return False
@@ -1108,7 +1116,7 @@ class BuildView(ModelView):
 
     def handle_action(self, return_view=None):
         action = request.form.get("action")
-        if action == "resync_info" and not current_user.has_role("admin"):
+        if action == "resync_info" and not self.can_resync_info:
             abort(403)
         return super(BuildView, self).handle_action(return_view)
 
