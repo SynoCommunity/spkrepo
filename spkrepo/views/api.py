@@ -118,8 +118,7 @@ class Packages(Resource):
             architecture = Architecture.find(info_arch, syno=True)
             if architecture is None:
                 abort(422, message=f"Unknown architecture: {info_arch}")
-            # ensure the architecture is bound to the current session
-            architectures.append(db.session.merge(architecture, load=False))
+            architectures.append(architecture)
 
         # Firmware
         input_firmware = spk.info.get("firmware") or spk.info.get("os_min_ver")
@@ -129,7 +128,6 @@ class Packages(Resource):
         firmware = Firmware.find(int(match.group("build")))
         if firmware is None:
             abort(422, message="Unknown firmware")
-        firmware = db.session.merge(firmware, load=False)
 
         firmware_max = None
         input_firmware_max = spk.info.get("os_max_ver")
@@ -148,7 +146,6 @@ class Packages(Resource):
                         "minimum firmware"
                     ),
                 )
-            firmware_max = db.session.merge(firmware_max, load=False)
 
         # Services
         input_install_dep_services = spk.info.get("install_dep_services", None)
@@ -166,7 +163,6 @@ class Packages(Resource):
                 abort(403, message="Insufficient permissions to create new packages")
             create_package = True
             package = Package(name=spk.info["package"], author=current_user)
-            db.session.add(package)
         elif (
             not current_user.has_role("package_admin")
             and current_user not in package.maintainers
@@ -190,6 +186,7 @@ class Packages(Resource):
             elif spk.info.get("startable") is True or spk.info.get("ctl_stop") is True:
                 version_startable = True
             version = Version(
+                package=package,
                 upstream_version=match.group("upstream_version"),
                 version=int(match.group("version")),
                 changelog=spk.info.get("changelog"),
@@ -203,10 +200,6 @@ class Packages(Resource):
                 startable=version_startable,
                 license=spk.license,
             )
-
-            db.session.add(version)
-
-            version.package = package
 
             for key, value in spk.info.items():
                 if key == "install_dep_services":
@@ -286,8 +279,6 @@ class Packages(Resource):
             checksum=spk.info.get("checksum"),
         )
 
-        db.session.add(build)
-
         build.firmware_min_id = firmware.id
         build.firmware_max_id = firmware_max.id if firmware_max else None
         build.architectures = architectures
@@ -309,7 +300,6 @@ class Packages(Resource):
                     current_app.config["GNUPG_PATH"],
                 )
             except SPKSignError as e:
-                db.session.rollback()
                 abort(500, message="Failed to sign package", details=str(e))
 
         # save files
@@ -328,7 +318,6 @@ class Packages(Resource):
             # generate md5 hash
             build.md5 = build.calculate_md5()
         except Exception as e:  # pragma: no cover
-            db.session.rollback()
             if create_package:
                 shutil.rmtree(os.path.join(data_path, package.name), ignore_errors=True)
             elif create_version:
@@ -344,6 +333,7 @@ class Packages(Resource):
             abort(500, message="Failed to save files", details=str(e))
 
         # insert the package into database
+        db.session.add(build)
         db.session.commit()
 
         # success
