@@ -275,8 +275,8 @@ class Packages(Resource):
         build = Build(
             version=version,
             architectures=architectures,
-            firmware_min_id=firmware.id,
-            firmware_max_id=(firmware_max.id if firmware_max else None),
+            firmware_min=firmware,
+            firmware_max=firmware_max,
             publisher=current_user,
             path=os.path.join(package.name, str(version.version), build_filename),
             checksum=spk.info.get("checksum"),
