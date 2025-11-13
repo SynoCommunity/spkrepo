@@ -6,8 +6,15 @@ import tarfile
 from mock import Mock
 
 from spkrepo.exceptions import SPKParseError
-from spkrepo.models import Architecture
-from spkrepo.tests.common import BaseTestCase, BuildFactory, create_info, create_spk
+from spkrepo.ext import db
+from spkrepo.models import Architecture, Package
+from spkrepo.tests.common import (
+    BaseTestCase,
+    BuildFactory,
+    PackageFactory,
+    create_info,
+    create_spk,
+)
 from spkrepo.utils import SPK
 
 
@@ -374,3 +381,36 @@ class SPKUnsignTestCase(BaseTestCase):
         with self.assertRaises(ValueError) as cm:
             spk.unsign()
         self.assertEqual("Not signed", str(cm.exception))
+
+
+class PopulateDBTestCase(BaseTestCase):
+    def test_dependency_packages_exist(self):
+        git_package = PackageFactory(name="git")
+        sickbeard_package = PackageFactory(name="sickbeard")
+
+        BuildFactory(
+            version__package=sickbeard_package,
+            buildmanifest={"dependencies": git_package.name},
+        )
+
+        db.session.commit()
+
+        sickbeard = Package.find("sickbeard")
+        self.assertIsNotNone(sickbeard)
+
+        dependency_names = {
+            dependency
+            for version in sickbeard.versions
+            for build in version.builds
+            if build.buildmanifest and build.buildmanifest.dependencies
+            for dependency in build.buildmanifest.dependencies.split(":")
+            if dependency
+        }
+
+        self.assertEqual({git_package.name}, dependency_names)
+
+        for dependency in dependency_names:
+            self.assertIsNotNone(
+                Package.find(dependency),
+                f"Expected dependency package '{dependency}' to exist",
+            )
