@@ -53,7 +53,7 @@ class User(db.Model, UserMixin):
         return self.username
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.username)
+        return f"<{self.__class__.__name__} {self.username}>"
 
 
 class Role(db.Model, RoleMixin):
@@ -75,7 +75,7 @@ class Role(db.Model, RoleMixin):
         return self.name
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.name)
+        return f"<{self.__class__.__name__} {self.name}>"
 
 
 user_datastore = SQLAlchemyUserDatastore(db, User, Role)
@@ -107,7 +107,7 @@ class Architecture(db.Model):
         return self.code
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.code)
+        return f"<{self.__class__.__name__} {self.code}>"
 
 
 class Language(db.Model):
@@ -126,7 +126,7 @@ class Language(db.Model):
         return self.name
 
     def __repr__(self):
-        return "<{} [{}] {}>".format(self.__class__.__name__, self.code, self.name)
+        return f"<{self.__class__.__name__} [{self.code}] {self.name}>"
 
 
 class Firmware(db.Model):
@@ -144,13 +144,13 @@ class Firmware(db.Model):
 
     @property
     def firmware_string(self):
-        return "%s-%d" % (self.version, self.build)
+        return f"{self.version}-{self.build}"
 
     def __str__(self):
         return self.firmware_string
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.firmware_string)
+        return f"<{self.__class__.__name__} {self.firmware_string}>"
 
 
 class Screenshot(db.Model):
@@ -182,7 +182,7 @@ class Screenshot(db.Model):
         return self.path
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.path)
+        return f"<{self.__class__.__name__} {self.path}>"
 
 
 class Icon(db.Model):
@@ -218,7 +218,7 @@ class Icon(db.Model):
         return self.path
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.path)
+        return f"<{self.__class__.__name__} {self.path}>"
 
 
 class Service(db.Model):
@@ -236,7 +236,7 @@ class Service(db.Model):
         return self.code
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.code)
+        return f"<{self.__class__.__name__} {self.code}>"
 
 
 class DisplayName(db.Model):
@@ -257,7 +257,7 @@ class DisplayName(db.Model):
         return self.displayname
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.language.name)
+        return f"<{self.__class__.__name__} {self.language.name}>"
 
 
 class Description(db.Model):
@@ -278,7 +278,7 @@ class Description(db.Model):
         return self.description
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.language.name)
+        return f"<{self.__class__.__name__} {self.language.name}>"
 
 
 version_service_dependency = db.Table(
@@ -310,7 +310,7 @@ class Download(db.Model):
         return self.ip_address
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.ip_address)
+        return f"<{self.__class__.__name__} {self.ip_address}>"
 
 
 build_architecture = db.Table(
@@ -326,7 +326,10 @@ class Build(db.Model):
     # Columns
     id = db.Column(db.Integer, primary_key=True)
     version_id = db.Column(db.Integer, db.ForeignKey("version.id"), nullable=False)
-    firmware_id = db.Column(db.Integer, db.ForeignKey("firmware.id"), nullable=False)
+    firmware_min_id = db.Column(
+        db.Integer, db.ForeignKey("firmware.id"), nullable=False
+    )
+    firmware_max_id = db.Column(db.Integer, db.ForeignKey("firmware.id"))
     publisher_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     checksum = db.Column(db.Unicode(32))
     extract_size = db.Column(db.Integer)
@@ -343,22 +346,37 @@ class Build(db.Model):
         order_by="Architecture.code",
         lazy=False,
     )
-    firmware = db.relationship("Firmware", lazy=False)
+    firmware_min = db.relationship(
+        "Firmware",
+        foreign_keys=[firmware_min_id],
+        lazy=False,
+    )
+    firmware_max = db.relationship(
+        "Firmware",
+        foreign_keys=[firmware_max_id],
+        lazy=False,
+    )
     publisher = db.relationship("User", foreign_keys=[publisher_user_id])
     downloads = db.relationship(
         "Download",
         back_populates="build",
         cascade="save-update, merge, delete, delete-orphan",
     )
+    buildmanifest = db.relationship(
+        "BuildManifest",
+        back_populates="build",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
     @classmethod
     def generate_filename(cls, package, version, firmware, architectures):
-        return "%s.v%d.f%d[%s].spk" % (
-            package.name,
-            version.version,
-            firmware.build,
-            "-".join(a.code for a in architectures),
-        )
+        """
+        Backward-compatible signature.
+        Pass the intended firmware (typically firmware_min) from the caller.
+        """
+        arch_codes = "-".join(a.code for a in architectures)
+        return f"{package.name}.v{version.version}.f{firmware.build}[{arch_codes}].spk"
 
     def save(self, stream):
         with io.open(
@@ -396,7 +414,29 @@ class Build(db.Model):
         return self.path
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.path)
+        return f"<{self.__class__.__name__} {self.path}>"
+
+
+class BuildManifest(db.Model):
+    __tablename__ = "buildmanifest"
+
+    # Columns
+    id = db.Column(db.Integer, primary_key=True)
+    build_id = db.Column(
+        db.Integer, db.ForeignKey("build.id"), nullable=False, unique=True
+    )
+    dependencies = db.Column(db.Unicode(255))
+    conf_dependencies = db.Column(db.UnicodeText)
+    conflicts = db.Column(db.Unicode(255))
+    conf_conflicts = db.Column(db.UnicodeText)
+    conf_privilege = db.Column(db.UnicodeText)
+    conf_resource = db.Column(db.UnicodeText)
+
+    # Relationships
+    build = db.relationship("Build", back_populates="buildmanifest")
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__} build_id={self.build_id}>"
 
 
 class Version(db.Model):
@@ -413,12 +453,6 @@ class Version(db.Model):
     distributor_url = db.Column(db.Unicode(255))
     maintainer = db.Column(db.Unicode(50))
     maintainer_url = db.Column(db.Unicode(255))
-    dependencies = db.Column(db.Unicode(255))
-    conf_dependencies = db.Column(db.UnicodeText)
-    conflicts = db.Column(db.Unicode(255))
-    conf_conflicts = db.Column(db.UnicodeText)
-    conf_privilege = db.Column(db.UnicodeText)
-    conf_resource = db.Column(db.UnicodeText)
     install_wizard = db.Column(db.Boolean)
     upgrade_wizard = db.Column(db.Boolean)
     startable = db.Column(db.Boolean)
@@ -504,13 +538,13 @@ class Version(db.Model):
         return self.version_string
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.version_string)
+        return f"<{self.__class__.__name__} {self.version_string}>"
 
     @hybrid_property
     def builds_per_dsm(self):
         result = {}
         for build in self.builds:
-            result.setdefault(build.firmware.version[0:1], []).append(build)
+            result.setdefault(build.firmware_min.version[0:1], []).append(build)
         return result
 
 
@@ -578,7 +612,7 @@ class Package(db.Model):
         return self.name
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.name)
+        return f"<{self.__class__.__name__} {self.name}>"
 
 
 @track_modifications.models_committed.connect

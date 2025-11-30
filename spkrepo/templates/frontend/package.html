@@ -34,11 +34,11 @@
           {% for build in builds %}
             {% if build.active %}
               {% for arch in build.architectures %}
-              <a href="{{ url_for('nas.data', path=build.path) }}"><span class="label label-success">{{ build.firmware.version }} {{ arch.code }}</span></a>
+              <a href="{{ url_for('nas.data', path=build.path) }}"><span class="label label-success">{{ build.firmware_min.version }}{% if build.firmware_max %}-{{ build.firmware_max.version }}{% endif %} {{ arch.code }}</span></a>
               {% endfor %}
             {% else %}
               {% for arch in build.architectures %}
-              <a href="{{ url_for('nas.data', path=build.path) }}"><span class="label label-default" data-toggle="tooltip" title="Inactive: Manual installation only. This Package might be under development and have pending issues.">{{ build.firmware.version }} {{ arch.code }}</span></a>
+              <a href="{{ url_for('nas.data', path=build.path) }}"><span class="label label-default" data-toggle="tooltip" title="Inactive: Manual installation only. This Package might be under development and have pending issues.">{{ build.firmware_min.version }}{% if build.firmware_max %}-{{ build.firmware_max.version }}{% endif %} {{ arch.code }}</span></a>
               {% endfor %}
             {% endif %}
           {% endfor %}

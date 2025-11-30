@@ -16,6 +16,7 @@ from ..ext import db
 from ..models import (
     Architecture,
     Build,
+    BuildManifest,
     Description,
     DisplayName,
     Firmware,
@@ -116,13 +117,11 @@ class Packages(Resource):
         for info_arch in spk.info["arch"].split():
             architecture = Architecture.find(info_arch, syno=True)
             if architecture is None:
-                abort(422, message="Unknown architecture: %s" % info_arch)
+                abort(422, message=f"Unknown architecture: {info_arch}")
             architectures.append(architecture)
 
         # Firmware
-        input_firmware = spk.info.get("firmware")
-        if input_firmware is None:
-            input_firmware = spk.info.get("os_min_ver")
+        input_firmware = spk.info.get("firmware") or spk.info.get("os_min_ver")
         match = firmware_re.match(input_firmware)
         if not match:
             abort(422, message="Invalid firmware")
@@ -130,15 +129,31 @@ class Packages(Resource):
         if firmware is None:
             abort(422, message="Unknown firmware")
 
+        firmware_max = None
+        input_firmware_max = spk.info.get("os_max_ver")
+        if input_firmware_max:
+            max_match = firmware_re.match(input_firmware_max)
+            if not max_match:
+                abort(422, message="Invalid maximum firmware")
+            firmware_max = Firmware.find(int(max_match.group("build")))
+            if firmware_max is None:
+                abort(422, message="Unknown maximum firmware")
+            if firmware_max.build < firmware.build:
+                abort(
+                    422,
+                    message=(
+                        "Maximum firmware must be greater than or equal to "
+                        "minimum firmware"
+                    ),
+                )
+
         # Services
         input_install_dep_services = spk.info.get("install_dep_services", None)
         if input_install_dep_services:
             for info_dep_service in input_install_dep_services.split():
                 service_name = Service.find(info_dep_service)
                 if service_name is None:
-                    abort(
-                        422, message="Unknown dependent service: %s" % info_dep_service
-                    )
+                    abort(422, message=f"Unknown dependent service: {info_dep_service}")
 
         # Package
         create_package = False
@@ -180,12 +195,6 @@ class Packages(Resource):
                 distributor_url=spk.info.get("distributor_url"),
                 maintainer=spk.info.get("maintainer"),
                 maintainer_url=spk.info.get("maintainer_url"),
-                dependencies=spk.info.get("install_dep_packages"),
-                conf_dependencies=spk.conf_dependencies,
-                conflicts=spk.info.get("install_conflict_packages"),
-                conf_conflicts=spk.conf_conflicts,
-                conf_privilege=spk.conf_privilege,
-                conf_resource=spk.conf_resource,
                 install_wizard="install" in spk.wizards,
                 upgrade_wizard="upgrade" in spk.wizards,
                 startable=version_startable,
@@ -223,7 +232,7 @@ class Packages(Resource):
             for size, icon in spk.icons.items():
                 version.icons[size] = Icon(
                     path=os.path.join(
-                        package.name, str(version.version), "icon_%s.png" % size
+                        package.name, str(version.version), f"icon_{size}.png"
                     ),
                     size=size,
                 )
@@ -231,17 +240,34 @@ class Packages(Resource):
         # Build
         if version.id:
             # check for conflicts
-            conflicts = set(architectures) & set(
-                Architecture.query.join(Architecture.builds)
-                .filter_by(version=version, firmware=firmware)
-                .all()
-            )
-            if conflicts:
-                abort(
-                    409,
-                    message="Conflicting architectures: %s"
-                    % (", ".join(sorted(a.code for a in conflicts))),
+            conflicts = set()
+            for existing_build in version.builds:
+                overlapping_architectures = set(existing_build.architectures) & set(
+                    architectures
                 )
+                if not overlapping_architectures:
+                    continue
+                existing_min_build = existing_build.firmware_min.build
+                existing_max_build = (
+                    existing_build.firmware_max.build
+                    if existing_build.firmware_max
+                    else existing_min_build
+                )
+                candidate_min_build = firmware.build
+                candidate_max_build = (
+                    firmware_max.build
+                    if firmware_max is not None
+                    else candidate_min_build
+                )
+                if (
+                    candidate_min_build > existing_max_build
+                    or candidate_max_build < existing_min_build
+                ):
+                    continue
+                conflicts |= overlapping_architectures
+            if conflicts:
+                conflict_codes = ", ".join(sorted(a.code for a in conflicts))
+                abort(409, message=f"Conflicting architectures: {conflict_codes}")
 
         build_filename = Build.generate_filename(
             package, version, firmware, architectures
@@ -249,10 +275,20 @@ class Packages(Resource):
         build = Build(
             version=version,
             architectures=architectures,
-            firmware=firmware,
+            firmware_min=firmware,
+            firmware_max=firmware_max,
             publisher=current_user,
             path=os.path.join(package.name, str(version.version), build_filename),
             checksum=spk.info.get("checksum"),
+        )
+
+        build.buildmanifest = BuildManifest(
+            dependencies=spk.info.get("install_dep_packages"),
+            conf_dependencies=spk.conf_dependencies,
+            conflicts=spk.info.get("install_conflict_packages"),
+            conf_conflicts=spk.conf_conflicts,
+            conf_privilege=spk.conf_privilege,
+            conf_resource=spk.conf_resource,
         )
 
         # sign

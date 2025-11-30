@@ -135,9 +135,9 @@ class SPK(object):
                                 base64.b64decode(value.encode("utf-8"))
                             )
                         except binascii.Error:
-                            raise SPKParseError("Invalid INFO icon: %s" % key)
+                            raise SPKParseError(f"Invalid INFO icon: {key}")
                         except TypeError:
-                            raise SPKParseError("Invalid INFO icon: %s" % key)
+                            raise SPKParseError(f"Invalid INFO icon: {key}")
                     # read booleans
                     elif key in self.BOOLEAN_INFO:
                         if value == "yes":
@@ -145,7 +145,7 @@ class SPK(object):
                         elif value == "no":
                             self.info[key] = False
                         else:
-                            raise SPKParseError("Invalid INFO boolean: %s" % key)
+                            raise SPKParseError(f"Invalid INFO boolean: {key}")
                     elif key == "package":
                         match = self.package_re.match(value)
                         if not match:
@@ -156,10 +156,8 @@ class SPK(object):
 
                 # validate info
                 if not set(self.info.keys()) >= self.REQUIRED_INFO:
-                    raise SPKParseError(
-                        "Missing INFO: %s"
-                        % ", ".join(self.REQUIRED_INFO - set(self.info.keys()))
-                    )
+                    missing = ", ".join(self.REQUIRED_INFO - set(self.info.keys()))
+                    raise SPKParseError(f"Missing INFO: {missing}")
 
                 # read conf files
                 if (
@@ -200,7 +198,7 @@ class SPK(object):
 
                         try:
                             json.loads(conf_privilege)
-                        except json.JSONDecodeError:
+                        except (json.JSONDecodeError, ValueError):
                             raise SPKParseError("File conf/privilege is not valid JSON")
 
                         self.conf_privilege = conf_privilege
@@ -214,7 +212,7 @@ class SPK(object):
 
                         try:
                             json.loads(conf_resource)
-                        except json.JSONDecodeError:
+                        except (json.JSONDecodeError, ValueError):
                             raise SPKParseError("File conf/resource is not valid JSON")
 
                         self.conf_resource = conf_resource
@@ -377,7 +375,7 @@ class SPK(object):
         # check the response status
         if response.status_code != 200:
             raise SPKSignError(
-                "Timestamp server returned with status code %d" % response.status_code
+                f"Timestamp server returned with status code {response.status_code}"
             )
 
         # verify the timestamp

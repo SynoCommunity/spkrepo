@@ -30,8 +30,20 @@ def create_user(username, email, password):
 @with_appcontext
 def populate_db():
     """Populate the database with some packages."""
-    from spkrepo.models import Architecture
+    from spkrepo.models import Architecture, BuildManifest
     from spkrepo.tests.common import BuildFactory, PackageFactory, VersionFactory
+
+    def attach_manifest(build, *, dependencies=None):
+        """Attach a simple manifest to a build with optional dependencies."""
+        manifest = BuildManifest(
+            dependencies=dependencies,
+            conf_dependencies=None,
+            conflicts=None,
+            conf_conflicts=None,
+            conf_privilege=None,
+            conf_resource=None,
+        )
+        build.buildmanifest = manifest
 
     with db.session.no_autoflush:
         # nzbget
@@ -41,7 +53,6 @@ def populate_db():
                 package=nzbget_package,
                 upstream_version="12.0",
                 version=10,
-                dependencies=None,
                 report_url=None,
                 install_wizard=True,
                 upgrade_wizard=False,
@@ -50,7 +61,6 @@ def populate_db():
                 package=nzbget_package,
                 upstream_version="13.0",
                 version=11,
-                dependencies=None,
                 report_url=None,
                 install_wizard=True,
                 upgrade_wizard=False,
@@ -58,7 +68,9 @@ def populate_db():
         ]
         nzbget_builds = []
         for version in nzbget_versions:
-            builds = BuildFactory.create_batch(2, version=version, active=True)
+            builds = BuildFactory.create_batch(
+                2, version=version, active=True, buildmanifest=False
+            )
             nzbget_builds.extend(builds)
 
         # sickbeard
@@ -68,8 +80,6 @@ def populate_db():
                 package=sickbeard_package,
                 upstream_version="20140528",
                 version=3,
-                dependencies="git",
-                service_dependencies=[],
                 report_url=None,
                 install_wizard=False,
                 upgrade_wizard=False,
@@ -79,8 +89,6 @@ def populate_db():
                 package=sickbeard_package,
                 upstream_version="20140702",
                 version=4,
-                dependencies="git",
-                service_dependencies=[],
                 report_url=None,
                 install_wizard=False,
                 upgrade_wizard=False,
@@ -94,8 +102,10 @@ def populate_db():
                     version=version,
                     architectures=[Architecture.find("noarch")],
                     active=True,
+                    buildmanifest=False,
                 )
             )
+            attach_manifest(sickbeard_builds[-1], dependencies="git")
 
         # git
         git_package = PackageFactory(name="git")
@@ -104,8 +114,6 @@ def populate_db():
                 package=git_package,
                 upstream_version="1.8.4",
                 version=3,
-                dependencies=None,
-                service_dependencies=[],
                 report_url=None,
                 install_wizard=False,
                 upgrade_wizard=False,
@@ -115,8 +123,6 @@ def populate_db():
                 package=git_package,
                 upstream_version="2.1.2",
                 version=4,
-                dependencies=None,
-                service_dependencies=[],
                 report_url=None,
                 install_wizard=False,
                 upgrade_wizard=False,
@@ -125,7 +131,9 @@ def populate_db():
         ]
         git_builds = []
         for version in git_versions:
-            builds = BuildFactory.create_batch(3, version=version, active=True)
+            builds = BuildFactory.create_batch(
+                3, version=version, active=True, buildmanifest=False
+            )
             git_builds.extend(builds)
 
         # bitlbee
@@ -135,8 +143,6 @@ def populate_db():
                 package=bitlbee_package,
                 upstream_version="3.2.2",
                 version=9,
-                dependencies=None,
-                service_dependencies=[],
                 report_url=None,
                 install_wizard=False,
                 upgrade_wizard=False,
@@ -146,8 +152,6 @@ def populate_db():
                 package=bitlbee_package,
                 upstream_version="3.2.3",
                 version=10,
-                dependencies=None,
-                service_dependencies=[],
                 report_url=None,
                 install_wizard=False,
                 upgrade_wizard=False,
@@ -157,8 +161,6 @@ def populate_db():
                 package=bitlbee_package,
                 upstream_version="3.3.0",
                 version=11,
-                dependencies=None,
-                service_dependencies=[],
                 install_wizard=False,
                 upgrade_wizard=False,
                 startable=True,
@@ -166,7 +168,9 @@ def populate_db():
         ]
         bitlbee_builds = []
         for version in bitlbee_versions:
-            builds = BuildFactory.create_batch(3, version=version, active=True)
+            builds = BuildFactory.create_batch(
+                3, version=version, active=True, buildmanifest=False
+            )
             bitlbee_builds.extend(builds)
     db.session.commit()
 

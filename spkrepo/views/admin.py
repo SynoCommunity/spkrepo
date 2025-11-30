@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 import io
 import os
+import re
 import shutil
 
-from flask import abort, current_app, flash, redirect, url_for
+from flask import abort, current_app, flash, redirect, request, url_for
 from flask_admin import AdminIndexView, expose
 from flask_admin.actions import action
 from flask_admin.contrib.sqla import ModelView
@@ -19,7 +20,12 @@ from ..ext import db
 from ..models import (
     Architecture,
     Build,
+    BuildManifest,
+    Description,
+    DisplayName,
     Firmware,
+    Icon,
+    Language,
     Package,
     Screenshot,
     Service,
@@ -65,11 +71,11 @@ class UserView(ModelView):
             flash(
                 "User was successfully activated."
                 if len(users) == 1
-                else "%d users were successfully activated." % len(users)
+                else f"{len(users)} users were successfully activated."
             )
         except Exception as e:  # pragma: no cover
             self.session.rollback()
-            flash("Failed to activate users. %s" % str(e), "error")
+            flash(f"Failed to activate users. {e}", "error")
 
     @action(
         "deactivate",
@@ -85,11 +91,11 @@ class UserView(ModelView):
             flash(
                 "User was successfully deactivated."
                 if len(users) == 1
-                else "%d users were successfully deactivated." % len(users)
+                else f"{len(users)} users were successfully deactivated."
             )
         except Exception as e:  # pragma: no cover
             self.session.rollback()
-            flash("Failed to deactivate users. %s" % str(e), "error")
+            flash(f"Failed to deactivate users. {e}", "error")
 
 
 class ArchitectureView(ModelView):
@@ -148,16 +154,17 @@ class ServiceView(ModelView):
 
 
 def screenshot_namegen(obj, file_data):
-    pattern = "screenshot_%0d%s"
     ext = os.path.splitext(file_data.filename)[1]
     i = 1
     while os.path.exists(
         os.path.join(
-            current_app.config["DATA_PATH"], obj.package.name, pattern % (i, ext)
+            current_app.config["DATA_PATH"],
+            obj.package.name,
+            f"screenshot_{i}{ext}",
         )
     ):
         i += 1
-    return os.path.join(obj.package.name, pattern % (i, ext))
+    return os.path.join(obj.package.name, f"screenshot_{i}{ext}")
 
 
 class ScreenshotView(ModelView):
@@ -180,8 +187,8 @@ class ScreenshotView(ModelView):
 
     def _display(view, context, model, name):
         return Markup(
-            '<img src="%s" alt="screenshot" height="100" width="100">'
-            % url_for("nas.data", path=model.path)
+            f'<img src="{url_for("nas.data", path=model.path)}" '
+            'alt="screenshot" height="100" width="100">'
         )
 
     column_formatters = {"path": _display}
@@ -204,6 +211,188 @@ class ScreenshotView(ModelView):
             "base_path": lambda: current_app.config["DATA_PATH"],
         }
     }
+
+
+firmware_re = re.compile(r"^(?P<version>\d\.\d)-(?P<build>\d{3,6})$")
+version_re = re.compile(r"^(?P<upstream_version>.*)-(?P<version>\d+)$")
+
+
+def _resolve_firmware(session, value, allow_none=False):
+    if not value:
+        if allow_none:
+            return None
+        raise ValueError("Missing firmware information in INFO")
+
+    match = firmware_re.match(value)
+    if not match:
+        raise ValueError(f"Invalid firmware value: {value}")
+
+    firmware = Firmware.find(int(match.group("build")))
+    if firmware is None:
+        raise ValueError(f"Unknown firmware: {value}")
+
+    return session.merge(firmware, load=False)
+
+
+def _apply_info_from_spk(session, build, spk, md5_hash):
+    info = spk.info
+    package = build.version.package
+
+    if info.get("package") != package.name:
+        raise ValueError("INFO package does not match build package")
+
+    version_match = version_re.match(info.get("version", ""))
+    if not version_match:
+        raise ValueError("Invalid INFO version value")
+
+    version_number = int(version_match.group("version"))
+    if version_number != build.version.version:
+        raise ValueError("INFO version does not match build version")
+
+    version = build.version
+    version.upstream_version = version_match.group("upstream_version")
+    version.changelog = info.get("changelog")
+    version.report_url = info.get("report_url")
+    version.distributor = info.get("distributor")
+    version.distributor_url = info.get("distributor_url")
+    version.maintainer = info.get("maintainer")
+    version.maintainer_url = info.get("maintainer_url")
+    version.install_wizard = "install" in spk.wizards
+    version.upgrade_wizard = "upgrade" in spk.wizards
+
+    startable = None
+    if info.get("startable") is False or info.get("ctl_stop") is False:
+        startable = False
+    elif info.get("startable") is True or info.get("ctl_stop") is True:
+        startable = True
+    version.startable = startable
+
+    version.license = spk.license
+
+    install_services = info.get("install_dep_services")
+    services = []
+    if install_services:
+        for service_code in install_services.split():
+            service = Service.find(service_code)
+            if service is None:
+                raise ValueError(f"Unknown dependent service: {service_code}")
+            services.append(service)
+    version.service_dependencies = services
+
+    version.displaynames.clear()
+    default_display = info.get("displayname")
+    if default_display:
+        language = Language.find("enu")
+        if language is None:
+            raise ValueError("Language 'enu' is not defined")
+        version.displaynames[language.code] = DisplayName(
+            language=language, displayname=default_display
+        )
+
+    for key, value in info.items():
+        if key.startswith("displayname_"):
+            language_code = key.split("_", 1)[1]
+            language = Language.find(language_code)
+            if language is None:
+                raise ValueError(f"Unknown INFO displayname language: {language_code}")
+            version.displaynames[language.code] = DisplayName(
+                language=language, displayname=value
+            )
+
+    version.descriptions.clear()
+    default_description = info.get("description")
+    if default_description:
+        language = Language.find("enu")
+        if language is None:
+            raise ValueError("Language 'enu' is not defined")
+        version.descriptions[language.code] = Description(
+            language=language, description=default_description
+        )
+
+    for key, value in info.items():
+        if key.startswith("description_"):
+            language_code = key.split("_", 1)[1]
+            language = Language.find(language_code)
+            if language is None:
+                raise ValueError(f"Unknown INFO description language: {language_code}")
+            version.descriptions[language.code] = Description(
+                language=language, description=value
+            )
+
+    existing_icons = dict(version.icons)
+    new_sizes = set(spk.icons.keys()) if spk.icons else set()
+    for stale_size in set(existing_icons) - new_sizes:
+        del version.icons[stale_size]
+
+    if spk.icons:
+        version_path = os.path.join(
+            current_app.config["DATA_PATH"], package.name, str(version.version)
+        )
+        os.makedirs(version_path, exist_ok=True)
+        for size, icon_stream in spk.icons.items():
+            icon_stream.seek(0)
+            icon_path = os.path.join(
+                package.name, str(version.version), f"icon_{size}.png"
+            )
+            icon = version.icons.get(size)
+            if icon is None:
+                icon = Icon(path=icon_path, size=size)
+                version.icons[size] = icon
+            else:
+                icon.path = icon_path
+            icon.save(icon_stream)
+
+    architectures = []
+    for info_arch in info["arch"].split():
+        architecture = Architecture.find(info_arch, syno=True)
+        if architecture is None:
+            raise ValueError(f"Unknown architecture: {info_arch}")
+        architectures.append(session.merge(architecture, load=False))
+    build.architectures = architectures
+
+    firmware = _resolve_firmware(
+        session, info.get("firmware") or info.get("os_min_ver")
+    )
+    build.firmware_min = firmware
+
+    firmware_max_value = info.get("os_max_ver")
+    firmware_max = _resolve_firmware(session, firmware_max_value, allow_none=True)
+    if firmware_max and firmware_max.build < firmware.build:
+        raise ValueError(
+            "Maximum firmware must be greater than or equal to minimum firmware"
+        )
+    build.firmware_max = firmware_max
+
+    build.checksum = info.get("checksum")
+    build.md5 = md5_hash
+
+    manifest = build.buildmanifest
+    if manifest is None:
+        manifest = BuildManifest()
+        build.buildmanifest = manifest
+
+    manifest.dependencies = info.get("install_dep_packages")
+    manifest.conf_dependencies = spk.conf_dependencies
+    manifest.conflicts = info.get("install_conflict_packages")
+    manifest.conf_conflicts = spk.conf_conflicts
+    manifest.conf_privilege = spk.conf_privilege
+    manifest.conf_resource = spk.conf_resource
+
+    session.flush()
+
+
+def _resync_build_metadata(session, build):
+    if not build.path:
+        raise ValueError("Build has no file path")
+
+    file_path = os.path.join(current_app.config["DATA_PATH"], build.path)
+    if not os.path.exists(file_path):
+        raise ValueError("Build file missing on disk")
+
+    with io.open(file_path, "rb") as stream:
+        spk = SPK(stream)
+        md5 = spk.calculate_md5()
+        _apply_info_from_spk(session, build, spk, md5)
 
 
 class PackageView(ModelView):
@@ -299,6 +488,10 @@ class VersionView(ModelView):
     def can_unsign(self):
         return current_user.has_role("admin")
 
+    @property
+    def can_resync_info(self):
+        return current_user.has_role("admin")
+
     # Hooks
     def on_model_delete(self, model):
         version_path = os.path.join(
@@ -389,12 +582,14 @@ class VersionView(ModelView):
             flash(
                 "Builds on version were successfully activated."
                 if len(versions) == 1
-                else "Builds have been successfully activated for %d versions."
-                % len(versions)
+                else (
+                    "Builds have been successfully activated for "
+                    f"{len(versions)} versions."
+                )
             )
         except Exception as e:  # pragma: no cover
             self.session.rollback()
-            flash("Failed to activate versions' builds. %s" % str(e), "error")
+            flash(f"Failed to activate versions' builds. {e}", "error")
 
     @action(
         "deactivate",
@@ -411,12 +606,14 @@ class VersionView(ModelView):
             flash(
                 "Builds on version were successfully deactivated."
                 if len(versions) == 1
-                else "Builds have been successfully deactivated for %d versions."
-                % len(versions)
+                else (
+                    "Builds have been successfully deactivated for "
+                    f"{len(versions)} versions."
+                )
             )
         except Exception as e:  # pragma: no cover
             self.session.rollback()
-            flash("Failed to deactivate versions' builds. %s" % str(e), "error")
+            flash(f"Failed to deactivate versions' builds. {e}", "error")
 
     @action("sign", "Sign", "Are you sure you want to sign selected builds?")
     def action_sign(self, ids):
@@ -448,32 +645,35 @@ class VersionView(ModelView):
                             failed.append(filename)
                 if failed:
                     if len(failed) == 1:
-                        flash("Failed to sign build %s" % failed[0], "error")
+                        flash(f"Failed to sign build {failed[0]}", "error")
                     else:
+                        failed_list = ", ".join(failed)
                         flash(
-                            "Failed to sign %d builds: %s"
-                            % (len(failed), ", ".join(failed)),
+                            f"Failed to sign {len(failed)} builds: {failed_list}",
                             "error",
                         )
                 if already_signed:
                     if len(already_signed) == 1:
-                        flash("Build %s already signed" % already_signed[0], "info")
+                        flash(f"Build {already_signed[0]} already signed", "info")
                     else:
+                        already_list = ", ".join(already_signed)
                         flash(
-                            "%d builds already signed: %s"
-                            % (len(already_signed), ", ".join(already_signed)),
+                            (
+                                f"{len(already_signed)} builds already signed: "
+                                f"{already_list}"
+                            ),
                             "info",
                         )
                 if success:
                     if len(success) == 1:
-                        flash("Build %s successfully signed" % success[0])
+                        flash(f"Build {success[0]} successfully signed")
                     else:
+                        success_list = ", ".join(success)
                         flash(
-                            "Successfully signed %d builds: %s"
-                            % (len(success), ", ".join(success))
+                            f"Successfully signed {len(success)} builds: {success_list}"
                         )
         except Exception as e:  # pragma: no cover
-            flash("Failed to sign builds. %s" % str(e), "error")
+            flash(f"Failed to sign builds. {e}", "error")
 
     @action("unsign", "Unsign", "Are you sure you want to unsign selected builds?")
     def action_unsign(self, ids):
@@ -502,40 +702,97 @@ class VersionView(ModelView):
                             failed.append(filename)
                 if failed:
                     if len(failed) == 1:
-                        flash("Failed to unsign build %s" % failed[0], "error")
+                        flash(f"Failed to unsign build {failed[0]}", "error")
                     else:
+                        failed_list = ", ".join(failed)
                         flash(
-                            "Failed to unsign %d builds: %s"
-                            % (len(failed), ", ".join(failed)),
+                            f"Failed to unsign {len(failed)} builds: {failed_list}",
                             "error",
                         )
                 if not_signed:
                     if len(not_signed) == 1:
-                        flash("Build %s not signed" % not_signed[0], "info")
+                        flash(f"Build {not_signed[0]} not signed", "info")
                     else:
+                        not_signed_list = ", ".join(not_signed)
                         flash(
-                            "%d builds not signed: %s"
-                            % (len(not_signed), ", ".join(not_signed)),
+                            f"{len(not_signed)} builds not signed: {not_signed_list}",
                             "info",
                         )
                 if success:
                     if len(success) == 1:
-                        flash("Build %s successfully unsigned" % success[0])
+                        flash(f"Build {success[0]} successfully unsigned")
                     else:
+                        success_list = ", ".join(success)
                         flash(
-                            "Successfully unsigned %d builds: %s"
-                            % (len(success), ", ".join(success))
+                            (
+                                f"Successfully unsigned {len(success)} builds: "
+                                f"{success_list}"
+                            )
                         )
         except Exception as e:  # pragma: no cover
-            flash("Failed to unsign builds. %s" % str(e), "error")
+            flash(f"Failed to unsign builds. {e}", "error")
+
+    @action(
+        "resync_info",
+        "Resync INFO",
+        "Reapply INFO metadata from builds on selected versions?",
+    )
+    def action_resync_info(self, ids):
+        successes = []
+        failures = []
+
+        versions = get_query_for_ids(self.get_query(), self.model, ids).all()
+        for version in versions:
+            for build in version.builds:
+                filename = os.path.basename(build.path) if build.path else str(build.id)
+                try:
+                    _resync_build_metadata(self.session, build)
+                    self.session.commit()
+                    successes.append(filename)
+                except Exception as exc:  # pragma: no cover
+                    self.session.rollback()
+                    failures.append((filename, str(exc)))
+
+        if successes:
+            if len(successes) == 1:
+                flash(f"Build {successes[0]} metadata refreshed from INFO.")
+            else:
+                success_list = ", ".join(successes)
+                flash(
+                    (
+                        f"Refreshed metadata from INFO for {len(successes)} builds: "
+                        f"{success_list}"
+                    )
+                )
+
+        if failures:
+            if len(failures) == 1:
+                name, message = failures[0]
+                flash(f"Failed to resync build {name}: {message}", "error")
+            else:
+                failure_list = "; ".join(
+                    f"{name}: {message}" for name, message in failures
+                )
+                flash(
+                    f"Failed to resync {len(failures)} builds: {failure_list}",
+                    "error",
+                )
 
     def is_action_allowed(self, name):
+        if name == "resync_info" and not self.can_resync_info:
+            return False
         if name == "sign" and not self.can_sign:
             return False
         if name == "unsign" and not self.can_unsign:
             return False
 
         return super(VersionView, self).is_action_allowed(name)
+
+    def handle_action(self, return_view=None):
+        action = request.form.get("action")
+        if action == "resync_info" and not self.can_resync_info:
+            abort(403)
+        return super(VersionView, self).handle_action(return_view)
 
 
 class BuildView(ModelView):
@@ -566,13 +823,18 @@ class BuildView(ModelView):
     def can_unsign(self):
         return current_user.has_role("admin")
 
+    @property
+    def can_resync_info(self):
+        return current_user.has_role("admin")
+
     # View
     column_list = (
         "version.package",
         "version.upstream_version",
         "version.version",
         "architectures",
-        "firmware",
+        "firmware_min",
+        "firmware_max",
         "publisher",
         "insert_date",
         "active",
@@ -583,7 +845,8 @@ class BuildView(ModelView):
         "version.upstream_version": "Upstream Version",
         "version.version": "Version",
         "architectures.code": "Architecture",
-        "firmware.version": "Firmware Version",
+        "firmware_min.version": "Minimum Firmware Version",
+        "firmware_max.version": "Maximum Firmware Version",
         "publisher.username": "Publisher Username",
     }
     column_filters = (
@@ -591,7 +854,8 @@ class BuildView(ModelView):
         "version.upstream_version",
         "version.version",
         "architectures.code",
-        "firmware.version",
+        "firmware_min.version",
+        "firmware_max.version",
         "publisher.username",
         "active",
     )
@@ -599,7 +863,8 @@ class BuildView(ModelView):
         ("version.package", "version.package.name"),
         ("version.upstream_version", "version.upstream_version"),
         ("version.version", "version.version"),
-        ("firmware", "firmware.build"),
+        ("firmware_min", "firmware_min.build"),
+        ("firmware_max", "firmware_max.build"),
         ("publisher", "publisher.username"),
         ("insert_date", "insert_date"),
         ("active", "active"),
@@ -654,11 +919,11 @@ class BuildView(ModelView):
             flash(
                 "Build was successfully activated."
                 if len(builds) == 1
-                else "%d builds were successfully activated." % len(builds)
+                else f"{len(builds)} builds were successfully activated."
             )
         except Exception as e:  # pragma: no cover
             self.session.rollback()
-            flash("Failed to activate builds. %s" % str(e), "error")
+            flash(f"Failed to activate builds. {e}", "error")
 
     @action(
         "deactivate",
@@ -674,11 +939,11 @@ class BuildView(ModelView):
             flash(
                 "Build was successfully deactivated."
                 if len(builds) == 1
-                else "%d builds were successfully deactivated." % len(builds)
+                else f"{len(builds)} builds were successfully deactivated."
             )
         except Exception as e:  # pragma: no cover
             self.session.rollback()
-            flash("Failed to deactivate builds. %s" % str(e), "error")
+            flash(f"Failed to deactivate builds. {e}", "error")
 
     @action("sign", "Sign", "Are you sure you want to sign selected builds?")
     def action_sign(self, ids):
@@ -709,32 +974,30 @@ class BuildView(ModelView):
                         failed.append(filename)
             if failed:
                 if len(failed) == 1:
-                    flash("Failed to sign build %s" % failed[0], "error")
+                    flash(f"Failed to sign build {failed[0]}", "error")
                 else:
+                    failed_list = ", ".join(failed)
                     flash(
-                        "Failed to sign %d builds: %s"
-                        % (len(failed), ", ".join(failed)),
+                        f"Failed to sign {len(failed)} builds: {failed_list}",
                         "error",
                     )
             if already_signed:
                 if len(already_signed) == 1:
-                    flash("Build %s already signed" % already_signed[0], "info")
+                    flash(f"Build {already_signed[0]} already signed", "info")
                 else:
+                    already_list = ", ".join(already_signed)
                     flash(
-                        "%d builds already signed: %s"
-                        % (len(already_signed), ", ".join(already_signed)),
+                        f"{len(already_signed)} builds already signed: {already_list}",
                         "info",
                     )
             if success:
                 if len(success) == 1:
-                    flash("Build %s successfully signed" % success[0])
+                    flash(f"Build {success[0]} successfully signed")
                 else:
-                    flash(
-                        "Successfully signed %d builds: %s"
-                        % (len(success), ", ".join(success))
-                    )
+                    success_list = ", ".join(success)
+                    flash(f"Successfully signed {len(success)} builds: {success_list}")
         except Exception as e:  # pragma: no cover
-            flash("Failed to sign builds. %s" % str(e), "error")
+            flash(f"Failed to sign builds. {e}", "error")
 
     @action("unsign", "Unsign", "Are you sure you want to unsign selected builds?")
     def action_unsign(self, ids):
@@ -762,40 +1025,100 @@ class BuildView(ModelView):
                         failed.append(filename)
             if failed:
                 if len(failed) == 1:
-                    flash("Failed to unsign build %s" % failed[0], "error")
+                    flash(f"Failed to unsign build {failed[0]}", "error")
                 else:
+                    failed_list = ", ".join(failed)
                     flash(
-                        "Failed to unsign %d builds: %s"
-                        % (len(failed), ", ".join(failed)),
+                        f"Failed to unsign {len(failed)} builds: {failed_list}",
                         "error",
                     )
             if not_signed:
                 if len(not_signed) == 1:
-                    flash("Build %s not signed" % not_signed[0], "info")
+                    flash(f"Build {not_signed[0]} not signed", "info")
                 else:
+                    not_signed_list = ", ".join(not_signed)
                     flash(
-                        "%d builds not signed: %s"
-                        % (len(not_signed), ", ".join(not_signed)),
+                        f"{len(not_signed)} builds not signed: {not_signed_list}",
                         "info",
                     )
             if success:
                 if len(success) == 1:
-                    flash("Build %s successfully unsigned" % success[0])
+                    flash(f"Build {success[0]} successfully unsigned")
                 else:
+                    success_list = ", ".join(success)
                     flash(
-                        "Successfully unsigned %d builds: %s"
-                        % (len(success), ", ".join(success))
+                        f"Successfully unsigned {len(success)} builds: {success_list}"
                     )
         except Exception as e:  # pragma: no cover
-            flash("Failed to unsign builds. %s" % str(e), "error")
+            flash(f"Failed to unsign builds. {e}", "error")
+
+    @action(
+        "resync_info",
+        "Resync INFO",
+        "Reapply INFO metadata from selected builds?",
+    )
+    def action_resync_info(self, ids):
+        successes = []
+        failures = []
+
+        for build_id in ids:
+            try:
+                build = self.session.get(self.model, int(build_id))
+            except (TypeError, ValueError):
+                continue
+
+            if build is None:
+                continue
+
+            filename = os.path.basename(build.path) if build.path else str(build_id)
+            try:
+                _resync_build_metadata(self.session, build)
+                self.session.commit()
+                successes.append(filename)
+            except Exception as exc:  # pragma: no cover
+                self.session.rollback()
+                failures.append((filename, str(exc)))
+
+        if successes:
+            if len(successes) == 1:
+                flash(f"Build {successes[0]} metadata refreshed from INFO.")
+            else:
+                success_list = ", ".join(successes)
+                flash(
+                    (
+                        f"Refreshed metadata from INFO for {len(successes)} builds: "
+                        f"{success_list}"
+                    )
+                )
+
+        if failures:
+            if len(failures) == 1:
+                name, message = failures[0]
+                flash(f"Failed to resync build {name}: {message}", "error")
+            else:
+                failure_list = "; ".join(
+                    f"{name}: {message}" for name, message in failures
+                )
+                flash(
+                    f"Failed to resync {len(failures)} builds: {failure_list}",
+                    "error",
+                )
 
     def is_action_allowed(self, name):
+        if name == "resync_info" and not self.can_resync_info:
+            return False
         if name == "sign" and not self.can_sign:
             return False
         if name == "unsign" and not self.can_unsign:
             return False
 
         return super(BuildView, self).is_action_allowed(name)
+
+    def handle_action(self, return_view=None):
+        action = request.form.get("action")
+        if action == "resync_info" and not self.can_resync_info:
+            abort(403)
+        return super(BuildView, self).handle_action(return_view)
 
 
 class IndexView(AdminIndexView):

@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 import base64
 import os
+import warnings
 from datetime import datetime, timedelta, timezone
 
 from flask import current_app, url_for
+from sqlalchemy.exc import SAWarning
 
 from spkrepo.ext import db
 from spkrepo.models import Architecture, Build, Firmware, Role
@@ -28,7 +30,8 @@ class PackagesTestCase(BaseTestCase):
     def assertBuildInserted(self, inserted_build, build, publisher):
         # build
         self.assertEqual(inserted_build.architectures, build.architectures)
-        self.assertIs(inserted_build.firmware, build.firmware)
+        self.assertIs(inserted_build.firmware_min, build.firmware_min)
+        self.assertIs(inserted_build.firmware_max, build.firmware_max)
         self.assertIs(inserted_build.publisher, publisher)
         self.assertEqual(inserted_build.extract_size, build.extract_size)
         self.assertAlmostEqual(
@@ -53,10 +56,6 @@ class PackagesTestCase(BaseTestCase):
         self.assertEqual(
             inserted_build.version.maintainer_url, build.version.maintainer_url
         )
-        self.assertEqual(
-            inserted_build.version.dependencies, build.version.dependencies
-        )
-        self.assertEqual(inserted_build.version.conflicts, build.version.conflicts)
         self.assertEqual(
             inserted_build.version.service_dependencies,
             build.version.service_dependencies,
@@ -92,6 +91,33 @@ class PackagesTestCase(BaseTestCase):
         )
         self.assertEqual(inserted_build.version.startable, build.version.startable)
         self.assertEqual(inserted_build.version.license, build.version.license)
+
+        # manifest
+        self.assertIsNotNone(inserted_build.buildmanifest)
+        self.assertEqual(
+            inserted_build.buildmanifest.dependencies,
+            build.buildmanifest.dependencies,
+        )
+        self.assertEqual(
+            inserted_build.buildmanifest.conflicts,
+            build.buildmanifest.conflicts,
+        )
+        self.assertEqual(
+            inserted_build.buildmanifest.conf_dependencies,
+            build.buildmanifest.conf_dependencies,
+        )
+        self.assertEqual(
+            inserted_build.buildmanifest.conf_conflicts,
+            build.buildmanifest.conf_conflicts,
+        )
+        self.assertEqual(
+            inserted_build.buildmanifest.conf_privilege,
+            build.buildmanifest.conf_privilege,
+        )
+        self.assertEqual(
+            inserted_build.buildmanifest.conf_resource,
+            build.buildmanifest.conf_resource,
+        )
 
         # package
         self.assertEqual(
@@ -173,6 +199,64 @@ class PackagesTestCase(BaseTestCase):
             response.data.decode(),
         )
 
+    def test_post_allows_different_firmware_same_architecture(self):
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        base_build = BuildFactory.build(architectures=[Architecture.find("noarch")])
+        with (
+            create_spk(base_build) as spk,
+            warnings.catch_warnings(record=True) as base_warns,
+        ):
+            warnings.simplefilter("always", SAWarning)
+            first_response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
+            )
+        self.assert201(first_response)
+        base_sa_warnings = [w for w in base_warns if issubclass(w.category, SAWarning)]
+        self.assertFalse(
+            base_sa_warnings,
+            (
+                "Unexpected SAWarnings encountered: "
+                f"{[str(w.message) for w in base_sa_warnings]}"
+            ),
+        )
+
+        newer_firmware = (
+            Firmware.query.filter(Firmware.build != base_build.firmware_min.build)
+            .order_by(Firmware.build.desc())
+            .first()
+        )
+        self.assertIsNotNone(newer_firmware)
+
+        followup_build = BuildFactory.build(
+            version=base_build.version,
+            architectures=base_build.architectures,
+            firmware_min=newer_firmware,
+        )
+        with (
+            create_spk(followup_build) as spk,
+            warnings.catch_warnings(record=True) as caught,
+        ):
+            warnings.simplefilter("always", SAWarning)
+            response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
+            )
+
+        self.assert201(response)
+        sa_warnings = [w for w in caught if issubclass(w.category, SAWarning)]
+        self.assertFalse(
+            sa_warnings,
+            (
+                "Unexpected SAWarnings encountered: "
+                f"{[str(w.message) for w in sa_warnings]}"
+            ),
+        )
+
     def test_post_new_package_not_author_not_maintainer_user(self):
         user = UserFactory(roles=[Role.find("developer")])
         db.session.commit()
@@ -240,7 +324,7 @@ class PackagesTestCase(BaseTestCase):
         user = UserFactory(roles=[Role.find("developer")])
         db.session.commit()
 
-        build = BuildFactory.build(firmware=Firmware(version="1.0", build=42))
+        build = BuildFactory.build(firmware_min=Firmware(version="1.0", build=42))
         with create_spk(build) as spk:
             response = self.client.post(
                 url_for("api.packages"),
@@ -254,7 +338,7 @@ class PackagesTestCase(BaseTestCase):
         user = UserFactory(roles=[Role.find("developer")])
         db.session.commit()
 
-        build = BuildFactory.build(firmware=Firmware(version="1.0", build=421))
+        build = BuildFactory.build(firmware_min=Firmware(version="1.0", build=421))
         with create_spk(build) as spk:
             response = self.client.post(
                 url_for("api.packages"),
