@@ -37,6 +37,9 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
     # Enable or disable Flask’s subdomain routing per config
     app.subdomain_matching = app.config.get("SUBDOMAIN_MATCHING", False)
 
+    # Disable strict slashes
+    app.url_map.strict_slashes = False
+
     if config is not None:
         app.config.from_object(config)
 
