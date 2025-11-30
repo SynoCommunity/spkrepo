@@ -14,7 +14,7 @@ Synology Package Repository
 ### Installation
 1. Run postgres, e.g. using docker with `docker compose up db`
 2. Install dependencies with `poetry install`
-3. Run the next commands in the virtual environment `poetry shell`
+3. Next activate the env so we can run the next commands in the virtual environment: `eval "$(poetry env activate)"` or use the poetry shell: `poetry self add poetry-plugin-shell` and `poetry shell`
 4. Create the tables with `flask db upgrade`
 5. Populate the database with some fake packages with `flask spkrepo populate_db`
 6. Add a user with `flask spkrepo create_user -u admin -e admin@synocommunity.com -p adminadmin`
@@ -83,7 +83,13 @@ SPKREPO_CONFIG="$PWD/config.py" gunicorn -w 4 'wsgi:app'
 
 ## Add migration
 
-```
+```bash
 cd migrations/
 alembic revision -m "update build path length"
+```
+
+## Test NAS API
+
+```sh
+curl "http://localhost:5000/nas?package_update_channel=beta&build=24922&language=enu&major=6&micro=2&arch=x86_64&minor=2"
 ```
