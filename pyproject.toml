@@ -1,6 +1,6 @@
 [project]
 name = "spkrepo"
-version = "0.2.8"
+version = "0.3.0"
 description = "Synology Package Repository"
 license = "MIT"
 authors = [ { name="Antoine Bertin", email="diaoulael@gmail.com" } ]

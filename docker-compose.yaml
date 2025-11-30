@@ -12,7 +12,7 @@ services:
       - 5432:5432
   app:
     build: .
-    image: ghcr.io/synocommunity/spkrepo:v0.2.8
+    image: ghcr.io/synocommunity/spkrepo:v0.3.0
     command: flask run -h 0.0.0.0
     ports:
       - 5000:5000
