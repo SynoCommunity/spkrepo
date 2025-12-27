@@ -33,10 +33,12 @@ To clean data created by fake packages, run `flask spkrepo depopulate_db`
 6. API is available at http://localhost:5000/api
 7. Run the test suite with `pytest -v`
 
+### Run Uing [uv](https://docs.astral.sh/uv/)
+1. `uv run --python 3.12 flask run` or with custom config `SPKREPO_CONFIG=config.py uv run --python 3.11 flask run`
+
 ## Docker Compose Run
 - If you also want to run the app in docker you can with `docker compose up app`
 - You can run both postgres and the app with `docker compose up`
-
 
 ## Deployment
 ### Configuration
