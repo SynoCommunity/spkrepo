@@ -73,11 +73,10 @@ CACHE_TYPE= "SimpleCache"
 GNUPG_PATH= "/usr/local/bin/gpg"
 ```
 
-### Checks
+### Run Tests & Linters
 ```
 uv run pytest -v
-uvx flake8
-uvx ruff check .
+uvx pre-commit run --all-files
 ```
 
 ### Docker
