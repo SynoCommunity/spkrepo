@@ -4,4 +4,5 @@ extend-ignore = E203
 per-file-ignores = __init__.py:F401
 exclude =
     docs/*
+    .venv/*
     migrations/*

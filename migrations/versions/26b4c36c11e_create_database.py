@@ -6,11 +6,11 @@ Create Date: 2014-12-03 00:14:38.427893
 
 """
 
-revision = "26b4c36c11e"
-down_revision = None
-
 import sqlalchemy as sa
 from alembic import op
+
+revision = "26b4c36c11e"
+down_revision = None
 
 
 def upgrade():

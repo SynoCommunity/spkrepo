@@ -7,6 +7,14 @@ from flask.cli import with_appcontext
 from .ext import db
 
 
+def _create_user(username, email, password):
+    from spkrepo.tests.common import UserFactory
+
+    with db.session.no_autoflush:
+        UserFactory(username=username, email=email, password=password)
+    db.session.commit()
+
+
 @click.group()
 def spkrepo():
     """Spkrepo admin commands."""
@@ -19,17 +27,14 @@ def spkrepo():
 @with_appcontext
 def create_user(username, email, password):
     """Create a new user with an activated account."""
-    from spkrepo.tests.common import UserFactory
-
-    with db.session.no_autoflush:
-        UserFactory(username=username, email=email, password=password)
-    db.session.commit()
+    _create_user(username, email, password)
+    click.echo("User Created")
 
 
 @spkrepo.command("populate_db")
 @with_appcontext
 def populate_db():
-    """Populate the database with some packages."""
+    """Populate the database with some sample packages."""
     from spkrepo.models import Architecture, BuildManifest
     from spkrepo.tests.common import BuildFactory, PackageFactory, VersionFactory
 
@@ -178,7 +183,7 @@ def populate_db():
 @spkrepo.command("depopulate_db")
 @with_appcontext
 def depopulate_db():
-    """Depopulate database."""
+    """Delete all packages from database and file system."""
     from flask import current_app
 
     from spkrepo.models import Package
@@ -194,12 +199,51 @@ def depopulate_db():
         )
 
     db.session.commit()
+    click.echo("Done")
+
+
+@spkrepo.command("create_admin")
+@click.option("-u", "--username", help="username", default="admin")
+@click.option("-e", "--email", help="email", default="admin@synocommunity.com")
+@click.option("-p", "--password", help="password", default=None)
+@with_appcontext
+def create_admin(username, email, password):
+    """Create a new super admin user."""
+    from spkrepo.ext import db
+    from spkrepo.models import Role, User
+
+    click.echo("Creating admin user…")
+    existing_admin = User.query.filter_by(email=email).first()
+    if existing_admin:
+        click.echo(f"'{username}' user already exists, skipping creation")
+    else:
+        _create_user(
+            username=username,
+            email=email,
+            password=password,
+        )
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        raise ValueError(f"No user with email {email}")
+
+    for role_name in ("admin", "package_admin", "developer"):
+        role = Role.query.filter_by(name=role_name).first()
+        if not role:
+            raise ValueError(f"No role with name '{role_name}'")
+
+        if role not in user.roles:
+            user.roles.append(role)
+            db.session.commit()
+            click.echo(f"'{username}' user assigned '{role}' role")
+
+    click.echo("Admin user created")
 
 
 @spkrepo.command("clean")
 @with_appcontext
 def clean():
-    """Clean data path."""
+    """Clean data path, removes all packages on filesystem."""
     from flask import current_app
 
     # do not remove and recreate the path since it may be a docker volume
@@ -210,3 +254,4 @@ def clean():
             os.remove(os.path.join(root, name))
         for name in dirs:
             os.rmdir(os.path.join(root, name))
+    click.echo("Done")

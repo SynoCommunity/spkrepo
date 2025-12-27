@@ -8,33 +8,49 @@ Synology Package Repository
 ## Development
 ### Requirements
 1. Install docker and docker-compose
-2. Install python and poetry
-3. Optionally install direnv and a working poetry layout as described [here](https://github.com/direnv/direnv/issues/592#issuecomment-856227234) in your `~/.config/direnv/direnvrc`
+2. Install uv
+3. Install pre-commit e.g. `uv tool install pre-commit`
 
 ### Installation
 1. Run postgres, e.g. using docker with `docker compose up db`
-2. Install dependencies with `poetry install`
-3. Next activate the env so we can run the next commands in the virtual environment: `eval "$(poetry env activate)"` or use the poetry shell: `poetry self add poetry-plugin-shell` and `poetry shell`
-4. Create the tables with `flask db upgrade`
-5. Populate the database with some fake packages with `flask spkrepo populate_db`
-6. Add a user with `flask spkrepo create_user -u admin -e admin@synocommunity.com -p adminadmin`
-7. Grant the created user with Administrator permissions `flask roles add admin@synocommunity.com admin`
-8. Grant the created user with Package Administrator permissions `flask roles add admin@synocommunity.com package_admin`
-9. Grant the created user with Developer permissions `flask roles add admin@synocommunity.com developer`
+2. Install dependencies with `uv sync`
+4. Create the tables with `uv run flask db upgrade`
+5. Populate the database with some fake packages with `uv run flask spkrepo populate_db`
+6. Add an admin account with `uv run flask spkrepo create_admin -u admin -e admin@synocommunity.com -p adminadmin`
 
-To clean data created by fake packages, run `flask spkrepo depopulate_db`
+To clean data created by fake packages, run `uv run flask spkrepo depopulate_db`
 
 ### Run
 1. Start postgres with `docker compose up db`
-2. Start the development server with `flask run`
+2. Start the development server with `uv run flask run`
 3. Website is available at http://localhost:5000
 4. Admin interface is available at http://localhost:5000/admin
 5. NAS interface is available at http://localhost:5000/nas
 6. API is available at http://localhost:5000/api
-7. Run the test suite with `pytest -v`
+7. Run the test suite with `uv run pytest -v`
 
-### Run using [uv](https://docs.astral.sh/uv/)
-1. `uv run --python 3.12 flask run` or with custom config `SPKREPO_CONFIG=config.py uv run --python 3.11 flask run`
+### spkrepo CLI Usage
+
+```sh
+Usage: flask spkrepo [OPTIONS] COMMAND [ARGS]...
+
+  Spkrepo admin commands.
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  clean          Clean data path.
+  create_admin   Create a new admin user.
+  create_user    Create a new user with an activated account.
+  depopulate_db  Depopulate database.
+  populate_db    Populate the database with some packages.
+```
+1. Add a user with `uv run flask spkrepo create_user -u admin -e admin@synocommunity.com -p adminadmin`
+2. Grant the created user with Administrator permissions `uv run flask roles add admin@synocommunity.com admin`
+3. Grant the created user with Package Administrator permissions `uv run flask roles add admin@synocommunity.com package_admin`
+4. Grant the created user with Developer permissions `uv run flask roles add admin@synocommunity.com developer`
+
 
 ## Docker Compose Run
 - If you also want to run the app in docker you can with `docker compose up app`
@@ -58,6 +74,11 @@ CACHE_TYPE= "SimpleCache"
 GNUPG_PATH= "/usr/local/bin/gpg"
 ```
 
+### Run Tests & Linters
+```
+uv run pytest -v
+uvx pre-commit run --all-files
+```
 
 ### Docker
 Example usage:
@@ -81,13 +102,14 @@ Example:
 ```bash
 pip install gunicorn
 SPKREPO_CONFIG="$PWD/config.py" gunicorn -w 4 'wsgi:app'
+# or
+SPKREPO_CONFIG="$PWD/config.py" uv run --with gunicorn gunicorn -b 0.0.0.0:8080 -w 4 wsgi:app
 ```
 
 ## Add migration
 
 ```bash
-cd migrations/
-alembic revision -m "update build path length"
+uv run flask db revision -m "update build path length"
 ```
 
 ## Test NAS API
