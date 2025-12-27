@@ -2,12 +2,15 @@
 name = "spkrepo"
 version = "0.3.0"
 description = "Synology Package Repository"
-license = "MIT"
-authors = [ { name="Antoine Bertin", email="diaoulael@gmail.com" } ]
+authors = [{ name = "Antoine Bertin", email = "diaoulael@gmail.com" }]
+requires-python = ">=3.12,<4.0"
 readme = "README.md"
-repository = "https://github.com/SynoCommunity/spkrepo"
-keywords = ["synology", "package", "repository"]
-homepage = "https://synocommunity.com"
+license = "MIT"
+keywords = [
+    "synology",
+    "package",
+    "repository",
+]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Web Environment",
@@ -19,7 +22,6 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
     "Topic :: System :: Archiving :: Packaging",
 ]
-requires-python = ">=3.12,<4.0"
 dependencies = [
     "flask~=3.1.2",
     "flask-sqlalchemy~=3.1.1",
@@ -32,16 +34,18 @@ dependencies = [
     "flask-principal~=0.4.0",
     "flask-admin~=2.0.1",
     "sqlalchemy~=2.0.44",
-    "pillow~=12.0.0",            # provides image handling for flask-admin[images] extra
+    "pillow~=12.0.0",
     "flask-restful~=0.3.10",
     "flask-caching~=2.3.1",
-    "python-gnupg~=0.5.5",       # Modern maintained fork of 'gnupg'; fixes Py3.11+ warnings
+    "python-gnupg~=0.5.5",
     "requests~=2.32.5",
     "click~=8.3.0",
     "flask-migrate~=4.1.0",
     "alembic~=1.17.1",
     "flask-debugtoolbar~=0.16.0",
 ]
+homepage = "https://synocommunity.com"
+repository = "https://github.com/SynoCommunity/spkrepo"
 
 [dependency-groups]
 dev = [
@@ -58,6 +62,10 @@ dev = [
     "setuptools~=78.0",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [tool.isort]
 line_length = 88
 multi_line_output = 3
@@ -66,6 +74,5 @@ force_grid_wrap = 0
 use_parentheses = true
 known_first_party = "spkrepo"
 
-[build-system]
-requires = ["poetry>=2.2.1"]
-build-backend = "poetry.core.masonry.api"
+[project.scripts]
+flask = "flask.cli:main"
