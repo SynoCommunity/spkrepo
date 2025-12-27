@@ -33,7 +33,7 @@ To clean data created by fake packages, run `flask spkrepo depopulate_db`
 6. API is available at http://localhost:5000/api
 7. Run the test suite with `pytest -v`
 
-### Run Uing [uv](https://docs.astral.sh/uv/)
+### Run using [uv](https://docs.astral.sh/uv/)
 1. `uv run --python 3.12 flask run` or with custom config `SPKREPO_CONFIG=config.py uv run --python 3.11 flask run`
 
 ## Docker Compose Run
