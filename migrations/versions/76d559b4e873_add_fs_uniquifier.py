@@ -6,11 +6,11 @@ Create Date: 2022-10-24 09:31:01.814928
 
 """
 
-revision = "76d559b4e873"
-down_revision = "d429595e8362"
-
 import sqlalchemy as sa
 from alembic import op
+
+revision = "76d559b4e873"
+down_revision = "d429595e8362"
 
 
 def upgrade():
