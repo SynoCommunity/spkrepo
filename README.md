@@ -9,6 +9,7 @@ Synology Package Repository
 ### Requirements
 1. Install docker and docker-compose
 2. Install uv
+3. Install pre-commit e.g. `uv tool install pre-commit`
 
 ### Installation
 1. Run postgres, e.g. using docker with `docker compose up db`
