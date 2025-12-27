@@ -189,7 +189,7 @@ def depopulate_db():
     from spkrepo.models import Package
 
     for package in Package.query.all():
-        # Delete the package and it's associated versions and builds
+        # Delete the package and its associated versions and builds
         db.session.delete(package)
 
         # Remove the directory associated with the package (if it exists)
