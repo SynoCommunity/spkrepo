@@ -10,35 +10,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
-          python-version: 3.12
+          python-version-file: ".python-version"
       - uses: pre-commit/action@v3.0.1
 
   test:
     runs-on: ubuntu-latest
+    env:
+      UV_CACHE_DIR: /tmp/.uv-cache
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
-          python-version: 3.12
-      - uses: snok/install-poetry@v1
+          python-version-file: ".python-version"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
         with:
-          virtualenvs-in-project: true
+          version: "0.9.18"
       - name: Install ImageMagick
         run: |
           sudo apt-get update
           sudo apt-get install -y imagemagick
-      - name: Load cached venv
-        id: cached-poetry-dependencies
+      - name: Restore uv cache
+        id: cached-uv-dependencies
         uses: actions/cache@v4
         with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/pyproject.toml') }}
+          path: /tmp/.uv-cache
+          key: uv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/pyproject.toml') }}
       - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root
+        if: steps.cached-uv-dependencies.outputs.cache-hit != 'true'
+        run: uv sync --locked --no-install-project --all-extras --dev
       - name: Install project
-        run: poetry install --no-interaction
+        run: uv sync --locked --all-extras --dev
       - name: Run tests
-        run: poetry run pytest -v
+        run: uv run pytest -v
+      - name: Minimize uv cache
+        run: uv cache prune --ci

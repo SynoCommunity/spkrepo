@@ -172,9 +172,7 @@ class VersionFactory(SQLAlchemyModelFactory):
     version = factory.Sequence(lambda n: n)
     upstream_version = factory.LazyAttribute(
         lambda x: (
-            f"{fake.random_int(0, 5)}."
-            f"{fake.random_int(0, 10)}."
-            f"{fake.random_int(0, 15)}"
+            f"{fake.random_int(0, 5)}.{fake.random_int(0, 10)}.{fake.random_int(0, 15)}"
         )
     )
     changelog = factory.LazyAttribute(lambda x: fake.sentence())
