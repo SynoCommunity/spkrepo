@@ -146,7 +146,6 @@ class CatalogTestCase(BaseTestCase):
         else:
             self.assertNotIn("startable", entry)
 
-
     def test_missing_data_arch(self):
         self.assert400(
             self.client.post(
