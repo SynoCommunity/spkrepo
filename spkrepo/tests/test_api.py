@@ -33,7 +33,8 @@ class PackagesTestCase(BaseTestCase):
         self.assertIs(inserted_build.firmware_min, build.firmware_min)
         self.assertIs(inserted_build.firmware_max, build.firmware_max)
         self.assertIs(inserted_build.publisher, publisher)
-        self.assertEqual(inserted_build.extract_size, build.extract_size)
+        self.assertIsNotNone(inserted_build.size)
+        self.assertGreater(inserted_build.size, 0)
         self.assertAlmostEqual(
             inserted_build.insert_date,
             datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None),
@@ -89,7 +90,10 @@ class PackagesTestCase(BaseTestCase):
         self.assertEqual(
             inserted_build.version.upgrade_wizard, build.version.upgrade_wizard
         )
-        self.assertEqual(inserted_build.version.startable, build.version.startable)
+        self.assertEqual(
+            inserted_build.version.startable,
+            True if build.version.startable is None else build.version.startable,
+        )
         self.assertEqual(inserted_build.version.license, build.version.license)
 
         # manifest

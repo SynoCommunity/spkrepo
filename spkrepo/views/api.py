@@ -180,11 +180,9 @@ class Packages(Resource):
         )
         if version is None:
             create_version = True
-            version_startable = None
+            version_startable = True  # default per Synology docs
             if spk.info.get("startable") is False or spk.info.get("ctl_stop") is False:
                 version_startable = False
-            elif spk.info.get("startable") is True or spk.info.get("ctl_stop") is True:
-                version_startable = True
             version = Version(
                 package=package,
                 upstream_version=match.group("upstream_version"),
@@ -316,6 +314,7 @@ class Packages(Resource):
             build.save(spk.stream)
             # generate md5 hash
             build.md5 = build.calculate_md5()
+            build.size = os.path.getsize(os.path.join(data_path, build.path))
         except Exception as e:  # pragma: no cover
             if create_package:
                 shutil.rmtree(os.path.join(data_path, package.name), ignore_errors=True)

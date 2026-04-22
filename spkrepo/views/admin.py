@@ -35,6 +35,13 @@ from ..models import (
 from ..utils import SPK
 
 
+def _bool_formatter(v, c, m, p):
+    value = getattr(m, p)
+    if value:
+        return Markup('<i class="fa fa-check-circle" style="color: #27ae60;"></i>')
+    return Markup('<i class="fa fa-times-circle" style="color: #e74c3c;"></i>')
+
+
 class UserView(ModelView):
     """View for :class:`~spkrepo.models.User`"""
 
@@ -260,11 +267,9 @@ def _apply_info_from_spk(session, build, spk, md5_hash):
     version.install_wizard = "install" in spk.wizards
     version.upgrade_wizard = "upgrade" in spk.wizards
 
-    startable = None
+    startable = True  # default per Synology docs
     if info.get("startable") is False or info.get("ctl_stop") is False:
         startable = False
-    elif info.get("startable") is True or info.get("ctl_stop") is True:
-        startable = True
     version.startable = startable
 
     version.license = spk.license
@@ -381,6 +386,17 @@ def _apply_info_from_spk(session, build, spk, md5_hash):
     session.flush()
 
 
+def _resync_build_file(build):
+    """Recalculate md5 and size from the build file on disk."""
+    if not build.path:
+        raise ValueError("Build has no file path")
+    file_path = os.path.join(current_app.config["DATA_PATH"], build.path)
+    if not os.path.exists(file_path):
+        raise ValueError("Build file missing on disk")
+    build.md5 = build.calculate_md5()
+    build.size = os.path.getsize(file_path)
+
+
 def _resync_build_metadata(session, build):
     if not build.path:
         raise ValueError("Build has no file path")
@@ -444,16 +460,36 @@ class PackageView(ModelView):
             shutil.rmtree(package_path)
 
     # View
-    column_list = ("name", "author", "maintainers", "insert_date")
+    column_list = (
+        "name",
+        "author",
+        "maintainers",
+        "download_count",
+        "recent_download_count",
+        "insert_date",
+    )
     column_sortable_list = (
         ("name", "name"),
         ("author", "author.username"),
         ("insert_date", "insert_date"),
+        ("download_count", "download_count"),
+        ("recent_download_count", "recent_download_count"),
     )
-
     column_formatters = {
-        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S")
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "download_count": lambda v, c, m, p: (
+            f"{m.download_count:,}" if m.download_count else "0"
+        ),
+        "recent_download_count": lambda v, c, m, p: (
+            f"{m.recent_download_count:,}" if m.recent_download_count else "0"
+        ),
     }
+    column_labels = {
+        "download_count": "Downloads",
+        "recent_download_count": "Recent Downloads",
+        "author.username": "Author",
+    }
+    column_filters = ("name", "author.username")
 
     # Form
     form_columns = ("name", "author", "maintainers")
@@ -492,6 +528,10 @@ class VersionView(ModelView):
     def can_resync_info(self):
         return current_user.has_role("admin")
 
+    @property
+    def can_resync_file(self):
+        return current_user.has_role("admin")
+
     # Hooks
     def on_model_delete(self, model):
         version_path = os.path.join(
@@ -506,18 +546,19 @@ class VersionView(ModelView):
         "upstream_version",
         "version",
         "beta",
-        "service_dependencies",
-        "insert_date",
+        "startable",
         "all_builds_active",
         "install_wizard",
         "upgrade_wizard",
-        "startable",
+        "insert_date",
     )
     column_labels = {
         "package.name": "Package Name",
         "version_string": "Version",
         "dependencies": "Dependencies",
-        "service_dependencies": "Services",
+        "all_builds_active": "All Active",
+        "install_wizard": "Install Wizard",
+        "upgrade_wizard": "Upgrade Wizard",
     }
     column_filters = (
         "package.name",
@@ -525,6 +566,7 @@ class VersionView(ModelView):
         "version",
         "beta",
         "all_builds_active",
+        "startable",
     )
     column_sortable_list = (
         ("package", "package.name"),
@@ -539,7 +581,12 @@ class VersionView(ModelView):
     )
 
     column_formatters = {
-        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S")
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "all_builds_active": _bool_formatter,
+        "install_wizard": _bool_formatter,
+        "upgrade_wizard": _bool_formatter,
+        "startable": _bool_formatter,
+        "beta": _bool_formatter,
     }
     column_default_sort = (Version.insert_date, True)
 
@@ -637,7 +684,7 @@ class VersionView(ModelView):
                                 current_app.config["GNUPG_TIMESTAMP_URL"],
                                 current_app.config["GNUPG_PATH"],
                             )
-                            build.md5 = spk.calculate_md5()
+                            _resync_build_file(build)
                             self.session.commit()
                             success.append(filename)
                         except Exception:
@@ -694,7 +741,7 @@ class VersionView(ModelView):
                             continue
                         try:
                             spk.unsign()
-                            build.md5 = spk.calculate_md5()
+                            _resync_build_file(build)
                             self.session.commit()
                             success.append(filename)
                         except Exception:
@@ -734,7 +781,7 @@ class VersionView(ModelView):
 
     @action(
         "resync_info",
-        "Resync INFO",
+        "Resync Info",
         "Reapply INFO metadata from builds on selected versions?",
     )
     def action_resync_info(self, ids):
@@ -778,8 +825,52 @@ class VersionView(ModelView):
                     "error",
                 )
 
+    @action(
+        "resync_file",
+        "Resync File",
+        "Recalculate md5 and size from build files on selected versions?",
+    )
+    def action_resync_file(self, ids):
+        successes = []
+        failures = []
+
+        versions = get_query_for_ids(self.get_query(), self.model, ids).all()
+        for version in versions:
+            for build in version.builds:
+                filename = os.path.basename(build.path) if build.path else str(build.id)
+                try:
+                    _resync_build_file(build)
+                    self.session.commit()
+                    successes.append(filename)
+                except Exception as exc:
+                    self.session.rollback()
+                    failures.append((filename, str(exc)))
+
+        if successes:
+            if len(successes) == 1:
+                flash(f"Build {successes[0]} file data refreshed.")
+            else:
+                success_list = ", ".join(successes)
+                flash(
+                    f"Refreshed file data for {len(successes)} builds: {success_list}"
+                )
+
+        if failures:
+            if len(failures) == 1:
+                name, message = failures[0]
+                flash(f"Failed to resync build {name}: {message}", "error")
+            else:
+                failure_list = "; ".join(
+                    f"{name}: {message}" for name, message in failures
+                )
+                flash(
+                    f"Failed to resync {len(failures)} builds: {failure_list}", "error"
+                )
+
     def is_action_allowed(self, name):
         if name == "resync_info" and not self.can_resync_info:
+            return False
+        if name == "resync_file" and not self.can_resync_file:
             return False
         if name == "sign" and not self.can_sign:
             return False
@@ -791,6 +882,8 @@ class VersionView(ModelView):
     def handle_action(self, return_view=None):
         action = request.form.get("action")
         if action == "resync_info" and not self.can_resync_info:
+            abort(403)
+        if action == "resync_file" and not self.can_resync_file:
             abort(403)
         return super(VersionView, self).handle_action(return_view)
 
@@ -827,6 +920,10 @@ class BuildView(ModelView):
     def can_resync_info(self):
         return current_user.has_role("admin")
 
+    @property
+    def can_resync_file(self):
+        return current_user.has_role("admin")
+
     # View
     column_list = (
         "version.package",
@@ -835,9 +932,10 @@ class BuildView(ModelView):
         "architectures",
         "firmware_min",
         "firmware_max",
+        "size",
+        "active",
         "publisher",
         "insert_date",
-        "active",
     )
     column_labels = {
         "version.package": "Package",
@@ -848,6 +946,7 @@ class BuildView(ModelView):
         "firmware_min.version": "Minimum Firmware Version",
         "firmware_max.version": "Maximum Firmware Version",
         "publisher.username": "Publisher Username",
+        "size": "Size",
     }
     column_filters = (
         "version.package.name",
@@ -858,6 +957,7 @@ class BuildView(ModelView):
         "firmware_max.version",
         "publisher.username",
         "active",
+        "size",
     )
     column_sortable_list = (
         ("version.package", "version.package.name"),
@@ -868,10 +968,15 @@ class BuildView(ModelView):
         ("publisher", "publisher.username"),
         ("insert_date", "insert_date"),
         ("active", "active"),
+        ("size", "size"),
     )
 
     column_formatters = {
-        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S")
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "size": lambda v, c, m, p: (
+            f"{m.size / 1024 / 1024:.1f} MB" if m.size else None
+        ),
+        "active": _bool_formatter,
     }
     column_default_sort = (Build.insert_date, True)
 
@@ -966,7 +1071,7 @@ class BuildView(ModelView):
                             current_app.config["GNUPG_TIMESTAMP_URL"],
                             current_app.config["GNUPG_PATH"],
                         )
-                        build.md5 = spk.calculate_md5()
+                        _resync_build_file(build)
                         self.session.commit()
                         success.append(filename)
                     except Exception:
@@ -1017,7 +1122,7 @@ class BuildView(ModelView):
                         continue
                     try:
                         spk.unsign()
-                        build.md5 = spk.calculate_md5()
+                        _resync_build_file(build)
                         self.session.commit()
                         success.append(filename)
                     except Exception:
@@ -1054,7 +1159,7 @@ class BuildView(ModelView):
 
     @action(
         "resync_info",
-        "Resync INFO",
+        "Resync Info",
         "Reapply INFO metadata from selected builds?",
     )
     def action_resync_info(self, ids):
@@ -1104,8 +1209,58 @@ class BuildView(ModelView):
                     "error",
                 )
 
+    @action(
+        "resync_file",
+        "Resync File",
+        "Recalculate md5 and size from selected build files?",
+    )
+    def action_resync_file(self, ids):
+        successes = []
+        failures = []
+
+        for build_id in ids:
+            try:
+                build = self.session.get(self.model, int(build_id))
+            except (TypeError, ValueError):
+                continue
+
+            if build is None:
+                continue
+
+            filename = os.path.basename(build.path) if build.path else str(build_id)
+            try:
+                _resync_build_file(build)
+                self.session.commit()
+                successes.append(filename)
+            except Exception as exc:
+                self.session.rollback()
+                failures.append((filename, str(exc)))
+
+        if successes:
+            if len(successes) == 1:
+                flash(f"Build {successes[0]} file data refreshed.")
+            else:
+                success_list = ", ".join(successes)
+                flash(
+                    f"Refreshed file data for {len(successes)} builds: {success_list}"
+                )
+
+        if failures:
+            if len(failures) == 1:
+                name, message = failures[0]
+                flash(f"Failed to resync build {name}: {message}", "error")
+            else:
+                failure_list = "; ".join(
+                    f"{name}: {message}" for name, message in failures
+                )
+                flash(
+                    f"Failed to resync {len(failures)} builds: {failure_list}", "error"
+                )
+
     def is_action_allowed(self, name):
         if name == "resync_info" and not self.can_resync_info:
+            return False
+        if name == "resync_file" and not self.can_resync_file:
             return False
         if name == "sign" and not self.can_sign:
             return False
@@ -1117,6 +1272,8 @@ class BuildView(ModelView):
     def handle_action(self, return_view=None):
         action = request.form.get("action")
         if action == "resync_info" and not self.can_resync_info:
+            abort(403)
+        if action == "resync_file" and not self.can_resync_file:
             abort(403)
         return super(BuildView, self).handle_action(return_view)
 

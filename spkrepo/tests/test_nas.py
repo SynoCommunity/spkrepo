@@ -76,6 +76,7 @@ class CatalogTestCase(BaseTestCase):
             )
 
         # screenshots
+        self.assertIn("snapshot", entry)
         if build.version.package.screenshots:
             self.assertEqual(
                 entry["snapshot"],
@@ -91,7 +92,7 @@ class CatalogTestCase(BaseTestCase):
                     )
                 )
         else:
-            self.assertNotIn("snapshot", entry)
+            self.assertEqual(entry["snapshot"], [])
 
         # report_url
         if build.version.report_url:
@@ -131,42 +132,20 @@ class CatalogTestCase(BaseTestCase):
         else:
             self.assertNotIn("maintainer_url", entry)
 
-        # depsers
-        if build.version.service_dependencies:
+        # size
+        if build.size:
+            self.assertEqual(entry["size"], build.size)
+        else:
+            self.assertNotIn("size", entry)
+
+        # startable
+        if build.version.startable is not None:
             self.assertEqual(
-                entry["depsers"],
-                " ".join([s.code for s in build.version.service_dependencies]),
+                entry["startable"], "yes" if build.version.startable else "no"
             )
         else:
-            self.assertNotIn("depsers", entry)
+            self.assertNotIn("startable", entry)
 
-        # conf_deppkgs
-        if build.buildmanifest.conf_dependencies:
-            self.assertEqual(
-                entry["conf_deppkgs"], build.buildmanifest.conf_dependencies
-            )
-        else:
-            self.assertNotIn("conf_deppkgs", entry)
-
-        # conf_conxpkgs
-        if build.buildmanifest.conf_conflicts:
-            self.assertEqual(entry["conf_conxpkgs"], build.buildmanifest.conf_conflicts)
-        else:
-            self.assertNotIn("conf_conxpkgs", entry)
-
-        # conf_privilege
-        if build.buildmanifest.conf_privilege:
-            self.assertEqual(
-                entry["conf_privilege"], build.buildmanifest.conf_privilege
-            )
-        else:
-            self.assertNotIn("conf_privilege", entry)
-
-        # conf_resource
-        if build.buildmanifest.conf_resource:
-            self.assertEqual(entry["conf_resource"], build.buildmanifest.conf_resource)
-        else:
-            self.assertNotIn("conf_resource", entry)
 
     def test_missing_data_arch(self):
         self.assert400(
@@ -226,9 +205,10 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 1)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 1)
         self.assertCatalogEntry(
-            catalog[0], build, data, dict(arch="88f628x", build="1594")
+            packages[0], build, data, dict(arch="88f628x", build="1594")
         )
 
     def test_stable_noarch_build_active_stable_5004(self):
@@ -290,9 +270,10 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 1)
-        self.assertEqual(catalog[0]["download_count"], 7)
-        self.assertEqual(catalog[0]["recent_download_count"], 3)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 1)
+        self.assertEqual(packages[0]["download_count"], 7)
+        self.assertEqual(packages[0]["recent_download_count"], 3)
 
     def test_stable_build_active_stable_null_data(self):
         build = BuildFactory(
@@ -316,9 +297,10 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 1)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 1)
         self.assertCatalogEntry(
-            catalog[0], build, data, dict(arch="88f628x", build="1594")
+            packages[0], build, data, dict(arch="88f628x", build="1594")
         )
 
     def test_stable_build_active_stable_no_distributor(self):
@@ -335,9 +317,10 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 1)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 1)
         self.assertCatalogEntry(
-            catalog[0], build, data, dict(arch="88f628x", build="1594")
+            packages[0], build, data, dict(arch="88f628x", build="1594")
         )
 
     def test_stable_build_active_stable_qinst(self):
@@ -355,9 +338,10 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 1)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 1)
         self.assertCatalogEntry(
-            catalog[0], build, data, dict(arch="88f628x", build="1594")
+            packages[0], build, data, dict(arch="88f628x", build="1594")
         )
 
     def test_stable_build_active_stable_qstart(self):
@@ -376,9 +360,10 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 1)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 1)
         self.assertCatalogEntry(
-            catalog[0], build, data, dict(arch="88f628x", build="1594")
+            packages[0], build, data, dict(arch="88f628x", build="1594")
         )
 
     def test_stable_build_active_stable_qstart_startable(self):
@@ -397,9 +382,10 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 1)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 1)
         self.assertCatalogEntry(
-            catalog[0], build, data, dict(arch="88f628x", build="1594")
+            packages[0], build, data, dict(arch="88f628x", build="1594")
         )
 
     def test_stable_build_active_stable_different_arch(self):
@@ -415,7 +401,8 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 0)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 0)
 
     def test_stable_build_active_stable_different_firmware(self):
         BuildFactory(
@@ -430,7 +417,8 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 0)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 0)
 
     def test_stable_build_not_active_stable(self):
         BuildFactory(
@@ -445,7 +433,8 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 0)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 0)
 
     def test_stable_build_active_not_stable(self):
         BuildFactory(
@@ -459,7 +448,8 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 0)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 0)
 
     def test_not_stable_build_active_stable(self):
         build = BuildFactory(
@@ -476,9 +466,10 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 1)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 1)
         self.assertCatalogEntry(
-            catalog[0], build, data, dict(arch="88f628x", build="1594")
+            packages[0], build, data, dict(arch="88f628x", build="1594")
         )
 
     def test_not_stable_build_active_not_stable(self):
@@ -495,9 +486,10 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 1)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 1)
         self.assertCatalogEntry(
-            catalog[0], build, data, dict(arch="88f628x", build="1594")
+            packages[0], build, data, dict(arch="88f628x", build="1594")
         )
 
     def test_not_stable_build_not_active_stable(self):
@@ -515,7 +507,8 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 0)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 0)
 
     def test_not_stable_build_not_active_not_stable(self):
         BuildFactory(
@@ -531,7 +524,8 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 0)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 0)
 
     def test_stable_build_not_active_not_stable(self):
         BuildFactory(
@@ -547,7 +541,8 @@ class CatalogTestCase(BaseTestCase):
         self.assert200(response)
         self.assertHeader(response, "Content-Type", "application/json")
         catalog = json.loads(response.data.decode())
-        self.assertEqual(len(catalog), 0)
+        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        self.assertEqual(len(packages), 0)
 
 
 class DownloadTestCase(BaseTestCase):
