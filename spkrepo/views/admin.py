@@ -601,9 +601,7 @@ class VersionView(ModelView):
             f"{m.total_size / 1024 / 1024:.1f} MB" if m.total_size else None
         ),
     }
-    column_formatters_detail = {
-        'license': _truncate_formatter
-    }
+    column_formatters_detail = {"license": _truncate_formatter}
     column_default_sort = (Version.insert_date, True)
 
     # Custom queries
