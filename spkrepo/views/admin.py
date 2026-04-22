@@ -512,6 +512,8 @@ class VersionView(ModelView):
 
     can_edit = False
 
+    can_view_details = True
+
     @property
     def can_delete(self):
         return current_user.has_role("admin")
@@ -540,6 +542,16 @@ class VersionView(ModelView):
         if os.path.exists(version_path):
             shutil.rmtree(version_path)
 
+    # Define a formatter to truncate long text
+    def _truncate_formatter(view, context, model, name):
+        text = getattr(model, name)
+        if not text:
+            return text
+        escaped = Markup.escape(text)
+        if len(text) > 250:
+            return Markup(f'<span title="{name}">{escaped[:250]}...</span>')
+        return escaped
+
     # View
     column_list = (
         "package",
@@ -548,8 +560,7 @@ class VersionView(ModelView):
         "beta",
         "startable",
         "all_builds_active",
-        "install_wizard",
-        "upgrade_wizard",
+        "total_size",
         "insert_date",
     )
     column_labels = {
@@ -559,14 +570,15 @@ class VersionView(ModelView):
         "all_builds_active": "All Active",
         "install_wizard": "Install Wizard",
         "upgrade_wizard": "Upgrade Wizard",
+        "total_size": "Total Size",
     }
     column_filters = (
         "package.name",
         "upstream_version",
         "version",
         "beta",
-        "all_builds_active",
         "startable",
+        "all_builds_active",
     )
     column_sortable_list = (
         ("package", "package.name"),
@@ -575,8 +587,6 @@ class VersionView(ModelView):
         ("beta", "beta"),
         ("insert_date", "insert_date"),
         ("all_builds_active", "all_builds_active"),
-        ("install_wizard", "install_wizard"),
-        ("upgrade_wizard", "upgrade_wizard"),
         ("startable", "startable"),
     )
 
@@ -587,6 +597,12 @@ class VersionView(ModelView):
         "upgrade_wizard": _bool_formatter,
         "startable": _bool_formatter,
         "beta": _bool_formatter,
+        "total_size": lambda v, c, m, p: (
+            f"{m.total_size / 1024 / 1024:.1f} MB" if m.total_size else None
+        ),
+    }
+    column_formatters_detail = {
+        'license': _truncate_formatter
     }
     column_default_sort = (Version.insert_date, True)
 
@@ -904,6 +920,8 @@ class BuildView(ModelView):
 
     can_edit = False
 
+    can_view_details = True
+
     @property
     def can_delete(self):
         return current_user.has_role("admin")
@@ -927,15 +945,12 @@ class BuildView(ModelView):
     # View
     column_list = (
         "version.package",
-        "version.upstream_version",
         "version.version",
         "architectures",
         "firmware_min",
         "firmware_max",
         "size",
         "active",
-        "publisher",
-        "insert_date",
     )
     column_labels = {
         "version.package": "Package",
@@ -943,30 +958,27 @@ class BuildView(ModelView):
         "version.upstream_version": "Upstream Version",
         "version.version": "Version",
         "architectures.code": "Architecture",
-        "firmware_min.version": "Minimum Firmware Version",
-        "firmware_max.version": "Maximum Firmware Version",
+        "firmware_min.version": "Minimum Firmware",
+        "firmware_max.version": "Maximum Firmware",
         "publisher.username": "Publisher Username",
-        "size": "Size",
+        "size": "Package Size",
+        "checksum": "Application Checksum",
+        "md5": "Package Checksum",
     }
     column_filters = (
         "version.package.name",
-        "version.upstream_version",
         "version.version",
         "architectures.code",
         "firmware_min.version",
         "firmware_max.version",
-        "publisher.username",
-        "active",
         "size",
+        "active",
     )
     column_sortable_list = (
         ("version.package", "version.package.name"),
-        ("version.upstream_version", "version.upstream_version"),
         ("version.version", "version.version"),
         ("firmware_min", "firmware_min.build"),
         ("firmware_max", "firmware_max.build"),
-        ("publisher", "publisher.username"),
-        ("insert_date", "insert_date"),
         ("active", "active"),
         ("size", "size"),
     )

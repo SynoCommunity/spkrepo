@@ -547,6 +547,10 @@ class Version(db.Model):
             result.setdefault(build.firmware_min.version[0:1], []).append(build)
         return result
 
+    @property
+    def total_size(self):
+        return sum(b.size for b in self.builds if b.size is not None) or None
+
 
 class Package(db.Model):
     __tablename__ = "package"
