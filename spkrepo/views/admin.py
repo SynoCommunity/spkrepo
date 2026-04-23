@@ -394,7 +394,7 @@ def _resync_build_file(build):
     if not os.path.exists(file_path):
         raise ValueError("Build file missing on disk")
     build.md5 = build.calculate_md5()
-    build.size = os.path.getsize(file_path)
+    build.size = build.calculate_size()
 
 
 def _resync_build_metadata(session, build):

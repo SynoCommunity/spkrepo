@@ -393,14 +393,22 @@ class Build(db.Model):
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found at path: {file_path}")
 
-        if self.md5 is None:
-            with io.open(file_path, "rb") as f:
-                md5_hash = hashlib.md5()
-                for chunk in iter(lambda: f.read(4096), b""):
-                    md5_hash.update(chunk)
-                return md5_hash.hexdigest()
+        with io.open(file_path, "rb") as f:
+            md5_hash = hashlib.md5()
+            for chunk in iter(lambda: f.read(4096), b""):
+                md5_hash.update(chunk)
+            return md5_hash.hexdigest()
 
-        return self.md5
+    def calculate_size(self):
+        if not self.path:
+            raise ValueError("Path cannot be empty.")
+
+        file_path = os.path.join(current_app.config["DATA_PATH"], self.path)
+
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found at path: {file_path}")
+
+        return os.path.getsize(file_path)
 
     def _after_insert(self):
         assert os.path.exists(os.path.join(current_app.config["DATA_PATH"], self.path))

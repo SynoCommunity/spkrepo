@@ -314,7 +314,7 @@ class Packages(Resource):
             build.save(spk.stream)
             # generate md5 hash
             build.md5 = build.calculate_md5()
-            build.size = os.path.getsize(os.path.join(data_path, build.path))
+            build.size = build.calculate_size()
         except Exception as e:  # pragma: no cover
             if create_package:
                 shutil.rmtree(os.path.join(data_path, package.name), ignore_errors=True)
