@@ -564,7 +564,7 @@ class VersionView(ModelView):
             return text
         escaped = Markup.escape(text)
         if len(text) > 250:
-            return Markup(f'{escaped[:250]}...')
+            return Markup(f"{escaped[:250]}...")
         return escaped
 
     # View
