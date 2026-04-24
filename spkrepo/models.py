@@ -510,7 +510,7 @@ class Version(db.Model):
     def all_builds_active(self):
         return all(b.active for b in self.builds)
 
-    @hybrid_property
+    @property
     def any_builds_active(self):
         return any(b.active for b in self.builds)
 
@@ -548,7 +548,7 @@ class Version(db.Model):
     def __repr__(self):
         return f"<{self.__class__.__name__} {self.version_string}>"
 
-    @hybrid_property
+    @property
     def builds_per_dsm(self):
         result = {}
         for build in self.builds:
@@ -612,7 +612,7 @@ class Package(db.Model):
     # Constraints
     __table_args__ = (db.UniqueConstraint(name),)
 
-    @hybrid_property
+    @property
     def any_builds_active(self):
         return any(v.any_builds_active for v in self.versions)
 

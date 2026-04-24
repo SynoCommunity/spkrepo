@@ -31,16 +31,12 @@ nas = Blueprint("nas", __name__)
 
 @cache.memoize(timeout=600)
 def is_valid_arch(arch):
-    if Architecture.find(arch):
-        return True
-    return False
+    return Architecture.find(arch) is not None
 
 
 @cache.memoize(timeout=600)
 def is_valid_language(language):
-    if Language.find(language):
-        return True
-    return False
+    return Language.find(language) is not None
 
 
 @cache.memoize(timeout=600)
@@ -228,7 +224,7 @@ def build_package_entry(b, language, arch, build):
     if b.size:
         entry["size"] = b.size
     if b.version.startable is not None:
-        entry["startable"] = "yes" if b.version.startable is not False else "no"
+        entry["startable"] = "yes" if b.version.startable else "no"
 
     return entry
 

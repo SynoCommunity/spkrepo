@@ -214,7 +214,8 @@ class VersionTestCase(BaseTestCase):
         with self.logged_user("package_admin"):
             response = self.client.get(url_for("version.index_view"))
             self.assert200(response)
-            self.assertNotIn("Resync INFO", response.data.decode())
+            self.assertNotIn("Resync Info", response.data.decode())
+            self.assertNotIn("Resync File", response.data.decode())
 
     def test_action_resync_refreshes_metadata(self):
         build = BuildFactory()
@@ -264,7 +265,7 @@ class VersionTestCase(BaseTestCase):
                 data=dict(action="resync_info", rowid=[version.id]),
             )
             self.assert200(response)
-            self.assertIn("metadata refreshed from INFO", response.data.decode())
+            self.assertIn("refreshed", response.data.decode())
 
         db.session.expire_all()
         refreshed_build = db.session.get(Build, build.id)
@@ -304,6 +305,36 @@ class VersionTestCase(BaseTestCase):
             original_conf_privilege,
         )
         self.assertEqual(refreshed_build.md5, refreshed_build.calculate_md5())
+
+    def test_action_resync_file_requires_admin(self):
+        with self.logged_user("package_admin"):
+            response = self.client.get(url_for("version.index_view"))
+            self.assert200(response)
+            self.assertNotIn("Resync File", response.data.decode())
+
+    def test_action_resync_file_refreshes_builds(self):
+        build = BuildFactory()
+        db.session.commit()
+
+        version = build.version
+        build.md5 = None
+        build.size = None
+        db.session.commit()
+
+        with self.logged_user("package_admin", "admin"):
+            response = self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_file", rowid=[version.id]),
+            )
+            self.assert200(response)
+            self.assertIn("refreshed", response.data.decode())
+
+        db.session.expire_all()
+        refreshed_build = db.session.get(Build, build.id)
+        self.assertEqual(refreshed_build.md5, refreshed_build.calculate_md5())
+        self.assertIsNotNone(refreshed_build.size)
+        self.assertGreater(refreshed_build.size, 0)
 
 
 class BuildTestCase(BaseTestCase):
@@ -398,7 +429,8 @@ class BuildTestCase(BaseTestCase):
         with self.logged_user("package_admin"):
             response = self.client.get(url_for("build.index_view"))
             self.assert200(response)
-            self.assertNotIn("Resync INFO", response.data.decode())
+            self.assertNotIn("Resync Info", response.data.decode())
+            self.assertNotIn("Resync File", response.data.decode())
 
     def test_action_resync_refreshes_single_build(self):
         build = BuildFactory()
@@ -418,7 +450,7 @@ class BuildTestCase(BaseTestCase):
                 data=dict(action="resync_info", rowid=[build.id]),
             )
             self.assert200(response)
-            self.assertIn("metadata refreshed from INFO", response.data.decode())
+            self.assertIn("refreshed", response.data.decode())
 
         db.session.expire_all()
         refreshed_build = db.session.get(Build, build.id)
@@ -431,6 +463,35 @@ class BuildTestCase(BaseTestCase):
             sorted(arch.code for arch in refreshed_build.architectures),
             original_architectures,
         )
+
+    def test_action_resync_file_requires_admin(self):
+        with self.logged_user("package_admin"):
+            response = self.client.get(url_for("build.index_view"))
+            self.assert200(response)
+            self.assertNotIn("Resync File", response.data.decode())
+
+    def test_action_resync_file_refreshes_single_build(self):
+        build = BuildFactory()
+        db.session.commit()
+
+        build.md5 = None
+        build.size = None
+        db.session.commit()
+
+        with self.logged_user("package_admin", "admin"):
+            response = self.client.post(
+                url_for("build.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_file", rowid=[build.id]),
+            )
+            self.assert200(response)
+            self.assertIn("refreshed", response.data.decode())
+
+        db.session.expire_all()
+        refreshed_build = db.session.get(Build, build.id)
+        self.assertEqual(refreshed_build.md5, refreshed_build.calculate_md5())
+        self.assertIsNotNone(refreshed_build.size)
+        self.assertGreater(refreshed_build.size, 0)
 
 
 class ScreenshotTestCase(BaseTestCase):

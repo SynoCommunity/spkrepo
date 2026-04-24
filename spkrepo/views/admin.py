@@ -37,9 +37,30 @@ from ..utils import SPK
 
 def _bool_formatter(v, c, m, p):
     value = getattr(m, p)
+    if value is None:
+        return Markup('<i class="fa fa-question-circle" style="color: #aaaaaa;"></i>')
     if value:
         return Markup('<i class="fa fa-check-circle" style="color: #27ae60;"></i>')
     return Markup('<i class="fa fa-times-circle" style="color: #e74c3c;"></i>')
+
+
+def _flash_action_results(successes, failures, skipped=None, item_label="item"):
+    if successes:
+        count = len(successes)
+        flash(
+            f"{item_label.capitalize()} {successes[0]} refreshed."
+            if count == 1
+            else f"Refreshed {count} {item_label}s: {', '.join(successes)}"
+        )
+    if skipped:
+        count = len(skipped)
+        flash(
+            f"{item_label.capitalize()} {skipped[0]} skipped."
+            if count == 1
+            else f"Skipped {count} {item_label}s: {', '.join(skipped)}"
+        )
+    for name, message in failures:
+        flash(f"Failed to process {name}: {message}", "error")
 
 
 class UserView(ModelView):
@@ -390,9 +411,6 @@ def _resync_build_file(build):
     """Recalculate md5 and size from the build file on disk."""
     if not build.path:
         raise ValueError("Build has no file path")
-    file_path = os.path.join(current_app.config["DATA_PATH"], build.path)
-    if not os.path.exists(file_path):
-        raise ValueError("Build file missing on disk")
     build.md5 = build.calculate_md5()
     build.size = build.calculate_size()
 
@@ -402,9 +420,6 @@ def _resync_build_metadata(session, build):
         raise ValueError("Build has no file path")
 
     file_path = os.path.join(current_app.config["DATA_PATH"], build.path)
-    if not os.path.exists(file_path):
-        raise ValueError("Build file missing on disk")
-
     with io.open(file_path, "rb") as stream:
         spk = SPK(stream)
         md5 = spk.calculate_md5()
@@ -549,7 +564,7 @@ class VersionView(ModelView):
             return text
         escaped = Markup.escape(text)
         if len(text) > 250:
-            return Markup(f'<span title="{name}">{escaped[:250]}...</span>')
+            return Markup(f'{escaped[:250]}...')
         return escaped
 
     # View
@@ -658,7 +673,7 @@ class VersionView(ModelView):
     @action(
         "deactivate",
         "Deactivate",
-        "Are you sure you want to deactivate selected  versions' builds?",
+        "Are you sure you want to deactivate selected versions' builds?",
     )
     def action_deactivate(self, ids):
         try:
@@ -707,35 +722,12 @@ class VersionView(ModelView):
                         except Exception:
                             self.session.rollback()
                             failed.append(filename)
-                if failed:
-                    if len(failed) == 1:
-                        flash(f"Failed to sign build {failed[0]}", "error")
-                    else:
-                        failed_list = ", ".join(failed)
-                        flash(
-                            f"Failed to sign {len(failed)} builds: {failed_list}",
-                            "error",
-                        )
-                if already_signed:
-                    if len(already_signed) == 1:
-                        flash(f"Build {already_signed[0]} already signed", "info")
-                    else:
-                        already_list = ", ".join(already_signed)
-                        flash(
-                            (
-                                f"{len(already_signed)} builds already signed: "
-                                f"{already_list}"
-                            ),
-                            "info",
-                        )
-                if success:
-                    if len(success) == 1:
-                        flash(f"Build {success[0]} successfully signed")
-                    else:
-                        success_list = ", ".join(success)
-                        flash(
-                            f"Successfully signed {len(success)} builds: {success_list}"
-                        )
+            _flash_action_results(
+                success,
+                [(f, "") for f in failed],
+                skipped=already_signed,
+                item_label="build",
+            )
         except Exception as e:  # pragma: no cover
             flash(f"Failed to sign builds. {e}", "error")
 
@@ -764,35 +756,12 @@ class VersionView(ModelView):
                         except Exception:
                             self.session.rollback()
                             failed.append(filename)
-                if failed:
-                    if len(failed) == 1:
-                        flash(f"Failed to unsign build {failed[0]}", "error")
-                    else:
-                        failed_list = ", ".join(failed)
-                        flash(
-                            f"Failed to unsign {len(failed)} builds: {failed_list}",
-                            "error",
-                        )
-                if not_signed:
-                    if len(not_signed) == 1:
-                        flash(f"Build {not_signed[0]} not signed", "info")
-                    else:
-                        not_signed_list = ", ".join(not_signed)
-                        flash(
-                            f"{len(not_signed)} builds not signed: {not_signed_list}",
-                            "info",
-                        )
-                if success:
-                    if len(success) == 1:
-                        flash(f"Build {success[0]} successfully unsigned")
-                    else:
-                        success_list = ", ".join(success)
-                        flash(
-                            (
-                                f"Successfully unsigned {len(success)} builds: "
-                                f"{success_list}"
-                            )
-                        )
+            _flash_action_results(
+                success,
+                [(f, "") for f in failed],
+                skipped=not_signed,
+                item_label="build",
+            )
         except Exception as e:  # pragma: no cover
             flash(f"Failed to unsign builds. {e}", "error")
 
@@ -817,30 +786,7 @@ class VersionView(ModelView):
                     self.session.rollback()
                     failures.append((filename, str(exc)))
 
-        if successes:
-            if len(successes) == 1:
-                flash(f"Build {successes[0]} metadata refreshed from INFO.")
-            else:
-                success_list = ", ".join(successes)
-                flash(
-                    (
-                        f"Refreshed metadata from INFO for {len(successes)} builds: "
-                        f"{success_list}"
-                    )
-                )
-
-        if failures:
-            if len(failures) == 1:
-                name, message = failures[0]
-                flash(f"Failed to resync build {name}: {message}", "error")
-            else:
-                failure_list = "; ".join(
-                    f"{name}: {message}" for name, message in failures
-                )
-                flash(
-                    f"Failed to resync {len(failures)} builds: {failure_list}",
-                    "error",
-                )
+        _flash_action_results(successes, failures, item_label="build")
 
     @action(
         "resync_file",
@@ -863,26 +809,7 @@ class VersionView(ModelView):
                     self.session.rollback()
                     failures.append((filename, str(exc)))
 
-        if successes:
-            if len(successes) == 1:
-                flash(f"Build {successes[0]} file data refreshed.")
-            else:
-                success_list = ", ".join(successes)
-                flash(
-                    f"Refreshed file data for {len(successes)} builds: {success_list}"
-                )
-
-        if failures:
-            if len(failures) == 1:
-                name, message = failures[0]
-                flash(f"Failed to resync build {name}: {message}", "error")
-            else:
-                failure_list = "; ".join(
-                    f"{name}: {message}" for name, message in failures
-                )
-                flash(
-                    f"Failed to resync {len(failures)} builds: {failure_list}", "error"
-                )
+        _flash_action_results(successes, failures, item_label="build")
 
     def is_action_allowed(self, name):
         if name == "resync_info" and not self.can_resync_info:
@@ -1090,30 +1017,12 @@ class BuildView(ModelView):
                     except Exception:
                         self.session.rollback()
                         failed.append(filename)
-            if failed:
-                if len(failed) == 1:
-                    flash(f"Failed to sign build {failed[0]}", "error")
-                else:
-                    failed_list = ", ".join(failed)
-                    flash(
-                        f"Failed to sign {len(failed)} builds: {failed_list}",
-                        "error",
-                    )
-            if already_signed:
-                if len(already_signed) == 1:
-                    flash(f"Build {already_signed[0]} already signed", "info")
-                else:
-                    already_list = ", ".join(already_signed)
-                    flash(
-                        f"{len(already_signed)} builds already signed: {already_list}",
-                        "info",
-                    )
-            if success:
-                if len(success) == 1:
-                    flash(f"Build {success[0]} successfully signed")
-                else:
-                    success_list = ", ".join(success)
-                    flash(f"Successfully signed {len(success)} builds: {success_list}")
+            _flash_action_results(
+                success,
+                [(f, "") for f in failed],
+                skipped=already_signed,
+                item_label="build",
+            )
         except Exception as e:  # pragma: no cover
             flash(f"Failed to sign builds. {e}", "error")
 
@@ -1141,32 +1050,12 @@ class BuildView(ModelView):
                     except Exception:
                         self.session.rollback()
                         failed.append(filename)
-            if failed:
-                if len(failed) == 1:
-                    flash(f"Failed to unsign build {failed[0]}", "error")
-                else:
-                    failed_list = ", ".join(failed)
-                    flash(
-                        f"Failed to unsign {len(failed)} builds: {failed_list}",
-                        "error",
-                    )
-            if not_signed:
-                if len(not_signed) == 1:
-                    flash(f"Build {not_signed[0]} not signed", "info")
-                else:
-                    not_signed_list = ", ".join(not_signed)
-                    flash(
-                        f"{len(not_signed)} builds not signed: {not_signed_list}",
-                        "info",
-                    )
-            if success:
-                if len(success) == 1:
-                    flash(f"Build {success[0]} successfully unsigned")
-                else:
-                    success_list = ", ".join(success)
-                    flash(
-                        f"Successfully unsigned {len(success)} builds: {success_list}"
-                    )
+            _flash_action_results(
+                success,
+                [(f, "") for f in failed],
+                skipped=not_signed,
+                item_label="build",
+            )
         except Exception as e:  # pragma: no cover
             flash(f"Failed to unsign builds. {e}", "error")
 
@@ -1197,30 +1086,7 @@ class BuildView(ModelView):
                 self.session.rollback()
                 failures.append((filename, str(exc)))
 
-        if successes:
-            if len(successes) == 1:
-                flash(f"Build {successes[0]} metadata refreshed from INFO.")
-            else:
-                success_list = ", ".join(successes)
-                flash(
-                    (
-                        f"Refreshed metadata from INFO for {len(successes)} builds: "
-                        f"{success_list}"
-                    )
-                )
-
-        if failures:
-            if len(failures) == 1:
-                name, message = failures[0]
-                flash(f"Failed to resync build {name}: {message}", "error")
-            else:
-                failure_list = "; ".join(
-                    f"{name}: {message}" for name, message in failures
-                )
-                flash(
-                    f"Failed to resync {len(failures)} builds: {failure_list}",
-                    "error",
-                )
+        _flash_action_results(successes, failures, item_label="build")
 
     @action(
         "resync_file",
@@ -1249,26 +1115,7 @@ class BuildView(ModelView):
                 self.session.rollback()
                 failures.append((filename, str(exc)))
 
-        if successes:
-            if len(successes) == 1:
-                flash(f"Build {successes[0]} file data refreshed.")
-            else:
-                success_list = ", ".join(successes)
-                flash(
-                    f"Refreshed file data for {len(successes)} builds: {success_list}"
-                )
-
-        if failures:
-            if len(failures) == 1:
-                name, message = failures[0]
-                flash(f"Failed to resync build {name}: {message}", "error")
-            else:
-                failure_list = "; ".join(
-                    f"{name}: {message}" for name, message in failures
-                )
-                flash(
-                    f"Failed to resync {len(failures)} builds: {failure_list}", "error"
-                )
+        _flash_action_results(successes, failures, item_label="build")
 
     def is_action_allowed(self, name):
         if name == "resync_info" and not self.can_resync_info:
