@@ -593,15 +593,18 @@ class VersionView(ModelView):
     column_formatters = {
         "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
         "all_builds_active": _bool_formatter,
-        "install_wizard": _bool_formatter,
-        "upgrade_wizard": _bool_formatter,
         "startable": _bool_formatter,
         "beta": _bool_formatter,
         "total_size": lambda v, c, m, p: (
             f"{m.total_size / 1024 / 1024:.1f} MB" if m.total_size else None
         ),
     }
-    column_formatters_detail = {"license": _truncate_formatter}
+    column_formatters_detail = {
+        "install_wizard": _bool_formatter,
+        "upgrade_wizard": _bool_formatter,
+        "startable": _bool_formatter,
+        "license": _truncate_formatter,
+    }
     column_default_sort = (Version.insert_date, True)
 
     # Custom queries
