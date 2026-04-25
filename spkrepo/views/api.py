@@ -174,10 +174,17 @@ class Packages(Resource):
         match = version_re.match(spk.info["version"])
         if not match:
             abort(422, message="Invalid version")
-        # TODO: check discrepencies with what's in the database
         version = {v.version: v for v in package.versions}.get(
             int(match.group("version"))
         )
+        if version is not None and version.upstream_version != match.group("upstream_version"):
+            abort(
+                422,
+                message=(
+                    f"Upstream version mismatch: expected {version.upstream_version}, "
+                    f"got {match.group('upstream_version')}"
+                ),
+            )
         if version is None:
             create_version = True
             version_startable = True  # default per Synology docs
