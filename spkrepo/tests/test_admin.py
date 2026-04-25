@@ -210,14 +210,13 @@ class VersionTestCase(BaseTestCase):
         self.assertEqual(len(Version.query.all()), 0)
         self.assertTrue(not os.path.exists(version_path))
 
-    def test_action_resync_requires_admin(self):
+    def test_action_resync_info_requires_admin(self):
         with self.logged_user("package_admin"):
             response = self.client.get(url_for("version.index_view"))
             self.assert200(response)
             self.assertNotIn("Resync Info", response.data.decode())
-            self.assertNotIn("Resync File", response.data.decode())
 
-    def test_action_resync_refreshes_metadata(self):
+    def test_action_resync_info_refreshes_version_metadata(self):
         build = BuildFactory()
         db.session.commit()
 
@@ -229,11 +228,6 @@ class VersionTestCase(BaseTestCase):
         )
         original_upstream = version.upstream_version
         original_license = version.license
-        original_architectures = sorted(arch.code for arch in build.architectures)
-        original_firmware_min = build.firmware_min
-        original_firmware_max = build.firmware_max
-        original_dependencies = build.buildmanifest.dependencies
-        original_conf_privilege = build.buildmanifest.conf_privilege
 
         version.displaynames["enu"].displayname = "Changed"
         version.descriptions["enu"].description = "Changed"
@@ -243,6 +237,45 @@ class VersionTestCase(BaseTestCase):
 
         for key in list(version.icons.keys()):
             del version.icons[key]
+
+        db.session.commit()
+
+        with self.logged_user("package_admin", "admin"):
+            response = self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[version.id]),
+            )
+            self.assert200(response)
+            self.assertIn("refreshed", response.data.decode())
+
+        db.session.expire_all()
+        refreshed_version = db.session.get(Build, build.id).version
+
+        self.assertEqual(
+            refreshed_version.displaynames["enu"].displayname, original_display
+        )
+        self.assertEqual(
+            refreshed_version.descriptions["enu"].description, original_description
+        )
+        self.assertEqual(
+            sorted(service.code for service in refreshed_version.service_dependencies),
+            original_services,
+        )
+        self.assertEqual(refreshed_version.upstream_version, original_upstream)
+        self.assertEqual(refreshed_version.license, original_license)
+        self.assertTrue({"72", "256"}.intersection(refreshed_version.icons.keys()))
+
+    def test_action_resync_info_refreshes_build_metadata(self):
+        build = BuildFactory()
+        db.session.commit()
+
+        version = build.version
+        original_architectures = sorted(arch.code for arch in build.architectures)
+        original_firmware_min = build.firmware_min
+        original_firmware_max = build.firmware_max
+        original_dependencies = build.buildmanifest.dependencies
+        original_conf_privilege = build.buildmanifest.conf_privilege
 
         alternative_firmware = Firmware.query.filter(
             Firmware.id != original_firmware_min.id
@@ -269,21 +302,7 @@ class VersionTestCase(BaseTestCase):
 
         db.session.expire_all()
         refreshed_build = db.session.get(Build, build.id)
-        refreshed_version = refreshed_build.version
 
-        self.assertEqual(
-            refreshed_version.displaynames["enu"].displayname, original_display
-        )
-        self.assertEqual(
-            refreshed_version.descriptions["enu"].description, original_description
-        )
-        self.assertEqual(
-            sorted(service.code for service in refreshed_version.service_dependencies),
-            original_services,
-        )
-        self.assertEqual(refreshed_version.upstream_version, original_upstream)
-        self.assertEqual(refreshed_version.license, original_license)
-        self.assertTrue({"72", "256"}.intersection(refreshed_version.icons.keys()))
         self.assertEqual(
             sorted(arch.code for arch in refreshed_build.architectures),
             original_architectures,
@@ -425,21 +444,41 @@ class BuildTestCase(BaseTestCase):
             self.assertFalse(build1.active)
             self.assertFalse(build2.active)
 
-    def test_action_resync_requires_admin(self):
+    def test_action_resync_info_requires_admin(self):
         with self.logged_user("package_admin"):
             response = self.client.get(url_for("build.index_view"))
             self.assert200(response)
             self.assertNotIn("Resync Info", response.data.decode())
-            self.assertNotIn("Resync File", response.data.decode())
 
-    def test_action_resync_refreshes_single_build(self):
+    def test_action_resync_info_refreshes_version_metadata(self):
         build = BuildFactory()
         db.session.commit()
 
         original_display = build.version.displaynames["enu"].displayname
-        original_architectures = sorted(arch.code for arch in build.architectures)
-
         build.version.displaynames["enu"].displayname = "Altered"
+        db.session.commit()
+
+        with self.logged_user("package_admin", "admin"):
+            response = self.client.post(
+                url_for("build.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build.id]),
+            )
+            self.assert200(response)
+            self.assertIn("refreshed", response.data.decode())
+
+        db.session.expire_all()
+        refreshed_build = db.session.get(Build, build.id)
+        self.assertEqual(
+            refreshed_build.version.displaynames["enu"].displayname,
+            original_display,
+        )
+
+    def test_action_resync_info_refreshes_build_metadata(self):
+        build = BuildFactory()
+        db.session.commit()
+
+        original_architectures = sorted(arch.code for arch in build.architectures)
         build.architectures = []
         db.session.commit()
 
@@ -454,11 +493,6 @@ class BuildTestCase(BaseTestCase):
 
         db.session.expire_all()
         refreshed_build = db.session.get(Build, build.id)
-
-        self.assertEqual(
-            refreshed_build.version.displaynames["enu"].displayname,
-            original_display,
-        )
         self.assertEqual(
             sorted(arch.code for arch in refreshed_build.architectures),
             original_architectures,
