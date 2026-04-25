@@ -98,8 +98,7 @@ def packages():
 @frontend.route("/package/<name>")
 def package(name):
     package = (
-        Package.query
-        .filter_by(name=name)
+        Package.query.filter_by(name=name)
         .options(
             db.joinedload(Package.versions).joinedload(Version.icons),
             db.joinedload(Package.versions).joinedload(Version.displaynames),
