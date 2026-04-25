@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-import hashlib
-import os
+import secrets
 
 from flask import Blueprint, abort, redirect, render_template, url_for
 from flask_security import RegisterFormV2, current_user, login_required
@@ -38,12 +37,12 @@ class GenerateApiKeyForm(FlaskForm):
 
 def generate_api_key():
     """
-    Generate a random API key based on `os.urandom`
+    Generate a random API key based on `secrets.token_hex`
 
     :return: the generated API key
     :rtype: str
     """
-    return hashlib.sha256(os.urandom(32)).hexdigest()
+    return secrets.token_hex(32)
 
 
 @frontend.route("/profile", methods=["GET", "POST"])
@@ -51,6 +50,8 @@ def generate_api_key():
 def profile():
     form = GenerateApiKeyForm()
     if form.validate_on_submit():
+        if not current_user.has_role("developer"):
+            abort(403)
         current_user.api_key = generate_api_key()
         db.session.commit()
         return redirect(url_for("frontend.profile"), code=303)
@@ -96,7 +97,16 @@ def packages():
 
 @frontend.route("/package/<name>")
 def package(name):
-    package = Package.query.filter_by(name=name).first()
+    package = (
+        Package.query
+        .filter_by(name=name)
+        .options(
+            db.joinedload(Package.versions).joinedload(Version.icons),
+            db.joinedload(Package.versions).joinedload(Version.displaynames),
+            db.joinedload(Package.versions).joinedload(Version.descriptions),
+        )
+        .first()
+    )
     if package is None or not package.versions:
         abort(404)
     return render_template("frontend/package.html", package=package)
