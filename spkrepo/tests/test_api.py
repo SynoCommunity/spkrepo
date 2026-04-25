@@ -550,3 +550,65 @@ class PackagesTestCase(BaseTestCase):
             )
         self.assert422(response)
         self.assertIn("Invalid SPK", response.data.decode())
+
+    def test_post_existing_version_matching_upstream(self):
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        build = BuildFactory.build(
+            version__upstream_version="1.0.0",
+            architectures=[Architecture.find("88f6281", syno=True)],
+        )
+        with create_spk(build) as spk:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            )
+
+        new_build = BuildFactory.build(
+            version=build.version,
+            architectures=[Architecture.find("cedarview", syno=True)],
+        )
+        with create_spk(new_build) as spk:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            )
+
+    def test_post_existing_version_mismatched_upstream(self):
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        build = BuildFactory.build(
+            version__upstream_version="1.0.0",
+            architectures=[Architecture.find("88f6281", syno=True)],
+        )
+        with create_spk(build) as spk:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            )
+
+        new_build = BuildFactory.build(
+            version__upstream_version="2.0.0",
+            version__version=build.version.version,
+            version__package=build.version.package,
+            architectures=[Architecture.find("cedarview", syno=True)],
+        )
+        with create_spk(new_build) as spk:
+            response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
+            )
+        self.assert422(response)
+        self.assertIn("Upstream version mismatch", response.data.decode())

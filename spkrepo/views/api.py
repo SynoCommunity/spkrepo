@@ -177,7 +177,9 @@ class Packages(Resource):
         version = {v.version: v for v in package.versions}.get(
             int(match.group("version"))
         )
-        if version is not None and version.upstream_version != match.group("upstream_version"):
+        if version is not None and version.upstream_version != match.group(
+            "upstream_version"
+        ):
             abort(
                 422,
                 message=(
