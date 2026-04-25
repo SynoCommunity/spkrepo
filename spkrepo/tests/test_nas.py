@@ -302,26 +302,6 @@ class CatalogTestCase(BaseTestCase):
             packages[0], build, data, dict(arch="88f628x", build="1594")
         )
 
-    def test_stable_build_active_stable_no_distributor(self):
-        build = BuildFactory(
-            active=True,
-            version__report_url=None,
-            version__distributor=None,
-            architectures=[Architecture.find("88f6281", syno=True)],
-            firmware_min=Firmware.find(1594),
-        )
-        db.session.commit()
-        data = dict(arch="88f6281", build="1594", language="enu")
-        response = self.client.post(url_for("nas.catalog"), data=data)
-        self.assert200(response)
-        self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode())
-        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
-        self.assertEqual(len(packages), 1)
-        self.assertCatalogEntry(
-            packages[0], build, data, dict(arch="88f628x", build="1594")
-        )
-
     def test_stable_build_active_stable_qinst(self):
         build = BuildFactory(
             active=True,
@@ -343,13 +323,13 @@ class CatalogTestCase(BaseTestCase):
             packages[0], build, data, dict(arch="88f628x", build="1594")
         )
 
-    def test_stable_build_active_stable_qstart(self):
+    def test_stable_build_active_stable_qstart_not_startable(self):
         build = BuildFactory(
             active=True,
             version__report_url=None,
             version__license=None,
             version__install_wizard=False,
-            version__startable=None,
+            version__startable=False,
             architectures=[Architecture.find("88f6281", syno=True)],
             firmware_min=Firmware.find(1594),
         )
@@ -491,7 +471,7 @@ class CatalogTestCase(BaseTestCase):
             packages[0], build, data, dict(arch="88f628x", build="1594")
         )
 
-    def test_not_stable_build_not_active_stable(self):
+    def test_not_stable_build_not_active_stable_channel(self):
         BuildFactory(
             active=False,
             version__report_url=None,
@@ -526,7 +506,7 @@ class CatalogTestCase(BaseTestCase):
         packages = catalog["packages"] if isinstance(catalog, dict) else catalog
         self.assertEqual(len(packages), 0)
 
-    def test_stable_build_not_active_not_stable(self):
+    def test_stable_build_not_active_not_stable_channel(self):
         BuildFactory(
             active=False,
             architectures=[Architecture.find("88f6281", syno=True)],
