@@ -3,11 +3,11 @@ import hashlib
 import io
 import os
 import shutil
-from datetime import datetime, timedelta
 
 from flask import current_app
 from flask_security import RoleMixin, SQLAlchemyUserDatastore, UserMixin
-from flask_sqlalchemy import track_modifications
+from sqlalchemy import event, func, text
+from sqlalchemy.orm import Session
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.collections import attribute_mapped_collection
 
@@ -300,7 +300,7 @@ class Download(db.Model):
     firmware_build = db.Column(db.Integer, nullable=False)
     ip_address = db.Column(db.Unicode(46), nullable=False)
     user_agent = db.Column(db.Unicode(255))
-    date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    date = db.Column(db.DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
 
     # Relationships
     build = db.relationship("Build", back_populates="downloads")
@@ -335,7 +335,7 @@ class Build(db.Model):
     path = db.Column(db.Unicode(2048))
     md5 = db.Column(db.Unicode(32))
     size = db.Column(db.Integer)
-    insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    insert_date = db.Column(db.DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
     active = db.Column(db.Boolean(), default=False, nullable=False)
 
     # Relationships
@@ -465,7 +465,7 @@ class Version(db.Model):
     upgrade_wizard = db.Column(db.Boolean)
     startable = db.Column(db.Boolean)
     license = db.Column(db.UnicodeText)
-    insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    insert_date = db.Column(db.DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
 
     # Relationships
     package = db.relationship("Package", back_populates="versions", lazy=False)
@@ -499,40 +499,34 @@ class Version(db.Model):
     __table_args__ = (db.UniqueConstraint(package_id, version),)
 
     @hybrid_property
-    def version_string(self):
-        return self.upstream_version + "-" + str(self.version)
-
-    @hybrid_property
     def beta(self):
         return bool(self.report_url)  # Treats None and "" as False
-
-    @hybrid_property
-    def all_builds_active(self):
-        return all(b.active for b in self.builds)
-
-    @property
-    def any_builds_active(self):
-        return any(b.active for b in self.builds)
-
-    @all_builds_active.expression
-    def all_builds_active(cls):
-        return (
-            db.select(db.func.count())
-            .where(db.and_(Build.version_id == cls.id, Build.active))
-            .label("active_builds")
-        ) == (
-            db.select(db.func.count())
-            .where(Build.version_id == cls.id)
-            .label("total_builds")
-        )
 
     @beta.expression
     def beta(cls):
         return db.and_(cls.report_url.isnot(None), cls.report_url != "")
 
+    @hybrid_property
+    def all_builds_active(self):
+        return all(b.active for b in self.builds)
+
+    @all_builds_active.expression
+    def all_builds_active(cls):
+        return ~db.exists().where(
+            db.and_(Build.version_id == cls.id, Build.active == False)
+        )
+
+    @property
+    def any_builds_active(self):
+        return any(b.active for b in self.builds)
+
     @property
     def path(self):
         return os.path.join(self.package.name, str(self.version))
+
+    @property
+    def version_string(self):
+        return self.upstream_version + "-" + str(self.version)
 
     def _after_insert(self):
         assert os.path.exists(os.path.join(current_app.config["DATA_PATH"], self.path))
@@ -569,7 +563,7 @@ class Package(db.Model):
         db.Integer, db.ForeignKey("user.id", ondelete="SET NULL")
     )
     name = db.Column(db.Unicode(50), nullable=False)
-    insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    insert_date = db.Column(db.DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
     download_count = db.column_property(
         db.select(db.func.count(Download.id))
         .select_from(Download.__table__.join(Build).join(Version))
@@ -583,7 +577,7 @@ class Package(db.Model):
         .where(
             db.and_(
                 Version.package_id == id,
-                Download.date >= datetime.now() - timedelta(days=90),
+                Download.date >= func.datetime(text("CURRENT_TIMESTAMP"), text("'-90 days'"))
             )
         )
         .correlate_except(Download)
@@ -627,19 +621,42 @@ class Package(db.Model):
         return f"<{self.__class__.__name__} {self.name}>"
 
 
-@track_modifications.models_committed.connect
-def on_models_committed(sender, changes):
-    for obj, change in changes:
-        if change == "insert" and hasattr(obj, "_after_insert"):
-            obj._after_insert()
-        elif change == "delete" and hasattr(obj, "_after_delete"):
-            obj._after_delete()
+def _before_insert_handler(mapper, connection, target):
+    if hasattr(target, "_before_insert"):
+        target._before_insert()
 
 
-@track_modifications.before_models_committed.connect
-def on_before_models_committed(sender, changes):
-    for obj, change in changes:
-        if change == "insert" and hasattr(obj, "_before_insert"):
-            obj._before_insert()
-        elif change == "delete" and hasattr(obj, "_before_delete"):
-            obj._before_delete()
+def _after_insert_handler(mapper, connection, target):
+    if not hasattr(target, "_after_insert"):
+        return
+    session = Session.object_session(target)
+    if session is None:
+        return
+
+    @event.listens_for(session, "after_commit", once=True)
+    def on_commit(session):
+        target._after_insert()
+
+
+def _before_delete_handler(mapper, connection, target):
+    if hasattr(target, "_before_delete"):
+        target._before_delete()
+
+
+def _after_delete_handler(mapper, connection, target):
+    if not hasattr(target, "_after_delete"):
+        return
+    session = Session.object_session(target)
+    if session is None:
+        return
+
+    @event.listens_for(session, "after_commit", once=True)
+    def on_commit(session):
+        target._after_delete()
+
+
+for _model in [Screenshot, Icon, Build, Version]:
+    event.listen(_model, "before_insert", _before_insert_handler)
+    event.listen(_model, "after_insert", _after_insert_handler)
+    event.listen(_model, "before_delete", _before_delete_handler)
+    event.listen(_model, "after_delete", _after_delete_handler)
