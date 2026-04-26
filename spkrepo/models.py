@@ -6,7 +6,7 @@ import shutil
 
 from flask import current_app
 from flask_security import RoleMixin, SQLAlchemyUserDatastore, UserMixin
-from sqlalchemy import event, text
+from sqlalchemy import event, func
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Session
@@ -327,9 +327,7 @@ class Download(db.Model):
     firmware_build = db.Column(db.Integer, nullable=False)
     ip_address = db.Column(db.Unicode(46), nullable=False)
     user_agent = db.Column(db.Unicode(255))
-    date = db.Column(
-        db.DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False
-    )
+    date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
 
     # Relationships
     build = db.relationship("Build", back_populates="downloads")
@@ -364,9 +362,7 @@ class Build(db.Model):
     path = db.Column(db.Unicode(2048))
     md5 = db.Column(db.Unicode(32))
     size = db.Column(db.Integer)
-    insert_date = db.Column(
-        db.DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False
-    )
+    insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
     active = db.Column(db.Boolean(), default=False, nullable=False)
 
     # Relationships
@@ -496,9 +492,7 @@ class Version(db.Model):
     upgrade_wizard = db.Column(db.Boolean)
     startable = db.Column(db.Boolean)
     license = db.Column(db.UnicodeText)
-    insert_date = db.Column(
-        db.DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False
-    )
+    insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
 
     # Relationships
     package = db.relationship("Package", back_populates="versions", lazy=False)
@@ -596,9 +590,7 @@ class Package(db.Model):
         db.Integer, db.ForeignKey("user.id", ondelete="SET NULL")
     )
     name = db.Column(db.Unicode(50), nullable=False)
-    insert_date = db.Column(
-        db.DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False
-    )
+    insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
     download_count = db.column_property(
         db.select(db.func.count(Download.id))
         .select_from(Download.__table__.join(Build).join(Version))
