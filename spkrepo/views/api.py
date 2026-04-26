@@ -263,9 +263,7 @@ class Packages(Resource):
             )
             candidate_min_build = firmware.build
             candidate_max_build = (
-                firmware_max.build
-                if firmware_max is not None
-                else candidate_min_build
+                firmware_max.build if firmware_max is not None else candidate_min_build
             )
             if (
                 candidate_min_build > existing_max_build
