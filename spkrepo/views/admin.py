@@ -101,9 +101,10 @@ class UserView(ModelView):
                 if len(users) == 1
                 else f"{len(users)} users were successfully activated."
             )
-        except Exception as e:  # pragma: no cover
+        except Exception:  # pragma: no cover
             self.session.rollback()
-            flash(f"Failed to activate users. {e}", "error")
+            current_app.logger.exception("Failed to activate users")
+            flash("Failed to activate users. Please check the logs.", "error")
 
     @action(
         "deactivate",
@@ -121,9 +122,10 @@ class UserView(ModelView):
                 if len(users) == 1
                 else f"{len(users)} users were successfully deactivated."
             )
-        except Exception as e:  # pragma: no cover
+        except Exception:  # pragma: no cover
             self.session.rollback()
-            flash(f"Failed to deactivate users. {e}", "error")
+            current_app.logger.exception("Failed to deactivate users")
+            flash("Failed to deactivate users. Please check the logs.", "error")
 
 
 class ArchitectureView(ModelView):
@@ -181,8 +183,13 @@ class ServiceView(ModelView):
     can_delete = False
 
 
+ALLOWED_SCREENSHOT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+
 def screenshot_namegen(obj, file_data):
-    ext = os.path.splitext(file_data.filename)[1]
+    ext = os.path.splitext(file_data.filename)[1].lower()
+    if ext not in ALLOWED_SCREENSHOT_EXTENSIONS:
+        raise ValueError(f"Invalid screenshot file extension: {ext!r}")
     i = 1
     while os.path.exists(
         os.path.join(
@@ -214,9 +221,9 @@ class ScreenshotView(ModelView):
     }
 
     def _display(view, context, model, name):
+        safe_url = Markup.escape(url_for("nas.data", path=model.path))
         return Markup(
-            f'<img src="{url_for("nas.data", path=model.path)}" '
-            'alt="screenshot" height="100" width="100">'
+            f'<img src="{safe_url}" alt="screenshot" height="100" width="100">'
         )
 
     column_formatters = {"path": _display}
@@ -368,8 +375,11 @@ def _apply_info_from_spk(session, build, spk, md5_hash):
                 icon.path = icon_path
             icon.save(icon_stream)
 
+    arch_value = info.get("arch")
+    if not arch_value:
+        raise ValueError("Missing 'arch' field in INFO")
     architectures = []
-    for info_arch in info["arch"].split():
+    for info_arch in arch_value.split():
         architecture = Architecture.find(info_arch, syno=True)
         if architecture is None:
             raise ValueError(f"Unknown architecture: {info_arch}")
@@ -562,10 +572,9 @@ class VersionView(ModelView):
         text = getattr(model, name)
         if not text:
             return text
-        escaped = Markup.escape(text)
         if len(text) > 250:
-            return Markup(f"{escaped[:250]}...")
-        return escaped
+            return Markup(f"{Markup.escape(text[:250])}...")
+        return Markup.escape(text)
 
     # View
     column_list = (
@@ -666,9 +675,10 @@ class VersionView(ModelView):
                     f"{len(versions)} versions."
                 )
             )
-        except Exception as e:  # pragma: no cover
+        except Exception:  # pragma: no cover
             self.session.rollback()
-            flash(f"Failed to activate versions' builds. {e}", "error")
+            current_app.logger.exception("Failed to activate versions' builds")
+            flash("Failed to activate versions' builds. Please check the logs.", "error")
 
     @action(
         "deactivate",
@@ -690,9 +700,10 @@ class VersionView(ModelView):
                     f"{len(versions)} versions."
                 )
             )
-        except Exception as e:  # pragma: no cover
+        except Exception:  # pragma: no cover
             self.session.rollback()
-            flash(f"Failed to deactivate versions' builds. {e}", "error")
+            current_app.logger.exception("Failed to deactivate versions' builds")
+            flash("Failed to deactivate versions' builds. Please check the logs.", "error")
 
     @action("sign", "Sign", "Are you sure you want to sign selected builds?")
     def action_sign(self, ids):
@@ -720,6 +731,7 @@ class VersionView(ModelView):
                             self.session.commit()
                             success.append(filename)
                         except Exception:
+                            current_app.logger.exception("Failed to sign build %s", filename)
                             self.session.rollback()
                             failed.append(filename)
             _flash_action_results(
@@ -728,8 +740,9 @@ class VersionView(ModelView):
                 skipped=already_signed,
                 item_label="build",
             )
-        except Exception as e:  # pragma: no cover
-            flash(f"Failed to sign builds. {e}", "error")
+        except Exception:  # pragma: no cover
+            current_app.logger.exception("Failed to sign builds")
+            flash("Failed to sign builds. Please check the logs.", "error")
 
     @action("unsign", "Unsign", "Are you sure you want to unsign selected builds?")
     def action_unsign(self, ids):
@@ -754,6 +767,7 @@ class VersionView(ModelView):
                             self.session.commit()
                             success.append(filename)
                         except Exception:
+                            current_app.logger.exception("Failed to unsign build %s", filename)
                             self.session.rollback()
                             failed.append(filename)
             _flash_action_results(
@@ -762,8 +776,9 @@ class VersionView(ModelView):
                 skipped=not_signed,
                 item_label="build",
             )
-        except Exception as e:  # pragma: no cover
-            flash(f"Failed to unsign builds. {e}", "error")
+        except Exception:  # pragma: no cover
+            current_app.logger.exception("Failed to unsign builds")
+            flash("Failed to unsign builds. Please check the logs.", "error")
 
     @action(
         "resync_info",
@@ -828,6 +843,10 @@ class VersionView(ModelView):
         if action == "resync_info" and not self.can_resync_info:
             abort(403)
         if action == "resync_file" and not self.can_resync_file:
+            abort(403)
+        if action == "sign" and not self.can_sign:
+            abort(403)
+        if action == "unsign" and not self.can_unsign:
             abort(403)
         return super(VersionView, self).handle_action(return_view)
 
@@ -966,9 +985,10 @@ class BuildView(ModelView):
                 if len(builds) == 1
                 else f"{len(builds)} builds were successfully activated."
             )
-        except Exception as e:  # pragma: no cover
+        except Exception:  # pragma: no cover
             self.session.rollback()
-            flash(f"Failed to activate builds. {e}", "error")
+            current_app.logger.exception("Failed to activate builds")
+            flash("Failed to activate builds. Please check the logs.", "error")
 
     @action(
         "deactivate",
@@ -986,9 +1006,10 @@ class BuildView(ModelView):
                 if len(builds) == 1
                 else f"{len(builds)} builds were successfully deactivated."
             )
-        except Exception as e:  # pragma: no cover
+        except Exception:  # pragma: no cover
             self.session.rollback()
-            flash(f"Failed to deactivate builds. {e}", "error")
+            current_app.logger.exception("Failed to deactivate builds")
+            flash("Failed to deactivate builds. Please check the logs.", "error")
 
     @action("sign", "Sign", "Are you sure you want to sign selected builds?")
     def action_sign(self, ids):
@@ -1015,6 +1036,9 @@ class BuildView(ModelView):
                         self.session.commit()
                         success.append(filename)
                     except Exception:
+                        current_app.logger.exception(
+                            "Failed to sign build %s", filename
+                        )
                         self.session.rollback()
                         failed.append(filename)
             _flash_action_results(
@@ -1023,8 +1047,9 @@ class BuildView(ModelView):
                 skipped=already_signed,
                 item_label="build",
             )
-        except Exception as e:  # pragma: no cover
-            flash(f"Failed to sign builds. {e}", "error")
+        except Exception:  # pragma: no cover
+            current_app.logger.exception("Failed to sign builds")
+            flash("Failed to sign builds. Please check the logs.", "error")
 
     @action("unsign", "Unsign", "Are you sure you want to unsign selected builds?")
     def action_unsign(self, ids):
@@ -1048,6 +1073,7 @@ class BuildView(ModelView):
                         self.session.commit()
                         success.append(filename)
                     except Exception:
+                        current_app.logger.exception("Failed to unsign build %s", filename)
                         self.session.rollback()
                         failed.append(filename)
             _flash_action_results(
@@ -1056,8 +1082,9 @@ class BuildView(ModelView):
                 skipped=not_signed,
                 item_label="build",
             )
-        except Exception as e:  # pragma: no cover
-            flash(f"Failed to unsign builds. {e}", "error")
+        except Exception:  # pragma: no cover
+            current_app.logger.exception("Failed to unsign builds")
+            flash("Failed to unsign builds. Please check the logs.", "error")
 
     @action(
         "resync_info",
@@ -1134,6 +1161,10 @@ class BuildView(ModelView):
         if action == "resync_info" and not self.can_resync_info:
             abort(403)
         if action == "resync_file" and not self.can_resync_file:
+            abort(403)
+        if action == "sign" and not self.can_sign:
+            abort(403)
+        if action == "unsign" and not self.can_unsign:
             abort(403)
         return super(BuildView, self).handle_action(return_view)
 
