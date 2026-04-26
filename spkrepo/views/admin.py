@@ -1191,6 +1191,12 @@ class IndexView(AdminIndexView):
             package_count=Package.query.count(),
             build_count=Build.query.count(),
             inactive_build_count=Build.query.filter_by(active=False).count(),
-            unconfirmed_user_count=User.query.filter_by(confirmed_at=None).count() if current_user.has_role("admin") else None,
-            recent_versions=Version.query.order_by(Version.insert_date.desc()).limit(5).all(),
+            unconfirmed_user_count=(
+                User.query.filter_by(confirmed_at=None).count()
+                if current_user.has_role("admin")
+                else None
+            ),
+            recent_versions=Version.query.order_by(Version.insert_date.desc())
+            .limit(5)
+            .all(),
         )
