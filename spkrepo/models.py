@@ -6,7 +6,7 @@ import shutil
 
 from flask import current_app
 from flask_security import RoleMixin, SQLAlchemyUserDatastore, UserMixin
-from sqlalchemy import event, func
+from sqlalchemy import event
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Session
