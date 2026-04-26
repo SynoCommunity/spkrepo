@@ -7,9 +7,11 @@ import shutil
 from flask import current_app
 from flask_security import RoleMixin, SQLAlchemyUserDatastore, UserMixin
 from sqlalchemy import event, func, text
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.collections import attribute_mapped_collection
+from sqlalchemy.sql.expression import FunctionElement
 
 from .ext import db
 
@@ -24,6 +26,30 @@ package_user_maintainer = db.Table(
     db.Column("package_id", db.Integer(), db.ForeignKey("package.id")),
     db.Column("user_id", db.Integer(), db.ForeignKey("user.id")),
 )
+
+
+class _days_ago(FunctionElement):
+    """Dialect-aware SQL expression for a timestamp N days in the past."""
+    inherit_cache = True
+
+    def __init__(self, days):
+        self.days = days
+        super().__init__()
+
+
+@compiles(_days_ago, "sqlite")
+def _compile_days_ago_sqlite(element, compiler, **kw):
+    return f"datetime(CURRENT_TIMESTAMP, '-{element.days} days')"
+
+
+@compiles(_days_ago, "postgresql")
+def _compile_days_ago_postgresql(element, compiler, **kw):
+    return f"NOW() - INTERVAL '{element.days} days'"
+
+
+@compiles(_days_ago)
+def _compile_days_ago_default(element, compiler, **kw):
+    return f"datetime(CURRENT_TIMESTAMP, '-{element.days} days')"
 
 
 class User(db.Model, UserMixin):
@@ -585,8 +611,7 @@ class Package(db.Model):
         .where(
             db.and_(
                 Version.package_id == id,
-                Download.date
-                >= func.datetime(text("CURRENT_TIMESTAMP"), text("'-90 days'")),
+                Download.date >= _days_ago(90),
             )
         )
         .correlate_except(Download)
