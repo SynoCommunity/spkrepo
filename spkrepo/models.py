@@ -519,7 +519,7 @@ class Version(db.Model):
     @all_builds_active.expression
     def all_builds_active(cls):
         return ~db.exists().where(
-            db.and_(Build.version_id == cls.id, Build.active == False)
+            db.and_(Build.version_id == cls.id, Build.active.is_(False))
         )
 
     @property
