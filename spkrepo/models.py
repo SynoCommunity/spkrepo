@@ -544,10 +544,6 @@ class Version(db.Model):
         )
 
     @property
-    def any_builds_active(self):
-        return any(b.active for b in self.builds)
-
-    @property
     def path(self):
         return os.path.join(self.package.name, str(self.version))
 
@@ -632,10 +628,6 @@ class Package(db.Model):
 
     # Constraints
     __table_args__ = (db.UniqueConstraint(name),)
-
-    @property
-    def any_builds_active(self):
-        return any(v.any_builds_active for v in self.versions)
 
     @classmethod
     def find(cls, name):
