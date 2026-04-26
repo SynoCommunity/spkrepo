@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import io
+import logging
 import os
 import re
 import shutil
@@ -28,6 +29,8 @@ from ..models import (
     user_datastore,
 )
 from ..utils import SPK
+
+logger = logging.getLogger(__name__)
 
 api = Blueprint("api", __name__)
 
@@ -189,7 +192,7 @@ class Packages(Resource):
             )
         if version is None:
             create_version = True
-            version_startable = True  # default per Synology docs
+            version_startable = True
             if spk.info.get("startable") is False or spk.info.get("ctl_stop") is False:
                 version_startable = False
             version = Version(
@@ -244,37 +247,35 @@ class Packages(Resource):
                     size=size,
                 )
 
-        # Build
-        if version.id:
-            # check for conflicts
-            conflicts = set()
-            for existing_build in version.builds:
-                overlapping_architectures = set(existing_build.architectures) & set(
-                    architectures
-                )
-                if not overlapping_architectures:
-                    continue
-                existing_min_build = existing_build.firmware_min.build
-                existing_max_build = (
-                    existing_build.firmware_max.build
-                    if existing_build.firmware_max
-                    else existing_min_build
-                )
-                candidate_min_build = firmware.build
-                candidate_max_build = (
-                    firmware_max.build
-                    if firmware_max is not None
-                    else candidate_min_build
-                )
-                if (
-                    candidate_min_build > existing_max_build
-                    or candidate_max_build < existing_min_build
-                ):
-                    continue
-                conflicts |= overlapping_architectures
-            if conflicts:
-                conflict_codes = ", ".join(sorted(a.code for a in conflicts))
-                abort(409, message=f"Conflicting architectures: {conflict_codes}")
+        # Build — conflict check is a no-op for new versions but kept unconditional
+        conflicts = set()
+        for existing_build in version.builds:
+            overlapping_architectures = set(existing_build.architectures) & set(
+                architectures
+            )
+            if not overlapping_architectures:
+                continue
+            existing_min_build = existing_build.firmware_min.build
+            existing_max_build = (
+                existing_build.firmware_max.build
+                if existing_build.firmware_max
+                else existing_min_build
+            )
+            candidate_min_build = firmware.build
+            candidate_max_build = (
+                firmware_max.build
+                if firmware_max is not None
+                else candidate_min_build
+            )
+            if (
+                candidate_min_build > existing_max_build
+                or candidate_max_build < existing_min_build
+            ):
+                continue
+            conflicts |= overlapping_architectures
+        if conflicts:
+            conflict_codes = ", ".join(sorted(a.code for a in conflicts))
+            abort(409, message=f"Conflicting architectures: {conflict_codes}")
 
         build_filename = Build.generate_filename(
             package, version, firmware, architectures
@@ -321,10 +322,10 @@ class Packages(Resource):
                 for size, icon in build.version.icons.items():
                     icon.save(spk.icons[size])
             build.save(spk.stream)
-            # generate md5 hash
             build.md5 = build.calculate_md5()
             build.size = build.calculate_size()
         except Exception as e:  # pragma: no cover
+            logger.exception("Failed to save SPK files for package %s", package.name)
             if create_package:
                 shutil.rmtree(os.path.join(data_path, package.name), ignore_errors=True)
             elif create_version:
@@ -343,7 +344,6 @@ class Packages(Resource):
         db.session.add(build)
         db.session.commit()
 
-        # success
         return (
             {
                 "package": package.name,
