@@ -6,7 +6,7 @@ import shutil
 
 from flask import current_app
 from flask_security import RoleMixin, SQLAlchemyUserDatastore, UserMixin
-from sqlalchemy import event, func, text
+from sqlalchemy import event, text
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Session
@@ -30,6 +30,7 @@ package_user_maintainer = db.Table(
 
 class _days_ago(FunctionElement):
     """Dialect-aware SQL expression for a timestamp N days in the past."""
+
     inherit_cache = True
 
     def __init__(self, days):
