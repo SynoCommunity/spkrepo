@@ -678,7 +678,9 @@ class VersionView(ModelView):
         except Exception:  # pragma: no cover
             self.session.rollback()
             current_app.logger.exception("Failed to activate versions' builds")
-            flash("Failed to activate versions' builds. Please check the logs.", "error")
+            flash(
+                "Failed to activate versions' builds. Please check the logs.", "error"
+            )
 
     @action(
         "deactivate",
@@ -703,7 +705,9 @@ class VersionView(ModelView):
         except Exception:  # pragma: no cover
             self.session.rollback()
             current_app.logger.exception("Failed to deactivate versions' builds")
-            flash("Failed to deactivate versions' builds. Please check the logs.", "error")
+            flash(
+                "Failed to deactivate versions' builds. Please check the logs.", "error"
+            )
 
     @action("sign", "Sign", "Are you sure you want to sign selected builds?")
     def action_sign(self, ids):
@@ -731,7 +735,9 @@ class VersionView(ModelView):
                             self.session.commit()
                             success.append(filename)
                         except Exception:
-                            current_app.logger.exception("Failed to sign build %s", filename)
+                            current_app.logger.exception(
+                                "Failed to sign build %s", filename
+                            )
                             self.session.rollback()
                             failed.append(filename)
             _flash_action_results(
@@ -767,7 +773,9 @@ class VersionView(ModelView):
                             self.session.commit()
                             success.append(filename)
                         except Exception:
-                            current_app.logger.exception("Failed to unsign build %s", filename)
+                            current_app.logger.exception(
+                                "Failed to unsign build %s", filename
+                            )
                             self.session.rollback()
                             failed.append(filename)
             _flash_action_results(
@@ -1073,7 +1081,9 @@ class BuildView(ModelView):
                         self.session.commit()
                         success.append(filename)
                     except Exception:
-                        current_app.logger.exception("Failed to unsign build %s", filename)
+                        current_app.logger.exception(
+                            "Failed to unsign build %s", filename
+                        )
                         self.session.rollback()
                         failed.append(filename)
             _flash_action_results(
