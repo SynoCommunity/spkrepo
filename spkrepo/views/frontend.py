@@ -25,15 +25,6 @@ class GenerateApiKeyForm(FlaskForm):
     api_key = StringField("API Key")
     submit = SubmitField("Generate API Key")
 
-    def validate(self, extra_validators=None):
-        if not super(GenerateApiKeyForm, self).validate():  # pragma: no cover
-            return False
-
-        if not current_user.has_role("developer"):
-            return False
-
-        return True
-
 
 def generate_api_key():
     """
@@ -48,10 +39,13 @@ def generate_api_key():
 @frontend.route("/profile", methods=["GET", "POST"])
 @login_required
 def profile():
+    if not current_user.has_role("developer"):
+        return render_template(
+            "frontend/profile.html",
+            change_password_form=ChangePasswordForm(),
+        )
     form = GenerateApiKeyForm()
     if form.validate_on_submit():
-        if not current_user.has_role("developer"):
-            abort(403)
         current_user.api_key = generate_api_key()
         db.session.commit()
         return redirect(url_for("frontend.profile"), code=303)

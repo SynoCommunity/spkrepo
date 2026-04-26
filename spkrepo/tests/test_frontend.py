@@ -193,6 +193,7 @@ class ProfileTestCase(BaseTestCase):
         with self.logged_user(api_key=None):
             response = self.client.post(url_for("frontend.profile"), data=dict())
             self.assert200(response)
+            self.assertNotIn("API key", response.data.decode())
 
 
 class RegisterTestCase(BaseTestCase):
