@@ -1187,36 +1187,32 @@ class IndexView(AdminIndexView):
         if not any(map(current_user.has_role, ("developer", "package_admin", "admin"))):
             abort(403)
 
-        is_privileged = current_user.has_role("package_admin") or current_user.has_role("admin")
+        is_privileged = current_user.has_role("package_admin") or current_user.has_role(
+            "admin"
+        )
 
         if is_privileged:
             package_count = Package.query.count()
             build_count = Build.query.count()
             inactive_build_count = Build.query.filter_by(active=False).count()
             recent_versions = (
-                Version.query
-                .order_by(Version.insert_date.desc())
-                .limit(5)
-                .all()
+                Version.query.order_by(Version.insert_date.desc()).limit(5).all()
             )
         else:
             package_count = (
-                Package.query
-                .join(Package.maintainers)
+                Package.query.join(Package.maintainers)
                 .filter(User.id == current_user.id)
                 .count()
             )
             build_count = (
-                Build.query
-                .join(Build.version)
+                Build.query.join(Build.version)
                 .join(Version.package)
                 .join(Package.maintainers)
                 .filter(User.id == current_user.id)
                 .count()
             )
             inactive_build_count = (
-                Build.query
-                .filter_by(active=False)
+                Build.query.filter_by(active=False)
                 .join(Build.version)
                 .join(Version.package)
                 .join(Package.maintainers)
@@ -1224,8 +1220,7 @@ class IndexView(AdminIndexView):
                 .count()
             )
             recent_versions = (
-                Version.query
-                .join(Version.package)
+                Version.query.join(Version.package)
                 .join(Package.maintainers)
                 .filter(User.id == current_user.id)
                 .order_by(Version.insert_date.desc())
