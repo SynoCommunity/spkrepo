@@ -268,7 +268,8 @@ class VersionTestCase(BaseTestCase):
 
     def test_action_resync_info_refreshes_build_metadata(self):
         # Pin firmware_min to the lowest seeded firmware so we can always find
-        # a different one to corrupt the build with, making the restore assertion meaningful.
+        # a different one to corrupt the build with, making the
+        # restore assertion meaningful.
         build = BuildFactory(
             firmware_min=Firmware.query.order_by(Firmware.build.asc()).first(),
             firmware_max=Firmware.query.order_by(Firmware.build.desc()).first(),

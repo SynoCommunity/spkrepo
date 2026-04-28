@@ -216,8 +216,9 @@ class CatalogTestCase(BaseTestCase):
         self.assertCatalogEntry(packages[0], build, data)
 
     def test_stable_noarch_build_active_stable_dsm6(self):
-        # DSM 6.2 (build 23739): response format has packages + keyrings (>= 5004, < 40000).
-        # firmware_min must also be DSM 6.x so the major filter (startswith("6.")) matches.
+        # DSM 6.2 (build 23739): response format includes packages + keyrings
+        # (build >= 5004, < 40000). firmware_min must also be DSM 6.x so the
+        # major filter (startswith("6.")) matches.
         build = BuildFactory(
             active=True,
             version__report_url=None,
@@ -308,7 +309,8 @@ class CatalogTestCase(BaseTestCase):
         self.assertCatalogEntry(packages[0], build, data)
 
     def test_stable_build_active_stable_quick_flags_all_true(self):
-        # qinst=True, qupgrade=True, qstart=True: license=None, no wizards, startable=True.
+        # qinst=True, qupgrade=True, qstart=True:
+        # license=None, no wizards, startable=True.
         build = BuildFactory(
             active=True,
             version__report_url=None,
@@ -332,7 +334,8 @@ class CatalogTestCase(BaseTestCase):
         self.assertCatalogEntry(entry, build, data)
 
     def test_stable_build_active_stable_qstart_false_when_not_startable(self):
-        # qstart=False when startable=False, even with license=None and no install wizard.
+        # qstart=False when startable=False,
+        # even with license=None and no install wizard.
         build = BuildFactory(
             active=True,
             version__report_url=None,
@@ -558,7 +561,8 @@ class CatalogTestCase(BaseTestCase):
             firmware_min=Firmware.find(4458),
         )
         db.session.commit()
-        # Without override: build=23739 → major=6, package has firmware_min DSM 5 → excluded.
+        # Without override: build=23739 → major=6,
+        # package has firmware_min DSM 5 → excluded.
         data_auto = dict(arch="88f6281", build="23739", language="enu")
         response_auto = self.client.post(url_for("nas.catalog"), data=data_auto)
         self.assert200(response_auto)
