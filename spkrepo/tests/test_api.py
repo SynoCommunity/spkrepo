@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import base64
+import json
 import os
 import warnings
 from datetime import datetime, timedelta, timezone
@@ -90,10 +91,12 @@ class PackagesTestCase(BaseTestCase):
         self.assertEqual(
             inserted_build.version.upgrade_wizard, build.version.upgrade_wizard
         )
-        self.assertEqual(
-            inserted_build.version.startable,
-            True if build.version.startable is None else build.version.startable,
+        # api.py defaults version_startable=True when INFO omits the startable key,
+        # so a factory build with startable=None should be inserted as startable=True.
+        expected_startable = (
+            True if build.version.startable is None else build.version.startable
         )
+        self.assertEqual(inserted_build.version.startable, expected_startable)
         self.assertEqual(inserted_build.version.license, build.version.license)
 
         # manifest
@@ -143,7 +146,8 @@ class PackagesTestCase(BaseTestCase):
         self.assert401(self.client.post(url_for("api.packages")))
 
     def test_post_simple_user(self):
-        user = UserFactory()
+        # A user with a valid api_key but no developer role must be rejected.
+        user = UserFactory(roles=[])
         db.session.commit()
 
         self.assert401(
@@ -207,7 +211,11 @@ class PackagesTestCase(BaseTestCase):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
         db.session.commit()
 
-        base_build = BuildFactory.build(architectures=[Architecture.find("noarch")])
+        # Pin to the lowest seeded firmware so newer_firmware is always strictly higher.
+        base_build = BuildFactory.build(
+            architectures=[Architecture.find("noarch")],
+            firmware_min=Firmware.query.order_by(Firmware.build.asc()).first(),
+        )
         with (
             create_spk(base_build) as spk,
             warnings.catch_warnings(record=True) as base_warns,
@@ -228,12 +236,15 @@ class PackagesTestCase(BaseTestCase):
             ),
         )
 
-        newer_firmware = (
-            Firmware.query.filter(Firmware.build != base_build.firmware_min.build)
-            .order_by(Firmware.build.desc())
-            .first()
-        )
+        # Always use the highest seeded firmware to guarantee it is genuinely newer
+        # than whatever the factory picked for base_build, avoiding a flaky fixture.
+        newer_firmware = Firmware.query.order_by(Firmware.build.desc()).first()
         self.assertIsNotNone(newer_firmware)
+        self.assertGreater(
+            newer_firmware.build,
+            base_build.firmware_min.build,
+            "Expected newer_firmware to be strictly higher than base firmware",
+        )
 
         followup_build = BuildFactory.build(
             version=base_build.version,
@@ -612,3 +623,209 @@ class PackagesTestCase(BaseTestCase):
             )
         self.assert422(response)
         self.assertIn("Upstream version mismatch", response.data.decode())
+
+    def test_post_201_response_body(self):
+        # The 201 response body must contain package, version, firmware, architectures.
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        build = BuildFactory.build(
+            architectures=[Architecture.find("88f628x")],
+            firmware_min=Firmware.find(1594),
+        )
+        with create_spk(build) as spk:
+            response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
+            )
+        self.assert201(response)
+        body = json.loads(response.data.decode())
+        self.assertEqual(body["package"], build.version.package.name)
+        self.assertEqual(body["version"], build.version.version_string)
+        self.assertEqual(body["firmware"], build.firmware_min.firmware_string)
+        self.assertEqual(body["architectures"], ["88f628x"])
+
+    def test_post_with_firmware_max(self):
+        # A build with firmware_max set should be accepted and stored correctly.
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        build = BuildFactory.build(
+            firmware_min=Firmware.find(1594),
+            firmware_max=Firmware.find(4458),
+        )
+        with create_spk(build) as spk:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            )
+        self.assertBuildInserted(Build.query.one(), build, user)
+
+    def test_post_invalid_firmware_max(self):
+        # os_max_ver that doesn't match the firmware regex returns 422.
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        build = BuildFactory.build(firmware_min=Firmware.find(1594))
+        info = create_info(build)
+        info["os_max_ver"] = "not-a-firmware"
+        with create_spk(build, info=info) as spk:
+            response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
+            )
+        self.assert422(response)
+        self.assertIn("Invalid maximum firmware", response.data.decode())
+
+    def test_post_unknown_firmware_max(self):
+        # os_max_ver with valid format but unknown build number returns 422.
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        build = BuildFactory.build(firmware_min=Firmware.find(1594))
+        info = create_info(build)
+        info["os_max_ver"] = "5.0-9999"
+        with create_spk(build, info=info) as spk:
+            response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
+            )
+        self.assert422(response)
+        self.assertIn("Unknown maximum firmware", response.data.decode())
+
+    def test_post_firmware_max_less_than_firmware_min(self):
+        # os_max_ver < firmware returns 422.
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        # firmware_min=4458, firmware_max=1594 (max < min)
+        build = BuildFactory.build(firmware_min=Firmware.find(4458))
+        info = create_info(build)
+        info["os_max_ver"] = Firmware.find(1594).firmware_string
+        with create_spk(build, info=info) as spk:
+            response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
+            )
+        self.assert422(response)
+        self.assertIn(
+            "Maximum firmware must be greater than or equal to minimum firmware",
+            response.data.decode(),
+        )
+
+    def test_post_conflict_firmware_max_range_overlap(self):
+        # Two builds with overlapping firmware ranges on the same arch should conflict.
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        arch = [Architecture.find("88f628x")]
+        first_build = BuildFactory.build(
+            architectures=arch,
+            firmware_min=Firmware.find(1594),
+            firmware_max=Firmware.find(4458),
+        )
+        with create_spk(first_build) as spk:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            )
+
+        # Second build: same arch, firmware range overlaps (min=4458, no max)
+        second_build = BuildFactory.build(
+            version=first_build.version,
+            architectures=arch,
+            firmware_min=Firmware.find(4458),
+            firmware_max=None,
+        )
+        with create_spk(second_build) as spk:
+            response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
+            )
+        self.assert409(response)
+        self.assertIn("Conflicting architectures", response.data.decode())
+
+    def test_post_no_conflict_non_overlapping_firmware_ranges(self):
+        # Two builds on the same arch with non-overlapping firmware ranges are allowed.
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        arch = [Architecture.find("88f628x")]
+        first_build = BuildFactory.build(
+            architectures=arch,
+            firmware_min=Firmware.find(1594),
+            firmware_max=Firmware.find(1594),
+        )
+        with create_spk(first_build) as spk:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            )
+
+        second_build = BuildFactory.build(
+            version=first_build.version,
+            architectures=arch,
+            firmware_min=Firmware.find(4458),
+            firmware_max=None,
+        )
+        with create_spk(second_build) as spk:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            )
+
+    def test_post_unknown_install_dep_service(self):
+        # An unknown install_dep_services value returns 422.
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        build = BuildFactory.build(version__service_dependencies=[])
+        info = create_info(build)
+        info["install_dep_services"] = "no-such-service"
+        with create_spk(build, info=info) as spk:
+            response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
+            )
+        self.assert422(response)
+        self.assertIn(
+            "Unknown dependent service: no-such-service", response.data.decode()
+        )
+
+    def test_post_maintainer_cannot_upload_to_other_package(self):
+        # A maintainer on package A must be rejected when uploading to package B.
+        user = UserFactory(roles=[Role.find("developer")])
+        PackageFactory(
+            maintainers=[user]
+        )  # establishes user as maintainer on a different package
+        package_b = PackageFactory()
+        db.session.commit()
+
+        with create_spk(BuildFactory.build(version__package=package_b)) as spk:
+            response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
+            )
+        self.assert403(response)
+        self.assertIn(
+            "Insufficient permissions on this package", response.data.decode()
+        )

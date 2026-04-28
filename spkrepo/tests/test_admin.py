@@ -98,7 +98,7 @@ class UserTestCase(BaseTestCase):
             self.assertTrue(user1.active)
             self.assertTrue(user2.active)
 
-    def test_action_deactivate(self):
+    def test_action_deactivate_one(self):
         with self.logged_user("admin"):
             user = self.create_user()
             user.active = True
@@ -267,7 +267,12 @@ class VersionTestCase(BaseTestCase):
         self.assertTrue({"72", "256"}.intersection(refreshed_version.icons.keys()))
 
     def test_action_resync_info_refreshes_build_metadata(self):
-        build = BuildFactory()
+        # Pin firmware_min to the lowest seeded firmware so we can always find
+        # a different one to corrupt the build with, making the restore assertion meaningful.
+        build = BuildFactory(
+            firmware_min=Firmware.query.order_by(Firmware.build.asc()).first(),
+            firmware_max=Firmware.query.order_by(Firmware.build.desc()).first(),
+        )
         db.session.commit()
 
         version = build.version
@@ -277,11 +282,12 @@ class VersionTestCase(BaseTestCase):
         original_dependencies = build.buildmanifest.dependencies
         original_conf_privilege = build.buildmanifest.conf_privilege
 
-        alternative_firmware = Firmware.query.filter(
+        # Corrupt the build — use a firmware that is guaranteed to differ
+        corrupting_firmware = Firmware.query.filter(
             Firmware.id != original_firmware_min.id
         ).first()
-        if alternative_firmware is not None:
-            build.firmware_min = alternative_firmware
+        self.assertIsNotNone(corrupting_firmware, "Need at least 2 firmware entries")
+        build.firmware_min = corrupting_firmware
         build.firmware_max = None
         build.architectures = []
         build.buildmanifest.dependencies = None
@@ -290,6 +296,10 @@ class VersionTestCase(BaseTestCase):
         build.md5 = None
 
         db.session.commit()
+
+        # Verify the corruption took effect so we know the resync is actually doing work
+        self.assertNotEqual(build.firmware_min.id, original_firmware_min.id)
+        self.assertIsNone(build.firmware_max)
 
         with self.logged_user("package_admin", "admin"):
             response = self.client.post(
@@ -308,13 +318,9 @@ class VersionTestCase(BaseTestCase):
             original_architectures,
         )
         self.assertEqual(refreshed_build.firmware_min.id, original_firmware_min.id)
-        if original_firmware_max is None:
-            self.assertIsNone(refreshed_build.firmware_max)
-        else:
-            self.assertEqual(
-                refreshed_build.firmware_max.id,
-                original_firmware_max.id,
-            )
+        # firmware_max was set to a known value and should be restored
+        self.assertIsNotNone(refreshed_build.firmware_max)
+        self.assertEqual(refreshed_build.firmware_max.id, original_firmware_max.id)
         self.assertEqual(
             refreshed_build.buildmanifest.dependencies,
             original_dependencies,
@@ -354,6 +360,104 @@ class VersionTestCase(BaseTestCase):
         self.assertEqual(refreshed_build.md5, refreshed_build.calculate_md5())
         self.assertIsNotNone(refreshed_build.size)
         self.assertGreater(refreshed_build.size, 0)
+
+    def test_action_activate_one(self):
+        build = BuildFactory(active=False)
+        db.session.commit()
+        with self.logged_user("package_admin"):
+            response = self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(action="activate", rowid=[build.version.id]),
+            )
+            self.assert200(response)
+            self.assertIn(
+                "Builds on version were successfully activated.",
+                response.data.decode(),
+            )
+        db.session.expire_all()
+        self.assertTrue(db.session.get(Build, build.id).active)
+
+    def test_action_activate_multi(self):
+        build1 = BuildFactory(active=False)
+        build2 = BuildFactory(active=False)
+        db.session.commit()
+        with self.logged_user("package_admin"):
+            response = self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(
+                    action="activate",
+                    rowid=[build1.version.id, build2.version.id],
+                ),
+            )
+            self.assert200(response)
+            self.assertIn(
+                "Builds have been successfully activated for 2 versions.",
+                response.data.decode(),
+            )
+        db.session.expire_all()
+        self.assertTrue(db.session.get(Build, build1.id).active)
+        self.assertTrue(db.session.get(Build, build2.id).active)
+
+    def test_action_deactivate_one(self):
+        build = BuildFactory(active=True)
+        db.session.commit()
+        with self.logged_user("package_admin"):
+            response = self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(action="deactivate", rowid=[build.version.id]),
+            )
+            self.assert200(response)
+            self.assertIn(
+                "Builds on version were successfully deactivated.",
+                response.data.decode(),
+            )
+        db.session.expire_all()
+        self.assertFalse(db.session.get(Build, build.id).active)
+
+    def test_action_deactivate_multi(self):
+        build1 = BuildFactory(active=True)
+        build2 = BuildFactory(active=True)
+        db.session.commit()
+        with self.logged_user("package_admin"):
+            response = self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(
+                    action="deactivate",
+                    rowid=[build1.version.id, build2.version.id],
+                ),
+            )
+            self.assert200(response)
+            self.assertIn(
+                "Builds have been successfully deactivated for 2 versions.",
+                response.data.decode(),
+            )
+        db.session.expire_all()
+        self.assertFalse(db.session.get(Build, build1.id).active)
+        self.assertFalse(db.session.get(Build, build2.id).active)
+
+    def test_action_resync_info_blocked_for_non_admin(self):
+        build = BuildFactory()
+        db.session.commit()
+        with self.logged_user("package_admin"):
+            response = self.client.post(
+                url_for("version.action_view"),
+                data=dict(action="resync_info", rowid=[build.version.id]),
+            )
+        self.assert403(response)
+
+    def test_action_resync_file_blocked_for_non_admin(self):
+        build = BuildFactory()
+        db.session.commit()
+        with self.logged_user("package_admin"):
+            response = self.client.post(
+                url_for("version.action_view"),
+                data=dict(action="resync_file", rowid=[build.version.id]),
+            )
+        self.assert403(response)
 
 
 class BuildTestCase(BaseTestCase):
@@ -410,7 +514,7 @@ class BuildTestCase(BaseTestCase):
             self.assertTrue(build1.active)
             self.assertTrue(build2.active)
 
-    def test_action_deactivate(self):
+    def test_action_deactivate_one(self):
         with self.logged_user("package_admin"):
             build = BuildFactory(active=True)
             db.session.commit()
@@ -527,6 +631,39 @@ class BuildTestCase(BaseTestCase):
         self.assertIsNotNone(refreshed_build.size)
         self.assertGreater(refreshed_build.size, 0)
 
+    def test_action_resync_info_blocked_for_non_admin(self):
+        build = BuildFactory()
+        db.session.commit()
+        with self.logged_user("package_admin"):
+            response = self.client.post(
+                url_for("build.action_view"),
+                data=dict(action="resync_info", rowid=[build.id]),
+            )
+        self.assert403(response)
+
+    def test_action_resync_file_blocked_for_non_admin(self):
+        build = BuildFactory()
+        db.session.commit()
+        with self.logged_user("package_admin"):
+            response = self.client.post(
+                url_for("build.action_view"),
+                data=dict(action="resync_file", rowid=[build.id]),
+            )
+        self.assert403(response)
+
+    def test_developer_sees_only_maintainer_builds(self):
+        # A developer who is a maintainer on a package sees only that package's builds.
+        with self.logged_user("developer") as user:
+            own_package = PackageFactory(maintainers=[user])
+            BuildFactory(version__package=own_package)  # creates the build on disk
+            other_build = BuildFactory()
+            db.session.commit()
+            response = self.client.get(url_for("build.index_view"))
+            self.assert200(response)
+            response_data = response.data.decode()
+            self.assertIn(own_package.name, response_data)
+            self.assertNotIn(other_build.version.package.name, response_data)
+
 
 class ScreenshotTestCase(BaseTestCase):
     def test_anonymous(self):
@@ -562,3 +699,31 @@ class ScreenshotTestCase(BaseTestCase):
             )
         self.assertEqual(len(package.screenshots), 1)
         self.assertTrue(package.screenshots[0].path.endswith("screenshot_1.png"))
+
+
+class ScreenshotDeleteTestCase(BaseTestCase):
+    def test_delete_removes_file(self):
+        package = PackageFactory(add_screenshot=False)
+        db.session.commit()
+        # Use a single logged_user context so create and delete are performed
+        # by the same user, matching the normal admin workflow.
+        with self.logged_user("package_admin"):
+            self.client.post(
+                url_for("screenshot.create_view"),
+                data=dict(
+                    package=str(package.id),
+                    path=(create_image("Delete Test", 1280, 1024), "test.png"),
+                ),
+            )
+            db.session.expire_all()
+            self.assertEqual(len(package.screenshots), 1)
+            screenshot = package.screenshots[0]
+            screenshot_path = os.path.join(
+                current_app.config["DATA_PATH"], screenshot.path
+            )
+            self.assertTrue(os.path.exists(screenshot_path))
+
+            self.client.post(url_for("screenshot.delete_view", id=str(screenshot.id)))
+        db.session.expire_all()
+        self.assertEqual(len(package.screenshots), 0)
+        self.assertFalse(os.path.exists(screenshot_path))
