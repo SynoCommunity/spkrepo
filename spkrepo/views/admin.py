@@ -67,7 +67,7 @@ class UserView(ModelView):
     """View for :class:`~spkrepo.models.User`"""
 
     def __init__(self, **kwargs):
-        super(UserView, self).__init__(User, db.session, **kwargs)
+        super(UserView, self).__init__(User, db, **kwargs)
 
     # Permissions
     def is_accessible(self):
@@ -95,14 +95,14 @@ class UserView(ModelView):
             users = get_query_for_ids(self.get_query(), self.model, ids).all()
             for user in users:
                 user.active = True
-            self.session.commit()
+            db.session.commit()
             flash(
                 "User was successfully activated."
                 if len(users) == 1
                 else f"{len(users)} users were successfully activated."
             )
         except Exception:  # pragma: no cover
-            self.session.rollback()
+            db.session.rollback()
             current_app.logger.exception("Failed to activate users")
             flash("Failed to activate users. Please check the logs.", "error")
 
@@ -116,14 +116,14 @@ class UserView(ModelView):
             users = get_query_for_ids(self.get_query(), self.model, ids).all()
             for user in users:
                 user.active = False
-            self.session.commit()
+            db.session.commit()
             flash(
                 "User was successfully deactivated."
                 if len(users) == 1
                 else f"{len(users)} users were successfully deactivated."
             )
         except Exception:  # pragma: no cover
-            self.session.rollback()
+            db.session.rollback()
             current_app.logger.exception("Failed to deactivate users")
             flash("Failed to deactivate users. Please check the logs.", "error")
 
@@ -132,7 +132,7 @@ class ArchitectureView(ModelView):
     """View for :class:`~spkrepo.models.Architecture`"""
 
     def __init__(self, **kwargs):
-        super(ArchitectureView, self).__init__(Architecture, db.session, **kwargs)
+        super(ArchitectureView, self).__init__(Architecture, db, **kwargs)
 
     # Permissions
     def is_accessible(self):
@@ -150,7 +150,7 @@ class FirmwareView(ModelView):
     """View for :class:`~spkrepo.models.Firmware`"""
 
     def __init__(self, **kwargs):
-        super(FirmwareView, self).__init__(Firmware, db.session, **kwargs)
+        super(FirmwareView, self).__init__(Firmware, db, **kwargs)
 
     # Permissions
     def is_accessible(self):
@@ -172,7 +172,7 @@ class ServiceView(ModelView):
     """View for :class:`~spkrepo.models.Service`"""
 
     def __init__(self, **kwargs):
-        super(ServiceView, self).__init__(Service, db.session, **kwargs)
+        super(ServiceView, self).__init__(Service, db, **kwargs)
 
     # Permissions
     def is_accessible(self):
@@ -206,7 +206,7 @@ class ScreenshotView(ModelView):
     """View for :class:`~spkrepo.models.Screenshot`"""
 
     def __init__(self, **kwargs):
-        super(ScreenshotView, self).__init__(Screenshot, db.session, **kwargs)
+        super(ScreenshotView, self).__init__(Screenshot, db, **kwargs)
 
     # Permissions
     def is_accessible(self):
@@ -440,7 +440,7 @@ class PackageView(ModelView):
     """View for :class:`~spkrepo.models.Package`"""
 
     def __init__(self, **kwargs):
-        super(PackageView, self).__init__(Package, db.session, **kwargs)
+        super(PackageView, self).__init__(Package, db, **kwargs)
 
     # Permissions
     def is_accessible(self):
@@ -525,7 +525,7 @@ class VersionView(ModelView):
     """View for :class:`~spkrepo.models.Version`"""
 
     def __init__(self, **kwargs):
-        super(VersionView, self).__init__(Version, db.session, **kwargs)
+        super(VersionView, self).__init__(Version, db, **kwargs)
 
     # Permissions
     def is_accessible(self):
@@ -666,7 +666,7 @@ class VersionView(ModelView):
             for version in versions:
                 for build in version.builds:
                     build.active = True
-            self.session.commit()
+            db.session.commit()
             flash(
                 "Builds on version were successfully activated."
                 if len(versions) == 1
@@ -676,7 +676,7 @@ class VersionView(ModelView):
                 )
             )
         except Exception:  # pragma: no cover
-            self.session.rollback()
+            db.session.rollback()
             current_app.logger.exception("Failed to activate versions' builds")
             flash(
                 "Failed to activate versions' builds. Please check the logs.", "error"
@@ -693,7 +693,7 @@ class VersionView(ModelView):
             for version in versions:
                 for build in version.builds:
                     build.active = False
-            self.session.commit()
+            db.session.commit()
             flash(
                 "Builds on version were successfully deactivated."
                 if len(versions) == 1
@@ -703,7 +703,7 @@ class VersionView(ModelView):
                 )
             )
         except Exception:  # pragma: no cover
-            self.session.rollback()
+            db.session.rollback()
             current_app.logger.exception("Failed to deactivate versions' builds")
             flash(
                 "Failed to deactivate versions' builds. Please check the logs.", "error"
@@ -732,13 +732,13 @@ class VersionView(ModelView):
                                 current_app.config["GNUPG_PATH"],
                             )
                             _resync_build_file(build)
-                            self.session.commit()
+                            db.session.commit()
                             success.append(filename)
                         except Exception:
                             current_app.logger.exception(
                                 "Failed to sign build %s", filename
                             )
-                            self.session.rollback()
+                            db.session.rollback()
                             failed.append(filename)
             _flash_action_results(
                 success,
@@ -770,13 +770,13 @@ class VersionView(ModelView):
                         try:
                             spk.unsign()
                             _resync_build_file(build)
-                            self.session.commit()
+                            db.session.commit()
                             success.append(filename)
                         except Exception:
                             current_app.logger.exception(
                                 "Failed to unsign build %s", filename
                             )
-                            self.session.rollback()
+                            db.session.rollback()
                             failed.append(filename)
             _flash_action_results(
                 success,
@@ -802,11 +802,11 @@ class VersionView(ModelView):
             for build in version.builds:
                 filename = os.path.basename(build.path) if build.path else str(build.id)
                 try:
-                    _resync_build_metadata(self.session, build)
-                    self.session.commit()
+                    _resync_build_metadata(db.session, build)
+                    db.session.commit()
                     successes.append(filename)
                 except Exception as exc:  # pragma: no cover
-                    self.session.rollback()
+                    db.session.rollback()
                     failures.append((filename, str(exc)))
 
         _flash_action_results(successes, failures, item_label="build")
@@ -826,10 +826,10 @@ class VersionView(ModelView):
                 filename = os.path.basename(build.path) if build.path else str(build.id)
                 try:
                     _resync_build_file(build)
-                    self.session.commit()
+                    db.session.commit()
                     successes.append(filename)
                 except Exception as exc:
-                    self.session.rollback()
+                    db.session.rollback()
                     failures.append((filename, str(exc)))
 
         _flash_action_results(successes, failures, item_label="build")
@@ -863,7 +863,7 @@ class BuildView(ModelView):
     """View for :class:`~spkrepo.models.Build`"""
 
     def __init__(self, **kwargs):
-        super(BuildView, self).__init__(Build, db.session, **kwargs)
+        super(BuildView, self).__init__(Build, db, **kwargs)
 
     # Permissions
     def is_accessible(self):
@@ -987,14 +987,14 @@ class BuildView(ModelView):
             builds = get_query_for_ids(self.get_query(), self.model, ids).all()
             for build in builds:
                 build.active = True
-            self.session.commit()
+            db.session.commit()
             flash(
                 "Build was successfully activated."
                 if len(builds) == 1
                 else f"{len(builds)} builds were successfully activated."
             )
         except Exception:  # pragma: no cover
-            self.session.rollback()
+            db.session.rollback()
             current_app.logger.exception("Failed to activate builds")
             flash("Failed to activate builds. Please check the logs.", "error")
 
@@ -1008,14 +1008,14 @@ class BuildView(ModelView):
             builds = get_query_for_ids(self.get_query(), self.model, ids).all()
             for build in builds:
                 build.active = False
-            self.session.commit()
+            db.session.commit()
             flash(
                 "Build was successfully deactivated."
                 if len(builds) == 1
                 else f"{len(builds)} builds were successfully deactivated."
             )
         except Exception:  # pragma: no cover
-            self.session.rollback()
+            db.session.rollback()
             current_app.logger.exception("Failed to deactivate builds")
             flash("Failed to deactivate builds. Please check the logs.", "error")
 
@@ -1041,13 +1041,13 @@ class BuildView(ModelView):
                             current_app.config["GNUPG_PATH"],
                         )
                         _resync_build_file(build)
-                        self.session.commit()
+                        db.session.commit()
                         success.append(filename)
                     except Exception:
                         current_app.logger.exception(
                             "Failed to sign build %s", filename
                         )
-                        self.session.rollback()
+                        db.session.rollback()
                         failed.append(filename)
             _flash_action_results(
                 success,
@@ -1078,13 +1078,13 @@ class BuildView(ModelView):
                     try:
                         spk.unsign()
                         _resync_build_file(build)
-                        self.session.commit()
+                        db.session.commit()
                         success.append(filename)
                     except Exception:
                         current_app.logger.exception(
                             "Failed to unsign build %s", filename
                         )
-                        self.session.rollback()
+                        db.session.rollback()
                         failed.append(filename)
             _flash_action_results(
                 success,
@@ -1107,7 +1107,7 @@ class BuildView(ModelView):
 
         for build_id in ids:
             try:
-                build = self.session.get(self.model, int(build_id))
+                build = db.session.get(self.model, int(build_id))
             except (TypeError, ValueError):
                 continue
 
@@ -1116,11 +1116,11 @@ class BuildView(ModelView):
 
             filename = os.path.basename(build.path) if build.path else str(build_id)
             try:
-                _resync_build_metadata(self.session, build)
-                self.session.commit()
+                _resync_build_metadata(db.session, build)
+                db.session.commit()
                 successes.append(filename)
             except Exception as exc:  # pragma: no cover
-                self.session.rollback()
+                db.session.rollback()
                 failures.append((filename, str(exc)))
 
         _flash_action_results(successes, failures, item_label="build")
@@ -1136,7 +1136,7 @@ class BuildView(ModelView):
 
         for build_id in ids:
             try:
-                build = self.session.get(self.model, int(build_id))
+                build = db.session.get(self.model, int(build_id))
             except (TypeError, ValueError):
                 continue
 
@@ -1146,10 +1146,10 @@ class BuildView(ModelView):
             filename = os.path.basename(build.path) if build.path else str(build_id)
             try:
                 _resync_build_file(build)
-                self.session.commit()
+                db.session.commit()
                 successes.append(filename)
             except Exception as exc:
-                self.session.rollback()
+                db.session.rollback()
                 failures.append((filename, str(exc)))
 
         _flash_action_results(successes, failures, item_label="build")
