@@ -1,0 +1,104 @@
+{% extends 'admin/master.html' %}
+
+{% block body %}
+<div class="container-fluid" style="margin-top: 20px;">
+
+  {# Back to site + logged in user #}
+  <div class="row mb-4">
+    <div class="col">
+      <a href="{{ url_for('frontend.index') }}" class="btn btn-secondary btn-sm">
+        &larr; Back to Spkrepo
+      </a>
+      <span class="text-muted ml-2" style="font-size: 0.9em;">
+        Logged in as <strong>{{ current_user.email }}</strong>
+      </span>
+    </div>
+  </div>
+
+  {# Stat tiles #}
+  {% set col_width = 'col-md-3 col-sm-6' if unconfirmed_user_count is not none else 'col-md-4 col-sm-6' %}
+  <div class="row mb-2">
+
+    <div class="{{ col_width }} mb-3">
+      <div class="card border-info h-100">
+        <div class="card-header bg-secondary text-white" style="font-size: 0.85em;">Packages</div>
+        <div class="card-body bg-light d-flex align-items-center justify-content-center">
+          <span style="font-size: 2em;">{{ package_count }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="{{ col_width }} mb-3">
+      <div class="card border-info h-100">
+        <div class="card-header bg-secondary text-white" style="font-size: 0.85em;">Builds</div>
+        <div class="card-body bg-light d-flex align-items-center justify-content-center">
+          <span style="font-size: 2em;">{{ build_count }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="{{ col_width }} mb-3">
+      <div class="card {% if inactive_build_count > 0 %}border-warning{% else %}border-info{% endif %} h-100">
+        <div class="card-header bg-secondary text-white" style="font-size: 0.85em;">Inactive Builds</div>
+        <div class="card-body bg-light d-flex align-items-center justify-content-center">
+          <span style="font-size: 2em;">{{ inactive_build_count }}</span>
+        </div>
+      </div>
+    </div>
+
+    {% if unconfirmed_user_count is not none %}
+    <div class="{{ col_width }} mb-3">
+      <div class="card {% if unconfirmed_user_count > 0 %}border-warning{% else %}border-info{% endif %} h-100">
+        <div class="card-header bg-secondary text-white" style="font-size: 0.85em;">Unconfirmed Users</div>
+        <div class="card-body bg-light d-flex align-items-center justify-content-center">
+          <span style="font-size: 2em;">{{ unconfirmed_user_count }}</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  {# Last 5 versions uploaded #}
+  <div class="row">
+    <div class="col">
+      <div class="card border-info">
+        <div class="card-header bg-secondary text-white" style="font-size: 0.85em;">Last 5 Versions Uploaded</div>
+        <table class="table table-striped table-hover mb-0">
+          <thead>
+            <tr>
+              <th>Package</th>
+              <th>Version</th>
+              <th>Total Size</th>
+              <th>All Active</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for version in recent_versions %}
+            <tr>
+              <td>{{ version.package.name }}</td>
+              <td>{{ version.upstream_version }}-{{ version.version }}</td>
+              <td>{{ '%.1f MB' % (version.total_size / 1024 / 1024) if version.total_size else '—' }}</td>
+              <td>
+                {% if version.all_builds_active %}
+                  <i class="fa fa-check-circle" style="color: #27ae60;"></i>
+                {% else %}
+                  <i class="fa fa-times-circle" style="color: #e74c3c;"></i>
+                {% endif %}
+              </td>
+              <td>{{ version.insert_date.strftime('%Y-%m-%d %H:%M') }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="5" class="text-center text-muted">No versions uploaded yet.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -31,16 +31,12 @@ nas = Blueprint("nas", __name__)
 
 @cache.memoize(timeout=600)
 def is_valid_arch(arch):
-    if Architecture.find(arch):
-        return True
-    return False
+    return Architecture.find(arch) is not None
 
 
 @cache.memoize(timeout=600)
 def is_valid_language(language):
-    if Language.find(language):
-        return True
-    return False
+    return Language.find(language) is not None
 
 
 @cache.memoize(timeout=600)
@@ -152,19 +148,20 @@ def get_catalog(arch, build, major, language, beta):
 
     # DSM 5.1
     if build >= 5004:
-        keyrings = []
-        if current_app.config["GNUPG_PATH"] is not None:  # pragma: no cover
-            gpg = gnupg.GPG(gnupghome=current_app.config["GNUPG_PATH"])
-            keyrings.append(
-                gpg.export_keys(current_app.config["GNUPG_FINGERPRINT"]).strip()
-            )
+        result = {"packages": packages}
+        # DSM 6 only
+        if build < 40000:
+            keyrings = []
+            if current_app.config["GNUPG_PATH"] is not None:  # pragma: no cover
+                gpg = gnupg.GPG(gnupghome=current_app.config["GNUPG_PATH"])
+                keyrings.append(
+                    gpg.export_keys(current_app.config["GNUPG_FINGERPRINT"]).strip()
+                )
+            result["keyrings"] = keyrings
+    else:
+        result = packages
 
-        return {
-            "packages": packages,
-            "keyrings": keyrings,
-        }
-
-    return packages
+    return result
 
 
 def build_package_entry(b, language, arch, build):
@@ -201,11 +198,14 @@ def build_package_entry(b, language, arch, build):
         "recent_download_count": b.version.package.recent_download_count,
     }
 
-    if b.version.package.screenshots:
-        entry["snapshot"] = [
+    entry["snapshot"] = (
+        [
             url_for(".data", path=screenshot.path, _external=True)
             for screenshot in b.version.package.screenshots
         ]
+        if b.version.package.screenshots
+        else []
+    )
     if b.version.report_url:
         entry["report_url"] = b.version.report_url
         entry["beta"] = True
@@ -219,20 +219,12 @@ def build_package_entry(b, language, arch, build):
         entry["maintainer"] = b.version.maintainer
     if b.version.maintainer_url:
         entry["maintainer_url"] = b.version.maintainer_url
-    if b.version.service_dependencies:
-        entry["depsers"] = " ".join(
-            [service.code for service in b.version.service_dependencies]
-        )
     if b.md5:
         entry["md5"] = b.md5
-    if b.buildmanifest and b.buildmanifest.conf_dependencies:
-        entry["conf_deppkgs"] = b.buildmanifest.conf_dependencies
-    if b.buildmanifest and b.buildmanifest.conf_conflicts:
-        entry["conf_conxpkgs"] = b.buildmanifest.conf_conflicts
-    if b.buildmanifest and b.buildmanifest.conf_privilege:
-        entry["conf_privilege"] = b.buildmanifest.conf_privilege
-    if b.buildmanifest and b.buildmanifest.conf_resource:
-        entry["conf_resource"] = b.buildmanifest.conf_resource
+    if b.size:
+        entry["size"] = b.size
+    if b.version.startable is not None:
+        entry["startable"] = "yes" if b.version.startable else "no"
 
     return entry
 

@@ -403,6 +403,8 @@ def populate_db():
             [
                 {"version": "3.1", "build": 1594, "type": "dsm"},
                 {"version": "5.0", "build": 4458, "type": "dsm"},
+                {"version": "6.2", "build": 23739, "type": "dsm"},
+                {"version": "7.1", "build": 42661, "type": "dsm"},
             ]
         )
     )

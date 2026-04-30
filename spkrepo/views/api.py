@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import io
+import logging
 import os
 import re
 import shutil
@@ -28,6 +29,8 @@ from ..models import (
     user_datastore,
 )
 from ..utils import SPK
+
+logger = logging.getLogger(__name__)
 
 api = Blueprint("api", __name__)
 
@@ -174,17 +177,24 @@ class Packages(Resource):
         match = version_re.match(spk.info["version"])
         if not match:
             abort(422, message="Invalid version")
-        # TODO: check discrepencies with what's in the database
         version = {v.version: v for v in package.versions}.get(
             int(match.group("version"))
         )
+        if version is not None and version.upstream_version != match.group(
+            "upstream_version"
+        ):
+            abort(
+                422,
+                message=(
+                    f"Upstream version mismatch: expected {version.upstream_version}, "
+                    f"got {match.group('upstream_version')}"
+                ),
+            )
         if version is None:
             create_version = True
-            version_startable = None
+            version_startable = True
             if spk.info.get("startable") is False or spk.info.get("ctl_stop") is False:
                 version_startable = False
-            elif spk.info.get("startable") is True or spk.info.get("ctl_stop") is True:
-                version_startable = True
             version = Version(
                 package=package,
                 upstream_version=match.group("upstream_version"),
@@ -237,37 +247,33 @@ class Packages(Resource):
                     size=size,
                 )
 
-        # Build
-        if version.id:
-            # check for conflicts
-            conflicts = set()
-            for existing_build in version.builds:
-                overlapping_architectures = set(existing_build.architectures) & set(
-                    architectures
-                )
-                if not overlapping_architectures:
-                    continue
-                existing_min_build = existing_build.firmware_min.build
-                existing_max_build = (
-                    existing_build.firmware_max.build
-                    if existing_build.firmware_max
-                    else existing_min_build
-                )
-                candidate_min_build = firmware.build
-                candidate_max_build = (
-                    firmware_max.build
-                    if firmware_max is not None
-                    else candidate_min_build
-                )
-                if (
-                    candidate_min_build > existing_max_build
-                    or candidate_max_build < existing_min_build
-                ):
-                    continue
-                conflicts |= overlapping_architectures
-            if conflicts:
-                conflict_codes = ", ".join(sorted(a.code for a in conflicts))
-                abort(409, message=f"Conflicting architectures: {conflict_codes}")
+        # Build — conflict check is a no-op for new versions but kept unconditional
+        conflicts = set()
+        for existing_build in version.builds:
+            overlapping_architectures = set(existing_build.architectures) & set(
+                architectures
+            )
+            if not overlapping_architectures:
+                continue
+            existing_min_build = existing_build.firmware_min.build
+            existing_max_build = (
+                existing_build.firmware_max.build
+                if existing_build.firmware_max
+                else existing_min_build
+            )
+            candidate_min_build = firmware.build
+            candidate_max_build = (
+                firmware_max.build if firmware_max is not None else candidate_min_build
+            )
+            if (
+                candidate_min_build > existing_max_build
+                or candidate_max_build < existing_min_build
+            ):
+                continue
+            conflicts |= overlapping_architectures
+        if conflicts:
+            conflict_codes = ", ".join(sorted(a.code for a in conflicts))
+            abort(409, message=f"Conflicting architectures: {conflict_codes}")
 
         build_filename = Build.generate_filename(
             package, version, firmware, architectures
@@ -314,9 +320,10 @@ class Packages(Resource):
                 for size, icon in build.version.icons.items():
                     icon.save(spk.icons[size])
             build.save(spk.stream)
-            # generate md5 hash
             build.md5 = build.calculate_md5()
+            build.size = build.calculate_size()
         except Exception as e:  # pragma: no cover
+            logger.exception("Failed to save SPK files for package %s", package.name)
             if create_package:
                 shutil.rmtree(os.path.join(data_path, package.name), ignore_errors=True)
             elif create_version:
@@ -335,7 +342,6 @@ class Packages(Resource):
         db.session.add(build)
         db.session.commit()
 
-        # success
         return (
             {
                 "package": package.name,

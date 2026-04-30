@@ -35,6 +35,34 @@ from ..models import (
 from ..utils import SPK
 
 
+def _bool_formatter(v, c, m, p):
+    value = getattr(m, p)
+    if value is None:
+        return Markup('<i class="fa fa-question-circle" style="color: #aaaaaa;"></i>')
+    if value:
+        return Markup('<i class="fa fa-check-circle" style="color: #27ae60;"></i>')
+    return Markup('<i class="fa fa-times-circle" style="color: #e74c3c;"></i>')
+
+
+def _flash_action_results(successes, failures, skipped=None, item_label="item"):
+    if successes:
+        count = len(successes)
+        flash(
+            f"{item_label.capitalize()} {successes[0]} refreshed."
+            if count == 1
+            else f"Refreshed {count} {item_label}s: {', '.join(successes)}"
+        )
+    if skipped:
+        count = len(skipped)
+        flash(
+            f"{item_label.capitalize()} {skipped[0]} skipped."
+            if count == 1
+            else f"Skipped {count} {item_label}s: {', '.join(skipped)}"
+        )
+    for name, message in failures:
+        flash(f"Failed to process {name}: {message}", "error")
+
+
 class UserView(ModelView):
     """View for :class:`~spkrepo.models.User`"""
 
@@ -73,9 +101,10 @@ class UserView(ModelView):
                 if len(users) == 1
                 else f"{len(users)} users were successfully activated."
             )
-        except Exception as e:  # pragma: no cover
+        except Exception:  # pragma: no cover
             self.session.rollback()
-            flash(f"Failed to activate users. {e}", "error")
+            current_app.logger.exception("Failed to activate users")
+            flash("Failed to activate users. Please check the logs.", "error")
 
     @action(
         "deactivate",
@@ -93,9 +122,10 @@ class UserView(ModelView):
                 if len(users) == 1
                 else f"{len(users)} users were successfully deactivated."
             )
-        except Exception as e:  # pragma: no cover
+        except Exception:  # pragma: no cover
             self.session.rollback()
-            flash(f"Failed to deactivate users. {e}", "error")
+            current_app.logger.exception("Failed to deactivate users")
+            flash("Failed to deactivate users. Please check the logs.", "error")
 
 
 class ArchitectureView(ModelView):
@@ -153,8 +183,13 @@ class ServiceView(ModelView):
     can_delete = False
 
 
+ALLOWED_SCREENSHOT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+
 def screenshot_namegen(obj, file_data):
-    ext = os.path.splitext(file_data.filename)[1]
+    ext = os.path.splitext(file_data.filename)[1].lower()
+    if ext not in ALLOWED_SCREENSHOT_EXTENSIONS:
+        raise ValueError(f"Invalid screenshot file extension: {ext!r}")
     i = 1
     while os.path.exists(
         os.path.join(
@@ -186,9 +221,9 @@ class ScreenshotView(ModelView):
     }
 
     def _display(view, context, model, name):
+        safe_url = Markup.escape(url_for("nas.data", path=model.path))
         return Markup(
-            f'<img src="{url_for("nas.data", path=model.path)}" '
-            'alt="screenshot" height="100" width="100">'
+            f'<img src="{safe_url}" alt="screenshot" height="100" width="100">'
         )
 
     column_formatters = {"path": _display}
@@ -260,11 +295,9 @@ def _apply_info_from_spk(session, build, spk, md5_hash):
     version.install_wizard = "install" in spk.wizards
     version.upgrade_wizard = "upgrade" in spk.wizards
 
-    startable = None
+    startable = True  # default per Synology docs
     if info.get("startable") is False or info.get("ctl_stop") is False:
         startable = False
-    elif info.get("startable") is True or info.get("ctl_stop") is True:
-        startable = True
     version.startable = startable
 
     version.license = spk.license
@@ -342,8 +375,11 @@ def _apply_info_from_spk(session, build, spk, md5_hash):
                 icon.path = icon_path
             icon.save(icon_stream)
 
+    arch_value = info.get("arch")
+    if not arch_value:
+        raise ValueError("Missing 'arch' field in INFO")
     architectures = []
-    for info_arch in info["arch"].split():
+    for info_arch in arch_value.split():
         architecture = Architecture.find(info_arch, syno=True)
         if architecture is None:
             raise ValueError(f"Unknown architecture: {info_arch}")
@@ -381,14 +417,19 @@ def _apply_info_from_spk(session, build, spk, md5_hash):
     session.flush()
 
 
+def _resync_build_file(build):
+    """Recalculate md5 and size from the build file on disk."""
+    if not build.path:
+        raise ValueError("Build has no file path")
+    build.md5 = build.calculate_md5()
+    build.size = build.calculate_size()
+
+
 def _resync_build_metadata(session, build):
     if not build.path:
         raise ValueError("Build has no file path")
 
     file_path = os.path.join(current_app.config["DATA_PATH"], build.path)
-    if not os.path.exists(file_path):
-        raise ValueError("Build file missing on disk")
-
     with io.open(file_path, "rb") as stream:
         spk = SPK(stream)
         md5 = spk.calculate_md5()
@@ -444,16 +485,36 @@ class PackageView(ModelView):
             shutil.rmtree(package_path)
 
     # View
-    column_list = ("name", "author", "maintainers", "insert_date")
+    column_list = (
+        "name",
+        "author",
+        "maintainers",
+        "download_count",
+        "recent_download_count",
+        "insert_date",
+    )
     column_sortable_list = (
         ("name", "name"),
         ("author", "author.username"),
         ("insert_date", "insert_date"),
+        ("download_count", "download_count"),
+        ("recent_download_count", "recent_download_count"),
     )
-
     column_formatters = {
-        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S")
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "download_count": lambda v, c, m, p: (
+            f"{m.download_count:,}" if m.download_count else "0"
+        ),
+        "recent_download_count": lambda v, c, m, p: (
+            f"{m.recent_download_count:,}" if m.recent_download_count else "0"
+        ),
     }
+    column_labels = {
+        "download_count": "Downloads",
+        "recent_download_count": "Recent Downloads",
+        "author.username": "Author",
+    }
+    column_filters = ("name", "author.username")
 
     # Form
     form_columns = ("name", "author", "maintainers")
@@ -476,6 +537,8 @@ class VersionView(ModelView):
 
     can_edit = False
 
+    can_view_details = True
+
     @property
     def can_delete(self):
         return current_user.has_role("admin")
@@ -492,6 +555,10 @@ class VersionView(ModelView):
     def can_resync_info(self):
         return current_user.has_role("admin")
 
+    @property
+    def can_resync_file(self):
+        return current_user.has_role("admin")
+
     # Hooks
     def on_model_delete(self, model):
         version_path = os.path.join(
@@ -500,30 +567,41 @@ class VersionView(ModelView):
         if os.path.exists(version_path):
             shutil.rmtree(version_path)
 
+    # Define a formatter to truncate long text
+    def _truncate_formatter(view, context, model, name):
+        text = getattr(model, name)
+        if not text:
+            return text
+        if len(text) > 250:
+            return Markup(f"{Markup.escape(text[:250])}...")
+        return Markup.escape(text)
+
     # View
     column_list = (
         "package",
         "upstream_version",
         "version",
         "beta",
-        "service_dependencies",
-        "insert_date",
-        "all_builds_active",
-        "install_wizard",
-        "upgrade_wizard",
         "startable",
+        "all_builds_active",
+        "total_size",
+        "insert_date",
     )
     column_labels = {
         "package.name": "Package Name",
         "version_string": "Version",
         "dependencies": "Dependencies",
-        "service_dependencies": "Services",
+        "all_builds_active": "All Active",
+        "install_wizard": "Install Wizard",
+        "upgrade_wizard": "Upgrade Wizard",
+        "total_size": "Total Size",
     }
     column_filters = (
         "package.name",
         "upstream_version",
         "version",
         "beta",
+        "startable",
         "all_builds_active",
     )
     column_sortable_list = (
@@ -533,13 +611,23 @@ class VersionView(ModelView):
         ("beta", "beta"),
         ("insert_date", "insert_date"),
         ("all_builds_active", "all_builds_active"),
-        ("install_wizard", "install_wizard"),
-        ("upgrade_wizard", "upgrade_wizard"),
         ("startable", "startable"),
     )
 
     column_formatters = {
-        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S")
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "all_builds_active": _bool_formatter,
+        "startable": _bool_formatter,
+        "beta": _bool_formatter,
+        "total_size": lambda v, c, m, p: (
+            f"{m.total_size / 1024 / 1024:.1f} MB" if m.total_size else None
+        ),
+    }
+    column_formatters_detail = {
+        "install_wizard": _bool_formatter,
+        "upgrade_wizard": _bool_formatter,
+        "startable": _bool_formatter,
+        "license": _truncate_formatter,
     }
     column_default_sort = (Version.insert_date, True)
 
@@ -587,14 +675,17 @@ class VersionView(ModelView):
                     f"{len(versions)} versions."
                 )
             )
-        except Exception as e:  # pragma: no cover
+        except Exception:  # pragma: no cover
             self.session.rollback()
-            flash(f"Failed to activate versions' builds. {e}", "error")
+            current_app.logger.exception("Failed to activate versions' builds")
+            flash(
+                "Failed to activate versions' builds. Please check the logs.", "error"
+            )
 
     @action(
         "deactivate",
         "Deactivate",
-        "Are you sure you want to deactivate selected  versions' builds?",
+        "Are you sure you want to deactivate selected versions' builds?",
     )
     def action_deactivate(self, ids):
         try:
@@ -611,9 +702,12 @@ class VersionView(ModelView):
                     f"{len(versions)} versions."
                 )
             )
-        except Exception as e:  # pragma: no cover
+        except Exception:  # pragma: no cover
             self.session.rollback()
-            flash(f"Failed to deactivate versions' builds. {e}", "error")
+            current_app.logger.exception("Failed to deactivate versions' builds")
+            flash(
+                "Failed to deactivate versions' builds. Please check the logs.", "error"
+            )
 
     @action("sign", "Sign", "Are you sure you want to sign selected builds?")
     def action_sign(self, ids):
@@ -637,43 +731,24 @@ class VersionView(ModelView):
                                 current_app.config["GNUPG_TIMESTAMP_URL"],
                                 current_app.config["GNUPG_PATH"],
                             )
-                            build.md5 = spk.calculate_md5()
+                            _resync_build_file(build)
                             self.session.commit()
                             success.append(filename)
                         except Exception:
+                            current_app.logger.exception(
+                                "Failed to sign build %s", filename
+                            )
                             self.session.rollback()
                             failed.append(filename)
-                if failed:
-                    if len(failed) == 1:
-                        flash(f"Failed to sign build {failed[0]}", "error")
-                    else:
-                        failed_list = ", ".join(failed)
-                        flash(
-                            f"Failed to sign {len(failed)} builds: {failed_list}",
-                            "error",
-                        )
-                if already_signed:
-                    if len(already_signed) == 1:
-                        flash(f"Build {already_signed[0]} already signed", "info")
-                    else:
-                        already_list = ", ".join(already_signed)
-                        flash(
-                            (
-                                f"{len(already_signed)} builds already signed: "
-                                f"{already_list}"
-                            ),
-                            "info",
-                        )
-                if success:
-                    if len(success) == 1:
-                        flash(f"Build {success[0]} successfully signed")
-                    else:
-                        success_list = ", ".join(success)
-                        flash(
-                            f"Successfully signed {len(success)} builds: {success_list}"
-                        )
-        except Exception as e:  # pragma: no cover
-            flash(f"Failed to sign builds. {e}", "error")
+            _flash_action_results(
+                success,
+                [(f, "") for f in failed],
+                skipped=already_signed,
+                item_label="build",
+            )
+        except Exception:  # pragma: no cover
+            current_app.logger.exception("Failed to sign builds")
+            flash("Failed to sign builds. Please check the logs.", "error")
 
     @action("unsign", "Unsign", "Are you sure you want to unsign selected builds?")
     def action_unsign(self, ids):
@@ -694,47 +769,28 @@ class VersionView(ModelView):
                             continue
                         try:
                             spk.unsign()
-                            build.md5 = spk.calculate_md5()
+                            _resync_build_file(build)
                             self.session.commit()
                             success.append(filename)
                         except Exception:
+                            current_app.logger.exception(
+                                "Failed to unsign build %s", filename
+                            )
                             self.session.rollback()
                             failed.append(filename)
-                if failed:
-                    if len(failed) == 1:
-                        flash(f"Failed to unsign build {failed[0]}", "error")
-                    else:
-                        failed_list = ", ".join(failed)
-                        flash(
-                            f"Failed to unsign {len(failed)} builds: {failed_list}",
-                            "error",
-                        )
-                if not_signed:
-                    if len(not_signed) == 1:
-                        flash(f"Build {not_signed[0]} not signed", "info")
-                    else:
-                        not_signed_list = ", ".join(not_signed)
-                        flash(
-                            f"{len(not_signed)} builds not signed: {not_signed_list}",
-                            "info",
-                        )
-                if success:
-                    if len(success) == 1:
-                        flash(f"Build {success[0]} successfully unsigned")
-                    else:
-                        success_list = ", ".join(success)
-                        flash(
-                            (
-                                f"Successfully unsigned {len(success)} builds: "
-                                f"{success_list}"
-                            )
-                        )
-        except Exception as e:  # pragma: no cover
-            flash(f"Failed to unsign builds. {e}", "error")
+            _flash_action_results(
+                success,
+                [(f, "") for f in failed],
+                skipped=not_signed,
+                item_label="build",
+            )
+        except Exception:  # pragma: no cover
+            current_app.logger.exception("Failed to unsign builds")
+            flash("Failed to unsign builds. Please check the logs.", "error")
 
     @action(
         "resync_info",
-        "Resync INFO",
+        "Resync Info",
         "Reapply INFO metadata from builds on selected versions?",
     )
     def action_resync_info(self, ids):
@@ -753,33 +809,35 @@ class VersionView(ModelView):
                     self.session.rollback()
                     failures.append((filename, str(exc)))
 
-        if successes:
-            if len(successes) == 1:
-                flash(f"Build {successes[0]} metadata refreshed from INFO.")
-            else:
-                success_list = ", ".join(successes)
-                flash(
-                    (
-                        f"Refreshed metadata from INFO for {len(successes)} builds: "
-                        f"{success_list}"
-                    )
-                )
+        _flash_action_results(successes, failures, item_label="build")
 
-        if failures:
-            if len(failures) == 1:
-                name, message = failures[0]
-                flash(f"Failed to resync build {name}: {message}", "error")
-            else:
-                failure_list = "; ".join(
-                    f"{name}: {message}" for name, message in failures
-                )
-                flash(
-                    f"Failed to resync {len(failures)} builds: {failure_list}",
-                    "error",
-                )
+    @action(
+        "resync_file",
+        "Resync File",
+        "Recalculate md5 and size from build files on selected versions?",
+    )
+    def action_resync_file(self, ids):
+        successes = []
+        failures = []
+
+        versions = get_query_for_ids(self.get_query(), self.model, ids).all()
+        for version in versions:
+            for build in version.builds:
+                filename = os.path.basename(build.path) if build.path else str(build.id)
+                try:
+                    _resync_build_file(build)
+                    self.session.commit()
+                    successes.append(filename)
+                except Exception as exc:
+                    self.session.rollback()
+                    failures.append((filename, str(exc)))
+
+        _flash_action_results(successes, failures, item_label="build")
 
     def is_action_allowed(self, name):
         if name == "resync_info" and not self.can_resync_info:
+            return False
+        if name == "resync_file" and not self.can_resync_file:
             return False
         if name == "sign" and not self.can_sign:
             return False
@@ -791,6 +849,12 @@ class VersionView(ModelView):
     def handle_action(self, return_view=None):
         action = request.form.get("action")
         if action == "resync_info" and not self.can_resync_info:
+            abort(403)
+        if action == "resync_file" and not self.can_resync_file:
+            abort(403)
+        if action == "sign" and not self.can_sign:
+            abort(403)
+        if action == "unsign" and not self.can_unsign:
             abort(403)
         return super(VersionView, self).handle_action(return_view)
 
@@ -811,6 +875,8 @@ class BuildView(ModelView):
 
     can_edit = False
 
+    can_view_details = True
+
     @property
     def can_delete(self):
         return current_user.has_role("admin")
@@ -827,16 +893,18 @@ class BuildView(ModelView):
     def can_resync_info(self):
         return current_user.has_role("admin")
 
+    @property
+    def can_resync_file(self):
+        return current_user.has_role("admin")
+
     # View
     column_list = (
         "version.package",
-        "version.upstream_version",
         "version.version",
         "architectures",
         "firmware_min",
         "firmware_max",
-        "publisher",
-        "insert_date",
+        "size",
         "active",
     )
     column_labels = {
@@ -845,33 +913,37 @@ class BuildView(ModelView):
         "version.upstream_version": "Upstream Version",
         "version.version": "Version",
         "architectures.code": "Architecture",
-        "firmware_min.version": "Minimum Firmware Version",
-        "firmware_max.version": "Maximum Firmware Version",
+        "firmware_min.version": "Minimum Firmware",
+        "firmware_max.version": "Maximum Firmware",
         "publisher.username": "Publisher Username",
+        "size": "Package Size",
+        "checksum": "Application Checksum",
+        "md5": "Package Checksum",
     }
     column_filters = (
         "version.package.name",
-        "version.upstream_version",
         "version.version",
         "architectures.code",
         "firmware_min.version",
         "firmware_max.version",
-        "publisher.username",
+        "size",
         "active",
     )
     column_sortable_list = (
         ("version.package", "version.package.name"),
-        ("version.upstream_version", "version.upstream_version"),
         ("version.version", "version.version"),
         ("firmware_min", "firmware_min.build"),
         ("firmware_max", "firmware_max.build"),
-        ("publisher", "publisher.username"),
-        ("insert_date", "insert_date"),
         ("active", "active"),
+        ("size", "size"),
     )
 
     column_formatters = {
-        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S")
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "size": lambda v, c, m, p: (
+            f"{m.size / 1024 / 1024:.1f} MB" if m.size else None
+        ),
+        "active": _bool_formatter,
     }
     column_default_sort = (Build.insert_date, True)
 
@@ -921,9 +993,10 @@ class BuildView(ModelView):
                 if len(builds) == 1
                 else f"{len(builds)} builds were successfully activated."
             )
-        except Exception as e:  # pragma: no cover
+        except Exception:  # pragma: no cover
             self.session.rollback()
-            flash(f"Failed to activate builds. {e}", "error")
+            current_app.logger.exception("Failed to activate builds")
+            flash("Failed to activate builds. Please check the logs.", "error")
 
     @action(
         "deactivate",
@@ -941,9 +1014,10 @@ class BuildView(ModelView):
                 if len(builds) == 1
                 else f"{len(builds)} builds were successfully deactivated."
             )
-        except Exception as e:  # pragma: no cover
+        except Exception:  # pragma: no cover
             self.session.rollback()
-            flash(f"Failed to deactivate builds. {e}", "error")
+            current_app.logger.exception("Failed to deactivate builds")
+            flash("Failed to deactivate builds. Please check the logs.", "error")
 
     @action("sign", "Sign", "Are you sure you want to sign selected builds?")
     def action_sign(self, ids):
@@ -966,38 +1040,24 @@ class BuildView(ModelView):
                             current_app.config["GNUPG_TIMESTAMP_URL"],
                             current_app.config["GNUPG_PATH"],
                         )
-                        build.md5 = spk.calculate_md5()
+                        _resync_build_file(build)
                         self.session.commit()
                         success.append(filename)
                     except Exception:
+                        current_app.logger.exception(
+                            "Failed to sign build %s", filename
+                        )
                         self.session.rollback()
                         failed.append(filename)
-            if failed:
-                if len(failed) == 1:
-                    flash(f"Failed to sign build {failed[0]}", "error")
-                else:
-                    failed_list = ", ".join(failed)
-                    flash(
-                        f"Failed to sign {len(failed)} builds: {failed_list}",
-                        "error",
-                    )
-            if already_signed:
-                if len(already_signed) == 1:
-                    flash(f"Build {already_signed[0]} already signed", "info")
-                else:
-                    already_list = ", ".join(already_signed)
-                    flash(
-                        f"{len(already_signed)} builds already signed: {already_list}",
-                        "info",
-                    )
-            if success:
-                if len(success) == 1:
-                    flash(f"Build {success[0]} successfully signed")
-                else:
-                    success_list = ", ".join(success)
-                    flash(f"Successfully signed {len(success)} builds: {success_list}")
-        except Exception as e:  # pragma: no cover
-            flash(f"Failed to sign builds. {e}", "error")
+            _flash_action_results(
+                success,
+                [(f, "") for f in failed],
+                skipped=already_signed,
+                item_label="build",
+            )
+        except Exception:  # pragma: no cover
+            current_app.logger.exception("Failed to sign builds")
+            flash("Failed to sign builds. Please check the logs.", "error")
 
     @action("unsign", "Unsign", "Are you sure you want to unsign selected builds?")
     def action_unsign(self, ids):
@@ -1017,44 +1077,28 @@ class BuildView(ModelView):
                         continue
                     try:
                         spk.unsign()
-                        build.md5 = spk.calculate_md5()
+                        _resync_build_file(build)
                         self.session.commit()
                         success.append(filename)
                     except Exception:
+                        current_app.logger.exception(
+                            "Failed to unsign build %s", filename
+                        )
                         self.session.rollback()
                         failed.append(filename)
-            if failed:
-                if len(failed) == 1:
-                    flash(f"Failed to unsign build {failed[0]}", "error")
-                else:
-                    failed_list = ", ".join(failed)
-                    flash(
-                        f"Failed to unsign {len(failed)} builds: {failed_list}",
-                        "error",
-                    )
-            if not_signed:
-                if len(not_signed) == 1:
-                    flash(f"Build {not_signed[0]} not signed", "info")
-                else:
-                    not_signed_list = ", ".join(not_signed)
-                    flash(
-                        f"{len(not_signed)} builds not signed: {not_signed_list}",
-                        "info",
-                    )
-            if success:
-                if len(success) == 1:
-                    flash(f"Build {success[0]} successfully unsigned")
-                else:
-                    success_list = ", ".join(success)
-                    flash(
-                        f"Successfully unsigned {len(success)} builds: {success_list}"
-                    )
-        except Exception as e:  # pragma: no cover
-            flash(f"Failed to unsign builds. {e}", "error")
+            _flash_action_results(
+                success,
+                [(f, "") for f in failed],
+                skipped=not_signed,
+                item_label="build",
+            )
+        except Exception:  # pragma: no cover
+            current_app.logger.exception("Failed to unsign builds")
+            flash("Failed to unsign builds. Please check the logs.", "error")
 
     @action(
         "resync_info",
-        "Resync INFO",
+        "Resync Info",
         "Reapply INFO metadata from selected builds?",
     )
     def action_resync_info(self, ids):
@@ -1079,33 +1123,41 @@ class BuildView(ModelView):
                 self.session.rollback()
                 failures.append((filename, str(exc)))
 
-        if successes:
-            if len(successes) == 1:
-                flash(f"Build {successes[0]} metadata refreshed from INFO.")
-            else:
-                success_list = ", ".join(successes)
-                flash(
-                    (
-                        f"Refreshed metadata from INFO for {len(successes)} builds: "
-                        f"{success_list}"
-                    )
-                )
+        _flash_action_results(successes, failures, item_label="build")
 
-        if failures:
-            if len(failures) == 1:
-                name, message = failures[0]
-                flash(f"Failed to resync build {name}: {message}", "error")
-            else:
-                failure_list = "; ".join(
-                    f"{name}: {message}" for name, message in failures
-                )
-                flash(
-                    f"Failed to resync {len(failures)} builds: {failure_list}",
-                    "error",
-                )
+    @action(
+        "resync_file",
+        "Resync File",
+        "Recalculate md5 and size from selected build files?",
+    )
+    def action_resync_file(self, ids):
+        successes = []
+        failures = []
+
+        for build_id in ids:
+            try:
+                build = self.session.get(self.model, int(build_id))
+            except (TypeError, ValueError):
+                continue
+
+            if build is None:
+                continue
+
+            filename = os.path.basename(build.path) if build.path else str(build_id)
+            try:
+                _resync_build_file(build)
+                self.session.commit()
+                successes.append(filename)
+            except Exception as exc:
+                self.session.rollback()
+                failures.append((filename, str(exc)))
+
+        _flash_action_results(successes, failures, item_label="build")
 
     def is_action_allowed(self, name):
         if name == "resync_info" and not self.can_resync_info:
+            return False
+        if name == "resync_file" and not self.can_resync_file:
             return False
         if name == "sign" and not self.can_sign:
             return False
@@ -1118,6 +1170,12 @@ class BuildView(ModelView):
         action = request.form.get("action")
         if action == "resync_info" and not self.can_resync_info:
             abort(403)
+        if action == "resync_file" and not self.can_resync_file:
+            abort(403)
+        if action == "sign" and not self.can_sign:
+            abort(403)
+        if action == "unsign" and not self.can_unsign:
+            abort(403)
         return super(BuildView, self).handle_action(return_view)
 
 
@@ -1128,4 +1186,57 @@ class IndexView(AdminIndexView):
             return redirect(url_for("security.login"))
         if not any(map(current_user.has_role, ("developer", "package_admin", "admin"))):
             abort(403)
-        return super(IndexView, self).index()
+
+        is_privileged = current_user.has_role("package_admin") or current_user.has_role(
+            "admin"
+        )
+
+        if is_privileged:
+            package_count = Package.query.count()
+            build_count = Build.query.count()
+            inactive_build_count = Build.query.filter_by(active=False).count()
+            recent_versions = (
+                Version.query.order_by(Version.insert_date.desc()).limit(5).all()
+            )
+        else:
+            package_count = (
+                Package.query.join(Package.maintainers)
+                .filter(User.id == current_user.id)
+                .count()
+            )
+            build_count = (
+                Build.query.join(Build.version)
+                .join(Version.package)
+                .join(Package.maintainers)
+                .filter(User.id == current_user.id)
+                .count()
+            )
+            inactive_build_count = (
+                Build.query.filter_by(active=False)
+                .join(Build.version)
+                .join(Version.package)
+                .join(Package.maintainers)
+                .filter(User.id == current_user.id)
+                .count()
+            )
+            recent_versions = (
+                Version.query.join(Version.package)
+                .join(Package.maintainers)
+                .filter(User.id == current_user.id)
+                .order_by(Version.insert_date.desc())
+                .limit(5)
+                .all()
+            )
+
+        return self.render(
+            "admin/index.html",
+            package_count=package_count,
+            build_count=build_count,
+            inactive_build_count=inactive_build_count,
+            unconfirmed_user_count=(
+                User.query.filter_by(confirmed_at=None).count()
+                if current_user.has_role("admin")
+                else None
+            ),
+            recent_versions=recent_versions,
+        )

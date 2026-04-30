@@ -3,13 +3,15 @@ import hashlib
 import io
 import os
 import shutil
-from datetime import datetime, timedelta
 
 from flask import current_app
 from flask_security import RoleMixin, SQLAlchemyUserDatastore, UserMixin
-from flask_sqlalchemy import track_modifications
+from sqlalchemy import event
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Session
 from sqlalchemy.orm.collections import attribute_mapped_collection
+from sqlalchemy.sql.expression import FunctionElement
 
 from .ext import db
 
@@ -24,6 +26,31 @@ package_user_maintainer = db.Table(
     db.Column("package_id", db.Integer(), db.ForeignKey("package.id")),
     db.Column("user_id", db.Integer(), db.ForeignKey("user.id")),
 )
+
+
+class _days_ago(FunctionElement):
+    """Dialect-aware SQL expression for a timestamp N days in the past."""
+
+    inherit_cache = True
+
+    def __init__(self, days):
+        self.days = days
+        super().__init__()
+
+
+@compiles(_days_ago, "sqlite")
+def _compile_days_ago_sqlite(element, compiler, **kw):
+    return f"datetime(CURRENT_TIMESTAMP, '-{element.days} days')"
+
+
+@compiles(_days_ago, "postgresql")
+def _compile_days_ago_postgresql(element, compiler, **kw):
+    return f"NOW() - INTERVAL '{element.days} days'"
+
+
+@compiles(_days_ago)
+def _compile_days_ago_default(element, compiler, **kw):
+    return f"datetime(CURRENT_TIMESTAMP, '-{element.days} days')"
 
 
 class User(db.Model, UserMixin):
@@ -332,9 +359,9 @@ class Build(db.Model):
     firmware_max_id = db.Column(db.Integer, db.ForeignKey("firmware.id"))
     publisher_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     checksum = db.Column(db.Unicode(32))
-    extract_size = db.Column(db.Integer)
     path = db.Column(db.Unicode(2048))
     md5 = db.Column(db.Unicode(32))
+    size = db.Column(db.Integer)
     insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
     active = db.Column(db.Boolean(), default=False, nullable=False)
 
@@ -393,14 +420,22 @@ class Build(db.Model):
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found at path: {file_path}")
 
-        if self.md5 is None:
-            with io.open(file_path, "rb") as f:
-                md5_hash = hashlib.md5()
-                for chunk in iter(lambda: f.read(4096), b""):
-                    md5_hash.update(chunk)
-                return md5_hash.hexdigest()
+        with io.open(file_path, "rb") as f:
+            md5_hash = hashlib.md5()
+            for chunk in iter(lambda: f.read(4096), b""):
+                md5_hash.update(chunk)
+            return md5_hash.hexdigest()
 
-        return self.md5
+    def calculate_size(self):
+        if not self.path:
+            raise ValueError("Path cannot be empty.")
+
+        file_path = os.path.join(current_app.config["DATA_PATH"], self.path)
+
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found at path: {file_path}")
+
+        return os.path.getsize(file_path)
 
     def _after_insert(self):
         assert os.path.exists(os.path.join(current_app.config["DATA_PATH"], self.path))
@@ -491,40 +526,30 @@ class Version(db.Model):
     __table_args__ = (db.UniqueConstraint(package_id, version),)
 
     @hybrid_property
-    def version_string(self):
-        return self.upstream_version + "-" + str(self.version)
-
-    @hybrid_property
     def beta(self):
         return bool(self.report_url)  # Treats None and "" as False
-
-    @hybrid_property
-    def all_builds_active(self):
-        return all(b.active for b in self.builds)
-
-    @hybrid_property
-    def any_builds_active(self):
-        return any(b.active for b in self.builds)
-
-    @all_builds_active.expression
-    def all_builds_active(cls):
-        return (
-            db.select(db.func.count())
-            .where(db.and_(Build.version_id == cls.id, Build.active))
-            .label("active_builds")
-        ) == (
-            db.select(db.func.count())
-            .where(Build.version_id == cls.id)
-            .label("total_builds")
-        )
 
     @beta.expression
     def beta(cls):
         return db.and_(cls.report_url.isnot(None), cls.report_url != "")
 
+    @hybrid_property
+    def all_builds_active(self):
+        return all(b.active for b in self.builds)
+
+    @all_builds_active.expression
+    def all_builds_active(cls):
+        return ~db.exists().where(
+            db.and_(Build.version_id == cls.id, Build.active.is_(False))
+        )
+
     @property
     def path(self):
         return os.path.join(self.package.name, str(self.version))
+
+    @property
+    def version_string(self):
+        return self.upstream_version + "-" + str(self.version)
 
     def _after_insert(self):
         assert os.path.exists(os.path.join(current_app.config["DATA_PATH"], self.path))
@@ -540,12 +565,16 @@ class Version(db.Model):
     def __repr__(self):
         return f"<{self.__class__.__name__} {self.version_string}>"
 
-    @hybrid_property
+    @property
     def builds_per_dsm(self):
         result = {}
         for build in self.builds:
             result.setdefault(build.firmware_min.version[0:1], []).append(build)
         return result
+
+    @property
+    def total_size(self):
+        return sum(b.size for b in self.builds if b.size is not None) or None
 
 
 class Package(db.Model):
@@ -571,7 +600,7 @@ class Package(db.Model):
         .where(
             db.and_(
                 Version.package_id == id,
-                Download.date >= datetime.now() - timedelta(days=90),
+                Download.date >= _days_ago(90),
             )
         )
         .correlate_except(Download)
@@ -600,10 +629,6 @@ class Package(db.Model):
     # Constraints
     __table_args__ = (db.UniqueConstraint(name),)
 
-    @hybrid_property
-    def any_builds_active(self):
-        return any(v.any_builds_active for v in self.versions)
-
     @classmethod
     def find(cls, name):
         return cls.query.filter(cls.name == name).first()
@@ -615,19 +640,42 @@ class Package(db.Model):
         return f"<{self.__class__.__name__} {self.name}>"
 
 
-@track_modifications.models_committed.connect
-def on_models_committed(sender, changes):
-    for obj, change in changes:
-        if change == "insert" and hasattr(obj, "_after_insert"):
-            obj._after_insert()
-        elif change == "delete" and hasattr(obj, "_after_delete"):
-            obj._after_delete()
+def _before_insert_handler(mapper, connection, target):
+    if hasattr(target, "_before_insert"):
+        target._before_insert()
 
 
-@track_modifications.before_models_committed.connect
-def on_before_models_committed(sender, changes):
-    for obj, change in changes:
-        if change == "insert" and hasattr(obj, "_before_insert"):
-            obj._before_insert()
-        elif change == "delete" and hasattr(obj, "_before_delete"):
-            obj._before_delete()
+def _after_insert_handler(mapper, connection, target):
+    if not hasattr(target, "_after_insert"):
+        return
+    session = Session.object_session(target)
+    if session is None:
+        return
+
+    @event.listens_for(session, "after_commit", once=True)
+    def on_commit(session):
+        target._after_insert()
+
+
+def _before_delete_handler(mapper, connection, target):
+    if hasattr(target, "_before_delete"):
+        target._before_delete()
+
+
+def _after_delete_handler(mapper, connection, target):
+    if not hasattr(target, "_after_delete"):
+        return
+    session = Session.object_session(target)
+    if session is None:
+        return
+
+    @event.listens_for(session, "after_commit", once=True)
+    def on_commit(session):
+        target._after_delete()
+
+
+for _model in [Screenshot, Icon, Build, Version]:
+    event.listen(_model, "before_insert", _before_insert_handler)
+    event.listen(_model, "after_insert", _after_insert_handler)
+    event.listen(_model, "before_delete", _before_delete_handler)
+    event.listen(_model, "after_delete", _after_delete_handler)
