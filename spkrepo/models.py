@@ -6,7 +6,7 @@ import shutil
 
 from flask import current_app
 from flask_security import RoleMixin, SQLAlchemyUserDatastore, UserMixin
-from sqlalchemy import event
+from sqlalchemy import event, select
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Session
@@ -96,7 +96,7 @@ class Role(db.Model, RoleMixin):
 
     @classmethod
     def find(cls, name):
-        return cls.query.filter(cls.name == name).first()
+        return db.session.execute(select(cls).filter(cls.name == name)).scalars().first()
 
     def __str__(self):
         return self.name
@@ -127,8 +127,8 @@ class Architecture(db.Model):
     @classmethod
     def find(cls, code, syno=False):
         if syno:
-            return cls.query.filter(cls.code == cls.from_syno.get(code, code)).first()
-        return cls.query.filter(cls.code == code).first()
+            return db.session.execute(select(cls).filter(cls.code == cls.from_syno.get(code, code))).scalars().first()
+        return db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
 
     def __str__(self):
         return self.code
@@ -147,7 +147,7 @@ class Language(db.Model):
 
     @classmethod
     def find(cls, code):
-        return cls.query.filter(cls.code == code).first()
+        return db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
 
     def __str__(self):
         return self.name
@@ -167,7 +167,7 @@ class Firmware(db.Model):
 
     @classmethod
     def find(cls, build):
-        return cls.query.filter(cls.build == build).first()
+        return db.session.execute(select(cls).filter(cls.build == build)).scalars().first()
 
     @property
     def firmware_string(self):
@@ -257,7 +257,7 @@ class Service(db.Model):
 
     @classmethod
     def find(cls, code):
-        return cls.query.filter(cls.code == code).first()
+        return db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
 
     def __str__(self):
         return self.code
@@ -631,7 +631,7 @@ class Package(db.Model):
 
     @classmethod
     def find(cls, name):
-        return cls.query.filter(cls.name == name).first()
+        return db.session.execute(select(cls).filter(cls.name == name)).scalars().first()
 
     def __str__(self):
         return self.name
