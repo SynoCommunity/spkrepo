@@ -4,20 +4,14 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     {% block meta %}
     <meta name="description" content="Synology Package Repository">
     {% endblock %}
     <title>{% block title %}Spkrepo{% endblock %}</title>
 
-    <!-- Bootstrap core CSS -->
+    <!-- Bootstrap 4 CSS -->
     <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
-
-    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
-    <!--[if lt IE 9]>
-      <script src="{{ url_for('static', filename='js/html5shiv.min.js') }}"></script>
-      <script src="{{ url_for('static', filename='js/respond.min.js') }}"></script>
-    <![endif]-->
 
     <!-- spkrepo -->
     <link href="{{ url_for('static', filename='css/spkrepo.css') }}" rel="stylesheet">
@@ -25,29 +19,26 @@
   </head>
 
   <body>
-    <div class="navbar navbar-default navbar-static-top" role="navigation">
+    <nav class="navbar navbar-expand-md navbar-light bg-light border-bottom">
       <div class="container">
-        <div class="navbar-header">
-          <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
-            <span class="sr-only">Toggle navigation</span>
-            <span class="icon-bar"></span>
-            <span class="icon-bar"></span>
-            <span class="icon-bar"></span>
-          </button>
-          <a class="navbar-brand" href="{{ url_for('frontend.index') }}">{% block navbar_brand %}Spkrepo{% endblock %}</a>
-        </div>
-        <div class="collapse navbar-collapse">
-          <ul class="nav navbar-nav">
+        <a class="navbar-brand" href="{{ url_for('frontend.index') }}">{% block navbar_brand %}Spkrepo{% endblock %}</a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarContent"
+                aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarContent">
+          <ul class="navbar-nav mr-auto">
             {%- for endpoint, caption in [
               ('frontend.index', 'Home'),
               ('frontend.packages', 'Packages')
             ] %}
-            <li{% if endpoint == request.endpoint %} class="active"{% endif %}>
-              <a href="{{ url_for(endpoint) }}">{{ caption }}</a>
+            <li class="nav-item{% if endpoint == request.endpoint %} active{% endif %}">
+              <a class="nav-link" href="{{ url_for(endpoint) }}">{{ caption }}</a>
             </li>
             {% endfor %}
           </ul>
-          <ul class="nav navbar-nav navbar-right">
+          <ul class="navbar-nav ml-auto">
             {% if current_user.is_authenticated %}
               {% if current_user.has_role('developer') or current_user.has_role('package_admin') or
                     current_user.has_role('admin') %}
@@ -69,19 +60,21 @@
             ] %}
             {% endif %}
             {%- for endpoint, caption in right_nav %}
-            <li{% if endpoint == request.endpoint %} class="active"{% endif %}>
-              <a href="{{ url_for(endpoint) }}">{{ caption }}</a>
+            <li class="nav-item{% if endpoint == request.endpoint %} active{% endif %}">
+              <a class="nav-link" href="{{ url_for(endpoint) }}">{{ caption }}</a>
             </li>
             {% endfor %}
           </ul>
         </div>
       </div>
-    </div>
+    </nav>
 
-    <div class="container">
+    <div class="container mt-4">
     {% for category, message in get_flashed_messages(with_categories=True) %}
-      <div class="alert alert-{{ message_categories_bootstrap.get(category, category) }} alert-dismissable">
-        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+      <div class="alert alert-{{ message_categories_bootstrap.get(category, category) }} alert-dismissible">
+        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
         {{ message }}
       </div>
     {% endfor %}
@@ -96,10 +89,10 @@
       </div>
     </footer>
 
-    <script src="{{ url_for('static', filename='js/jquery-2.1.1.min.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/jquery.dotdotdot.min.js') }}"></script>
+    <!-- jQuery, Popper, Bootstrap 4 JS -->
+    <script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/popper.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/bootstrap.min.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/spkrepo.js') }}"></script>
     {% block script %}{% endblock %}
   </body>
 </html>
