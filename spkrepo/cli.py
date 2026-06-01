@@ -21,9 +21,9 @@ def spkrepo():
 
 
 @spkrepo.command("create_user")
-@click.option("-u", "--username", help="username", default=None)
-@click.option("-e", "--email", help="email", default=None)
-@click.option("-p", "--password", help="password", default=None)
+@click.option("-u", "--username", prompt=True, help="username")
+@click.option("-e", "--email", prompt=True, help="email")
+@click.option("-p", "--password", prompt=True, hide_input=True, help="password")
 @with_appcontext
 def create_user(username, email, password):
     """Create a new user with an activated account."""
@@ -189,10 +189,7 @@ def depopulate_db():
     from spkrepo.models import Package
 
     for package in Package.query.all():
-        # Delete the package and its associated versions and builds
         db.session.delete(package)
-
-        # Remove the directory associated with the package (if it exists)
         shutil.rmtree(
             os.path.join(current_app.config["DATA_PATH"], package.name),
             ignore_errors=True,
@@ -203,13 +200,12 @@ def depopulate_db():
 
 
 @spkrepo.command("create_admin")
-@click.option("-u", "--username", help="username", default="admin")
-@click.option("-e", "--email", help="email", default="admin@synocommunity.com")
-@click.option("-p", "--password", help="password", default=None)
+@click.option("-u", "--username", default="admin", help="username")
+@click.option("-e", "--email", default="admin@synocommunity.com", help="email")
+@click.option("-p", "--password", prompt=True, hide_input=True, help="password")
 @with_appcontext
 def create_admin(username, email, password):
     """Create a new super admin user."""
-    from spkrepo.ext import db
     from spkrepo.models import Role, User
 
     click.echo("Creating admin user…")
