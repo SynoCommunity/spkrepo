@@ -92,9 +92,9 @@ class UserFactory(SQLAlchemyModelFactory):
     github_access_token = None
     fs_uniquifier = factory.LazyAttribute(lambda x: fake.md5())
     active = True
-    confirmed_at = datetime.datetime.now()
+    # Use LazyAttribute so each user gets the time of their creation, not class load time
+    confirmed_at = factory.LazyAttribute(lambda x: datetime.datetime.now())
 
-    # Use a PostGeneration hook to hash the password before committing
     @factory.post_generation
     def hashed_password(obj, create, extracted, **kwargs):
         if create:
@@ -339,24 +339,26 @@ class DownloadFactory(SQLAlchemyModelFactory):
     date = factory.LazyAttribute(lambda x: fake.date_time_this_month())
 
 
-# Base test case
 class BaseTestCase(TestCase):
     DEBUG = True
     TESTING = True
     CACHE_TYPE = "SimpleCache"
     LOGIN_DISABLED = False
     WTF_CSRF_ENABLED = False
-    DATA_PATH = tempfile.mkdtemp("spkrepo")
-    SQLALCHEMY_ECHO = False
-    SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATA_PATH}/test.db"
     CACHE_NO_NULL_WARNING = True
+    DATA_PATH = tempfile.mkdtemp("spkrepo")  # ← restore class-level default
+    SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATA_PATH}/test.db"
 
     def create_app(self):
         return create_app(config=self)
 
     def setUp(self):
-        if not os.path.exists(self.DATA_PATH):
-            os.mkdir(self.DATA_PATH)
+        # Create a fresh temp directory for each test
+        self.DATA_PATH = tempfile.mkdtemp("spkrepo")
+        self.SQLALCHEMY_DATABASE_URI = f"sqlite:///{self.DATA_PATH}/test.db"
+        # Update the running app config to match
+        self.app.config["DATA_PATH"] = self.DATA_PATH
+        self.app.config["SQLALCHEMY_DATABASE_URI"] = self.SQLALCHEMY_DATABASE_URI
         db.drop_all()
         db.create_all()
         populate_db()
@@ -370,13 +372,6 @@ class BaseTestCase(TestCase):
         shutil.rmtree(self.DATA_PATH)
 
     def login(self, email, password):
-        """
-        Perform a login action
-
-        :param email: email of the user
-        :param password: password of the user
-        :return: the response
-        """
         return self.client.post(
             url_for("security.login"),
             data=dict(email=email, password=password),
@@ -384,21 +379,9 @@ class BaseTestCase(TestCase):
         )
 
     def logout(self):
-        """
-        Perform a logout action
-
-        :return: the response
-        """
         return self.client.get(url_for("security.logout"), follow_redirects=True)
 
     def create_user(self, *args, **kwargs):
-        """
-        Create a user with the given roles
-
-        :param args: role names for the created user
-        :param kwargs: attributes to pass to the :class:`UserFactory`
-        :return: the created user
-        """
         user = UserFactory(
             roles=[Role.query.filter_by(name=role).one() for role in args], **kwargs
         )
@@ -407,89 +390,34 @@ class BaseTestCase(TestCase):
 
     @contextmanager
     def logged_user(self, *args, **kwargs):
-        """
-        Create a user with the given roles and perform login action
-
-        :param args: role names for the created user
-        :param kwargs: attributes to pass to the :class:`UserFactory`
-        :return: the logged user
-        """
         user = self.create_user(*args, **kwargs)
-
-        # Explicitly log in the user using the custom login method
         self.login(user.email, user.orig_pass)
-
         yield user
         self.logout()
 
     def assert201(self, response, message=None):
-        """
-        Check if response status code is 201
-
-        :param response: Flask response
-        :param message: Message to display on test failure
-        """
-
         self.assertStatus(response, 201, message)
 
     def assert302(self, response, message=None):
-        """
-        Check if response status code is 302
-
-        :param response: Flask response
-        :param message: Message to display on test failure
-        """
-
         self.assertStatus(response, 302, message)
 
     def assertRedirectsTo(self, response, location, message=None):
-        """
-        Check if response is a redirect
-
-        :param response: Flask response
-        :param location: the redirect location
-        :param message: Message to display on test failure
-        """
-
         self.assertEqual(response.location, location, message)
 
     def assert409(self, response, message=None):
-        """
-        Check if response status code is 409
-
-        :param response: Flask response
-        :param message: Message to display on test failure
-        """
-
         self.assertStatus(response, 409, message)
 
     def assert422(self, response, message=None):
-        """
-        Check if response status code is 422
-
-        :param response: Flask response
-        :param message: Message to display on test failure
-        """
-
         self.assertStatus(response, 422, message)
 
     def assertHeader(self, response, header, value, message=None):
-        """
-        Check a response header value
-
-        :param response: Flask response
-        :param header: Header name
-        :param value: Expected value of the header
-        :param message: Message to display on test failure
-        """
-
         self.assertIn(header, response.headers, message)
         self.assertEqual(response.headers[header], value, message)
 
 
 def create_info(build):
     """
-    Create a dict to emulate the INFO file of a SPK
+    Create a dict to emulate the INFO file of a SPK.
 
     :param build: build to use to construct the info dict
     :type build: :class:`~spkrepo.models.Build`
@@ -524,8 +452,9 @@ def create_info(build):
     if build.buildmanifest and build.buildmanifest.conflicts:
         info["install_conflict_packages"] = build.buildmanifest.conflicts
     if build.version.service_dependencies:
-        info["install_dep_services"] = ":".join(
-            [s.code for s in build.version.service_dependencies]
+        # Space-separated to match the .split() parsing in api.py and admin.py
+        info["install_dep_services"] = " ".join(
+            s.code for s in build.version.service_dependencies
         )
     if build.version.startable is not None:
         info["startable"] = "yes" if build.version.startable else "no"
@@ -534,11 +463,7 @@ def create_info(build):
     for language, description in build.version.descriptions.items():
         info[f"description_{language}"] = description.description
     if build.buildmanifest and any(
-        getattr(
-            build.buildmanifest,
-            attr,
-        )
-        is not None
+        getattr(build.buildmanifest, attr) is not None
         for attr in (
             "conf_dependencies",
             "conf_conflicts",
@@ -552,7 +477,7 @@ def create_info(build):
 
 def create_icon(text, size=72):
     """
-    Create a square icon with some `text` and the given `size`
+    Create a square icon with some `text` and the given `size`.
 
     :param text: text to display in the icon
     :param int size: size of the icon
@@ -563,7 +488,8 @@ def create_icon(text, size=72):
 
 def create_image(text, width=640, height=480):
     """
-    Create a image with some `text` and the given `width` and `height`
+    Create an image with some `text` and the given `width` and `height`.
+    The caller owns the returned stream and is responsible for closing it.
 
     :param text: text to display in the image
     :param int width: width of the image
@@ -616,7 +542,7 @@ def create_spk(
     conf_resource_encoding="utf-8",
 ):
     """
-    Create a valid SPK file
+    Create a valid SPK file.
 
     :param build: base build on which the SPK will be built
     :type build: :class:`~spkrepo.models.Build`
@@ -639,10 +565,8 @@ def create_spk(
     :param conf_resource_encoding: encoding for the conf/resource file
     :return: the created SPK stream
     """
-    # generate an info if none is given
     info = info or create_info(build)
 
-    # open structure
     spk_stream = io.BytesIO()
     spk = tarfile.TarFile(fileobj=spk_stream, mode="w")
 
@@ -828,7 +752,6 @@ def create_spk(
         info_stream.seek(0)
         spk.addfile(info_tarinfo, fileobj=info_stream)
 
-    # close structure
     spk.close()
     spk_stream.seek(0)
 
