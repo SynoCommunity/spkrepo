@@ -297,6 +297,8 @@ class BuildFactory(SQLAlchemyModelFactory):
             self.save(spk_stream)
             if self.md5 is None:
                 self.md5 = self.calculate_md5()
+            if self.size is None:
+                self.size = self.calculate_size()
         spk_stream.close()
 
     @classmethod
@@ -346,19 +348,13 @@ class BaseTestCase(TestCase):
     LOGIN_DISABLED = False
     WTF_CSRF_ENABLED = False
     CACHE_NO_NULL_WARNING = True
-    DATA_PATH = tempfile.mkdtemp("spkrepo")  # ← restore class-level default
-    SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATA_PATH}/test.db"
 
     def create_app(self):
+        self.DATA_PATH = tempfile.mkdtemp("spkrepo")
+        self.SQLALCHEMY_DATABASE_URI = f"sqlite:///{self.DATA_PATH}/test.db"
         return create_app(config=self)
 
     def setUp(self):
-        # Create a fresh temp directory for each test
-        self.DATA_PATH = tempfile.mkdtemp("spkrepo")
-        self.SQLALCHEMY_DATABASE_URI = f"sqlite:///{self.DATA_PATH}/test.db"
-        # Update the running app config to match
-        self.app.config["DATA_PATH"] = self.DATA_PATH
-        self.app.config["SQLALCHEMY_DATABASE_URI"] = self.SQLALCHEMY_DATABASE_URI
         db.drop_all()
         db.create_all()
         populate_db()
