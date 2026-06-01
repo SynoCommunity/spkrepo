@@ -573,7 +573,7 @@ class ScreenshotView(ModelView):
     def _display(view, context, model, name):
         safe_url = Markup.escape(url_for("nas.data", path=model.path))
         return Markup(
-            f'<img src="{safe_url}" alt="screenshot" height="100" width="100">'
+            f'<img src="{safe_url}" alt="screenshot" height="100">'
         )
 
     column_formatters = {"path": _display}
