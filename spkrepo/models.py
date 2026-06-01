@@ -446,15 +446,21 @@ class Build(db.Model):
             raise FileNotFoundError(f"File not found at path: {file_path}")
         return os.path.getsize(file_path)
 
+    def _before_insert(self):
+        self._insert_path = os.path.join(current_app.config["DATA_PATH"], self.path)
+
     def _after_insert(self):
-        path = os.path.join(current_app.config["DATA_PATH"], self.path)
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"Expected file not found after insert: {path}")
+        if not os.path.exists(self._insert_path):
+            raise FileNotFoundError(
+                f"Expected file not found after insert: {self._insert_path}"
+            )
+
+    def _before_delete(self):
+        self._delete_path = os.path.join(current_app.config["DATA_PATH"], self.path)
 
     def _after_delete(self):
-        path = os.path.join(current_app.config["DATA_PATH"], self.path)
-        if os.path.exists(path):
-            os.remove(path)
+        if os.path.exists(self._delete_path):
+            os.remove(self._delete_path)
 
     def __str__(self):
         return self.path
@@ -562,15 +568,21 @@ class Version(db.Model):
     def version_string(self):
         return self.upstream_version + "-" + str(self.version)
 
+    def _before_insert(self):
+        self._insert_path = os.path.join(current_app.config["DATA_PATH"], self.path)
+
     def _after_insert(self):
-        path = os.path.join(current_app.config["DATA_PATH"], self.path)
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"Expected file not found after insert: {path}")
+        if not os.path.exists(self._insert_path):
+            raise FileNotFoundError(
+                f"Expected file not found after insert: {self._insert_path}"
+            )
+
+    def _before_delete(self):
+        self._delete_path = os.path.join(current_app.config["DATA_PATH"], self.path)
 
     def _after_delete(self):
-        path = os.path.join(current_app.config["DATA_PATH"], self.path)
-        if os.path.exists(path):
-            shutil.rmtree(path)
+        if os.path.exists(self._delete_path):
+            shutil.rmtree(self._delete_path)
 
     def __str__(self):
         return self.version_string
