@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import io
 import os
-import re
 import shutil
 
 from flask import abort, current_app, flash, redirect, request, url_for
@@ -33,7 +32,7 @@ from ..models import (
     User,
     Version,
 )
-from ..utils import SPK
+from ..utils import SPK, firmware_re, version_re
 
 
 # ---------------------------------------------------------------------------
@@ -71,10 +70,6 @@ def _flash_action_results(successes, failures, skipped=None, item_label="item"):
 # ---------------------------------------------------------------------------
 # SPK helpers
 # ---------------------------------------------------------------------------
-
-firmware_re = re.compile(r"^(?P<version>\d\.\d)-(?P<build>\d{3,6})$")
-version_re = re.compile(r"^(?P<upstream_version>.*)-(?P<version>\d+)$")
-
 
 def _resolve_firmware(session, value, allow_none=False):
     if not value:

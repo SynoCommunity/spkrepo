@@ -16,6 +16,12 @@ from .exceptions import SPKParseError, SPKSignError
 from .ext import db
 from .models import Architecture, Firmware, Language, Role, Service
 
+#: Regex for a firmware string e.g. "6.2-23739"
+firmware_re = re.compile(r"^(?P<version>\d+\.\d)-(?P<build>\d{3,6})$")
+
+#: Regex for a version string e.g. "1.2.3-10"
+version_re = re.compile(r"^(?P<upstream_version>.*)-(?P<version>\d+)$")
+
 
 class SPK(object):
     """SPK utilities
@@ -87,7 +93,6 @@ class SPK(object):
 
                 # read LICENSE file
                 if "LICENSE" in names:
-                    # decode utf-8
                     try:
                         self.license = (
                             spk.extractfile("LICENSE").read().decode("utf-8").strip()
@@ -97,7 +102,6 @@ class SPK(object):
 
                 # read syno_signature.asc file
                 if "syno_signature.asc" in names:
-                    # decode ascii
                     try:
                         self.signature = (
                             spk.extractfile("syno_signature.asc")
@@ -110,23 +114,19 @@ class SPK(object):
 
                 # read INFO lines
                 for line in spk.extractfile("INFO").readlines():
-                    # decode utf-8
                     try:
                         line = line.decode("utf-8").strip()
                     except UnicodeDecodeError:
                         raise SPKParseError("Wrong INFO encoding")
 
-                    # skip blank line
                     if not line:
                         continue
 
-                    # validate line
                     match = self.info_line_re.match(line)
                     if not match:
                         raise SPKParseError("Invalid INFO")
                     key, value = match.group("key"), match.group("value")
 
-                    # read icons
                     match = self.icon_info_re.match(key)
                     if match:
                         size = match.group("size") or "72"
@@ -138,7 +138,6 @@ class SPK(object):
                             raise SPKParseError(f"Invalid INFO icon: {key}")
                         except TypeError:
                             raise SPKParseError(f"Invalid INFO icon: {key}")
-                    # read booleans
                     elif key in self.BOOLEAN_INFO:
                         if value == "yes":
                             self.info[key] = True
@@ -195,12 +194,10 @@ class SPK(object):
                             )
                         except UnicodeDecodeError:
                             raise SPKParseError("Wrong conf/privilege encoding")
-
                         try:
                             json.loads(conf_privilege)
                         except (json.JSONDecodeError, ValueError):
                             raise SPKParseError("File conf/privilege is not valid JSON")
-
                         self.conf_privilege = conf_privilege
                     if "conf/resource" in names:
                         try:
@@ -209,12 +206,10 @@ class SPK(object):
                             )
                         except UnicodeDecodeError:
                             raise SPKParseError("Wrong conf/resource encoding")
-
                         try:
                             json.loads(conf_resource)
                         except (json.JSONDecodeError, ValueError):
                             raise SPKParseError("File conf/resource is not valid JSON")
-
                         self.conf_resource = conf_resource
                     if (
                         self.conf_dependencies is None
@@ -264,57 +259,40 @@ class SPK(object):
         :param timestamp_url: url for the remote timestamping
         :param gnupghome: path to the gnupg home
         """
-        # check no signature exists
         if self.signature is not None:
             raise ValueError("Already signed")
 
-        # collect the streams
         with io.BytesIO() as data_stream:
             self.stream.seek(0)
             with tarfile.open(fileobj=self.stream, mode="r:") as spk:
                 names = sorted(spk.getnames())
-                # INFO
                 if "INFO" in names:
                     data_stream.write(spk.extractfile("INFO").read())
-
-                # LICENSE
                 if "LICENSE" in names:
                     data_stream.write(spk.extractfile("LICENSE").read())
-
-                # icons
                 for name in names:
                     match = self.icon_filename_re.match(name)
                     if match:
                         data_stream.write(spk.extractfile(name).read())
-
-                # wizards
                 for name in names:
                     match = self.wizard_filename_re.match(name)
                     if match:
                         data_stream.write(spk.extractfile(name).read())
-
-                # conf
                 for name in names:
                     match = self.conf_filename_re.match(name)
                     if match:
                         data_stream.write(spk.extractfile(name).read())
-
-                # package.tgz
                 if "package.tgz" in names:
                     data_stream.write(spk.extractfile("package.tgz").read())
-
-                # scripts
                 for name in names:
                     match = self.script_filename_re.match(name)
                     if match:
                         data_stream.write(spk.extractfile(name).read())
 
-            # generate the signature
             data_stream.seek(0)
             signature = self._generate_signature(data_stream, timestamp_url, gnupghome)
             self.signature = signature
 
-            # add the signature to the SPK
             signature_stream = io.BytesIO(signature.encode("ascii"))
             signature_tarinfo = tarfile.TarInfo(self.SIGNATURE_FILENAME)
             signature_tarinfo.mtime = time.time()
@@ -328,11 +306,9 @@ class SPK(object):
 
     def unsign(self):
         """Remove the signature file of the package"""
-        # check signature exists
         if self.signature is None:
             raise ValueError("Not signed")
 
-        # remove the signature file
         with io.BytesIO() as unsigned_stream:
             self.stream.seek(0)
             with tarfile.open(fileobj=self.stream, mode="r:") as spk:
@@ -349,22 +325,15 @@ class SPK(object):
 
     def calculate_md5(self):
         md5_hash = hashlib.md5()
-
-        # Ensure the stream position is at the beginning
         self.stream.seek(0)
-
-        # Update MD5 hash directly from the stream
         for chunk in iter(lambda: self.stream.read(4096), b""):
             md5_hash.update(chunk)
-
         return md5_hash.hexdigest()
 
     def _generate_signature(self, stream, timestamp_url, gnupghome):  # pragma: no cover
-        # generate the signature
         gpg = gnupg.GPG(gnupghome=gnupghome)
         signature = gpg.sign_file(stream, detach=True)
 
-        # have the signature remotely timestamped
         try:
             response = requests.post(
                 timestamp_url, files={"file": signature.data}, timeout=2
@@ -372,13 +341,11 @@ class SPK(object):
         except requests.Timeout:
             raise SPKSignError("Timestamp server did not respond in time")
 
-        # check the response status
         if response.status_code != 200:
             raise SPKSignError(
                 f"Timestamp server returned with status code {response.status_code}"
             )
 
-        # verify the timestamp
         if not gpg.verify(response.content):
             raise SPKSignError("Cannot verify timestamp")
 

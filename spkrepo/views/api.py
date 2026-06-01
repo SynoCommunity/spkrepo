@@ -2,12 +2,11 @@
 import io
 import logging
 import os
-import re
 import shutil
 from functools import wraps
 
 from flask import Blueprint, current_app, request
-from flask.globals import request_ctx
+from flask_login import login_user
 from flask_principal import Identity, identity_changed
 from flask_restful import Api, Resource, abort
 from flask_security import current_user
@@ -28,15 +27,11 @@ from ..models import (
     Version,
     user_datastore,
 )
-from ..utils import SPK
+from ..utils import SPK, firmware_re, version_re
 
 logger = logging.getLogger(__name__)
 
 api = Blueprint("api", __name__)
-
-# regexes
-firmware_re = re.compile(r"^(?P<version>\d\.\d)-(?P<build>\d{3,6})$")
-version_re = re.compile(r"^(?P<upstream_version>.*)-(?P<version>\d+)$")
 
 
 def api_auth_required(f):
@@ -45,8 +40,7 @@ def api_auth_required(f):
         if request.authorization and request.authorization.type == "basic":
             user = user_datastore.find_user(api_key=request.authorization.username)
             if user and user.has_role("developer"):
-                request_ctx.user = user
-                current_app.login_manager._update_request_context_with_user(user)
+                login_user(user)
                 identity_changed.send(
                     current_app._get_current_object(),
                     identity=Identity(user.fs_uniquifier),
@@ -55,6 +49,23 @@ def api_auth_required(f):
         abort(401)
 
     return wrapper
+
+
+def _cleanup_on_failure(data_path, package_name, version_number, build_path,
+                         create_package, create_version):
+    """Remove partially saved files after a failed SPK save."""
+    if create_package:
+        shutil.rmtree(os.path.join(data_path, package_name), ignore_errors=True)
+    elif create_version:
+        shutil.rmtree(
+            os.path.join(data_path, package_name, str(version_number)),
+            ignore_errors=True,
+        )
+    else:
+        try:
+            os.remove(os.path.join(data_path, build_path))
+        except OSError:
+            pass
 
 
 class Packages(Resource):
@@ -324,18 +335,10 @@ class Packages(Resource):
             build.size = build.calculate_size()
         except Exception as e:  # pragma: no cover
             logger.exception("Failed to save SPK files for package %s", package.name)
-            if create_package:
-                shutil.rmtree(os.path.join(data_path, package.name), ignore_errors=True)
-            elif create_version:
-                shutil.rmtree(
-                    os.path.join(data_path, package.name, str(version.version)),
-                    ignore_errors=True,
-                )
-            else:
-                try:
-                    os.remove(os.path.join(data_path, build.path))
-                except OSError:
-                    pass
+            _cleanup_on_failure(
+                data_path, package.name, version.version,
+                build.path, create_package, create_version,
+            )
             abort(500, message="Failed to save files", details=str(e))
 
         # insert the package into database
