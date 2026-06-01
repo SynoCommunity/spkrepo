@@ -3,6 +3,7 @@ import hashlib
 import io
 import os
 import shutil
+from datetime import datetime, timezone
 
 from flask import current_app
 from flask_security import RoleMixin, SQLAlchemyUserDatastore, UserMixin
@@ -51,6 +52,16 @@ def _compile_days_ago_postgresql(element, compiler, **kw):
 @compiles(_days_ago)
 def _compile_days_ago_default(element, compiler, **kw):
     return f"datetime(CURRENT_TIMESTAMP, '-{element.days} days')"
+
+
+# Architecture code mappings — module-level constants, not instance data
+_ARCH_FROM_SYNO = {"88f6281": "88f628x", "88f6282": "88f628x"}
+_ARCH_TO_SYNO = {"88f628x": "88f6281"}
+
+
+def _utcnow():
+    """Return the current UTC time. Used as a per-insert Python-side default."""
+    return datetime.now(timezone.utc)
 
 
 class User(db.Model, UserMixin):
@@ -120,14 +131,14 @@ class Architecture(db.Model):
         "Build", secondary="build_architecture", back_populates="architectures"
     )
 
-    # Other
-    from_syno = {"88f6281": "88f628x", "88f6282": "88f628x"}
-    to_syno = {"88f628x": "88f6281"}
+    # Architecture code translation maps (references module-level constants)
+    from_syno = _ARCH_FROM_SYNO
+    to_syno = _ARCH_TO_SYNO
 
     @classmethod
     def find(cls, code, syno=False):
         if syno:
-            return db.session.execute(select(cls).filter(cls.code == cls.from_syno.get(code, code))).scalars().first()
+            code = _ARCH_FROM_SYNO.get(code, code)
         return db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
 
     def __str__(self):
@@ -198,7 +209,9 @@ class Screenshot(db.Model):
             f.write(stream.read())
 
     def _after_insert(self):
-        assert os.path.exists(os.path.join(current_app.config["DATA_PATH"], self.path))
+        path = os.path.join(current_app.config["DATA_PATH"], self.path)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Expected file not found after insert: {path}")
 
     def _after_delete(self):
         path = os.path.join(current_app.config["DATA_PATH"], self.path)
@@ -234,7 +247,9 @@ class Icon(db.Model):
             f.write(stream.read())
 
     def _after_insert(self):
-        assert os.path.exists(os.path.join(current_app.config["DATA_PATH"], self.path))
+        path = os.path.join(current_app.config["DATA_PATH"], self.path)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Expected file not found after insert: {path}")
 
     def _after_delete(self):
         path = os.path.join(current_app.config["DATA_PATH"], self.path)
@@ -327,7 +342,7 @@ class Download(db.Model):
     firmware_build = db.Column(db.Integer, nullable=False)
     ip_address = db.Column(db.Unicode(46), nullable=False)
     user_agent = db.Column(db.Unicode(255))
-    date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    date = db.Column(db.DateTime, default=_utcnow, nullable=False)
 
     # Relationships
     build = db.relationship("Build", back_populates="downloads")
@@ -362,7 +377,7 @@ class Build(db.Model):
     path = db.Column(db.Unicode(2048))
     md5 = db.Column(db.Unicode(32))
     size = db.Column(db.Integer)
-    insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    insert_date = db.Column(db.DateTime, default=_utcnow, nullable=False)
     active = db.Column(db.Boolean(), default=False, nullable=False)
 
     # Relationships
@@ -414,12 +429,9 @@ class Build(db.Model):
     def calculate_md5(self):
         if not self.path:
             raise ValueError("Path cannot be empty.")
-
         file_path = os.path.join(current_app.config["DATA_PATH"], self.path)
-
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found at path: {file_path}")
-
         with io.open(file_path, "rb") as f:
             md5_hash = hashlib.md5()
             for chunk in iter(lambda: f.read(4096), b""):
@@ -429,16 +441,15 @@ class Build(db.Model):
     def calculate_size(self):
         if not self.path:
             raise ValueError("Path cannot be empty.")
-
         file_path = os.path.join(current_app.config["DATA_PATH"], self.path)
-
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found at path: {file_path}")
-
         return os.path.getsize(file_path)
 
     def _after_insert(self):
-        assert os.path.exists(os.path.join(current_app.config["DATA_PATH"], self.path))
+        path = os.path.join(current_app.config["DATA_PATH"], self.path)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Expected file not found after insert: {path}")
 
     def _after_delete(self):
         path = os.path.join(current_app.config["DATA_PATH"], self.path)
@@ -492,7 +503,7 @@ class Version(db.Model):
     upgrade_wizard = db.Column(db.Boolean)
     startable = db.Column(db.Boolean)
     license = db.Column(db.UnicodeText)
-    insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    insert_date = db.Column(db.DateTime, default=_utcnow, nullable=False)
 
     # Relationships
     package = db.relationship("Package", back_populates="versions", lazy=False)
@@ -552,7 +563,9 @@ class Version(db.Model):
         return self.upstream_version + "-" + str(self.version)
 
     def _after_insert(self):
-        assert os.path.exists(os.path.join(current_app.config["DATA_PATH"], self.path))
+        path = os.path.join(current_app.config["DATA_PATH"], self.path)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Expected file not found after insert: {path}")
 
     def _after_delete(self):
         path = os.path.join(current_app.config["DATA_PATH"], self.path)
@@ -569,12 +582,14 @@ class Version(db.Model):
     def builds_per_dsm(self):
         result = {}
         for build in self.builds:
-            result.setdefault(build.firmware_min.version[0:1], []).append(build)
+            result.setdefault(build.firmware_min.version.split(".")[0], []).append(build)
         return result
 
     @property
     def total_size(self):
-        return sum(b.size for b in self.builds if b.size is not None) or None
+        # Returns None if no builds have a known size, rather than 0
+        total = sum(b.size for b in self.builds if b.size is not None)
+        return total or None
 
 
 class Package(db.Model):
@@ -586,7 +601,7 @@ class Package(db.Model):
         db.Integer, db.ForeignKey("user.id", ondelete="SET NULL")
     )
     name = db.Column(db.Unicode(50), nullable=False)
-    insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    insert_date = db.Column(db.DateTime, default=_utcnow, nullable=False)
     download_count = db.column_property(
         db.select(db.func.count(Download.id))
         .select_from(Download.__table__.join(Build).join(Version))
