@@ -18,14 +18,14 @@ from .ext import db
 
 user_role = db.Table(
     "user_role",
-    db.Column("user_id", db.Integer(), db.ForeignKey("user.id")),
-    db.Column("role_id", db.Integer(), db.ForeignKey("role.id")),
+    db.Column("user_id", db.Integer(), db.ForeignKey("user.id"), index=True),
+    db.Column("role_id", db.Integer(), db.ForeignKey("role.id"), index=True),
 )
 
 package_user_maintainer = db.Table(
     "package_user_maintainer",
-    db.Column("package_id", db.Integer(), db.ForeignKey("package.id")),
-    db.Column("user_id", db.Integer(), db.ForeignKey("user.id")),
+    db.Column("package_id", db.Integer(), db.ForeignKey("package.id"), index=True),
+    db.Column("user_id", db.Integer(), db.ForeignKey("user.id"), index=True),
 )
 
 
@@ -204,7 +204,9 @@ class Screenshot(db.Model):
 
     # Columns
     id = db.Column(db.Integer, primary_key=True)
-    package_id = db.Column(db.Integer, db.ForeignKey("package.id"), nullable=False)
+    package_id = db.Column(
+        db.Integer, db.ForeignKey("package.id"), nullable=False, index=True
+    )
     path = db.Column(db.Unicode(200), nullable=False)
 
     # Relationships
@@ -335,8 +337,8 @@ class Description(db.Model):
 
 version_service_dependency = db.Table(
     "version_service_dependency",
-    db.Column("version_id", db.Integer(), db.ForeignKey("version.id")),
-    db.Column("service_id", db.Integer(), db.ForeignKey("service.id")),
+    db.Column("version_id", db.Integer(), db.ForeignKey("version.id"), index=True),
+    db.Column("service_id", db.Integer(), db.ForeignKey("service.id"), index=True),
 )
 
 
@@ -345,14 +347,16 @@ class Download(db.Model):
 
     # Columns
     id = db.Column(db.Integer, primary_key=True)
-    build_id = db.Column(db.Integer, db.ForeignKey("build.id"), nullable=False)
+    build_id = db.Column(
+        db.Integer, db.ForeignKey("build.id"), nullable=False, index=True
+    )
     architecture_id = db.Column(
-        db.Integer, db.ForeignKey("architecture.id"), nullable=False
+        db.Integer, db.ForeignKey("architecture.id"), nullable=False, index=True
     )
     firmware_build = db.Column(db.Integer, nullable=False)
     ip_address = db.Column(db.Unicode(46), nullable=False)
     user_agent = db.Column(db.Unicode(255))
-    date = db.Column(db.DateTime, default=_utcnow, nullable=False)
+    date = db.Column(db.DateTime, default=_utcnow, nullable=False, index=True)
 
     # Relationships
     build = db.relationship("Build", back_populates="downloads")
@@ -367,8 +371,10 @@ class Download(db.Model):
 
 build_architecture = db.Table(
     "build_architecture",
-    db.Column("build_id", db.Integer(), db.ForeignKey("build.id")),
-    db.Column("architecture_id", db.Integer(), db.ForeignKey("architecture.id")),
+    db.Column("build_id", db.Integer(), db.ForeignKey("build.id"), index=True),
+    db.Column(
+        "architecture_id", db.Integer(), db.ForeignKey("architecture.id"), index=True
+    ),
 )
 
 
@@ -379,16 +385,19 @@ class Build(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     version_id = db.Column(db.Integer, db.ForeignKey("version.id"), nullable=False)
     firmware_min_id = db.Column(
-        db.Integer, db.ForeignKey("firmware.id"), nullable=False
+        db.Integer, db.ForeignKey("firmware.id"), nullable=False, index=True
     )
-    firmware_max_id = db.Column(db.Integer, db.ForeignKey("firmware.id"))
-    publisher_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    firmware_max_id = db.Column(db.Integer, db.ForeignKey("firmware.id"), index=True)
+    publisher_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), index=True)
     checksum = db.Column(db.Unicode(32))
     path = db.Column(db.Unicode(2048))
     md5 = db.Column(db.Unicode(32))
     size = db.Column(db.Integer)
     insert_date = db.Column(db.DateTime, default=_utcnow, nullable=False)
     active = db.Column(db.Boolean(), default=False, nullable=False)
+
+    # Constraints
+    __table_args__ = (db.Index("idx_build_version_active", "version_id", "active"),)
 
     # Relationships
     version = db.relationship("Version", back_populates="builds", lazy=False)
@@ -622,7 +631,7 @@ class Package(db.Model):
     # Columns
     id = db.Column(db.Integer, primary_key=True)
     author_user_id = db.Column(
-        db.Integer, db.ForeignKey("user.id", ondelete="SET NULL")
+        db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), index=True
     )
     name = db.Column(db.Unicode(50), nullable=False)
     insert_date = db.Column(db.DateTime, default=_utcnow, nullable=False)
