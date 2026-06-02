@@ -1,24 +1,16 @@
 .syno-blue {
     color: #0086e6;
 }
-
-.glyphicon-lg {
-    font-size: 150px;
-}
-
 #summary {
     text-align: center;
 }
-
 #summary, #easy-install, #bleeding-edge, #open-source {
     margin-top: 50px;
 }
-
 #copyright {
     text-align: center;
     margin-top: 40px;
 }
-
 .footer {
     padding-top: 40px;
     padding-bottom: 40px;
@@ -27,40 +19,36 @@
     text-align: center;
     border-top: 1px solid #E5E5E5;
 }
-
 .footer p {
     margin-bottom: 0;
 }
-
 .social {
     margin-bottom: 20px;
     text-align: center;
 }
-
 .social-buttons {
     display: inline-block;
     margin-bottom: 0;
     padding-left: 0;
     list-style: none outside none;
 }
-
 .package-row {
     padding: 20px 0;
 }
-
 .package-description {
     height: 100px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
 }
-
 .package-screenshots {
     text-align: center;
     padding: 5px 0;
 }
-
 .package-screenshot {
     height: 100px;
 }
-
 .fastly-logo {
     width: auto;
     height: 45px;

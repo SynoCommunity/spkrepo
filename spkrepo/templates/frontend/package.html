@@ -1,14 +1,14 @@
-{% extends 'base.html' %}
+{% extends 'layout.html' %}
 {% block title %}{{ package.versions[-1].displaynames['enu'].displayname }} Package - {{ super() }}{% endblock %}
 {% block content %}
 <div class="row">
-  <div class="media">
-    <a class="media-left" href="#">
+  <div class="d-flex">
+    <div class="flex-shrink-0 mr-3">
       <img src="{{ url_for('nas.data', path=package.versions[-1].icons['72'].path) }}" alt="Icon">
-    </a>
-    <div class="media-body">
-      <h1 class="media-heading">{{ package.versions[-1].displaynames['enu'].displayname }}
-        <small>v{{ package.versions[-1].version_string }}</small>
+    </div>
+    <div class="flex-grow-1">
+      <h1>{{ package.versions[-1].displaynames['enu'].displayname }}
+        <small class="text-muted">v{{ package.versions[-1].version_string }}</small>
       </h1>
       <p>{{ package.versions[-1].descriptions['enu'].description }}</p>
       <div class="package-screenshots">
@@ -18,27 +18,26 @@
       </div>
       {% for version in package.versions|reverse %}
       <dl>
-        <dt>Version {{ version.version_string | safe }}{% if version.report_url %} <span class="label label-danger">beta</span>{% endif %}</dt>
+        <dt>Version {{ version.version_string | safe }}{% if version.report_url %} <span class="badge badge-danger">beta</span>{% endif %}</dt>
         <dd>{{ version.changelog | safe }}</dd>
         <dt>Date</dt>
         <dd>{{ version.insert_date.replace(microsecond=0) }}</dd>
         <dt>Architectures</dt>
         <dd>
-        {% for (version, builds) in version.builds_per_dsm.items() %}
-          <!-- Group firmware by DSM or SRM if 1.x -->
-          {% if version == '1' %}
-            SRM {{ version }}.x:
+        {% for (dsm_version, builds) in version.builds_per_dsm.items() %}
+          {% if dsm_version == '1' %}
+            SRM {{ dsm_version }}.x:
           {% else %}
-            DSM {{ version }}.x:
+            DSM {{ dsm_version }}.x:
           {% endif %}
           {% for build in builds %}
             {% if build.active %}
               {% for arch in build.architectures %}
-              <a href="{{ url_for('nas.data', path=build.path) }}"><span class="label label-success">{{ build.firmware_min.version }}{% if build.firmware_max %}-{{ build.firmware_max.version }}{% endif %} {{ arch.code }}</span></a>
+              <a href="{{ url_for('nas.data', path=build.path) }}"><span class="badge badge-success">{{ build.firmware_min.version }}{% if build.firmware_max %}-{{ build.firmware_max.version }}{% endif %} {{ arch.code }}</span></a>
               {% endfor %}
             {% else %}
               {% for arch in build.architectures %}
-              <a href="{{ url_for('nas.data', path=build.path) }}"><span class="label label-default" data-toggle="tooltip" title="Inactive: Manual installation only. This Package might be under development and have pending issues.">{{ build.firmware_min.version }}{% if build.firmware_max %}-{{ build.firmware_max.version }}{% endif %} {{ arch.code }}</span></a>
+              <a href="{{ url_for('nas.data', path=build.path) }}"><span class="badge badge-secondary" data-toggle="tooltip" title="Inactive: Manual installation only. This Package might be under development and have pending issues.">{{ build.firmware_min.version }}{% if build.firmware_max %}-{{ build.firmware_max.version }}{% endif %} {{ arch.code }}</span></a>
               {% endfor %}
             {% endif %}
           {% endfor %}
@@ -50,4 +49,12 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block script %}
+<script>
+  $(function () {
+    $('[data-toggle="tooltip"]').tooltip();
+  });
+</script>
 {% endblock %}

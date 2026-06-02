@@ -8,7 +8,7 @@ from flask_wtf import FlaskForm
 from wtforms import StringField, SubmitField, ValidationError
 from wtforms.validators import InputRequired, Length
 
-from ..ext import db
+from ..ext import cache, db
 from ..models import Build, Description, DisplayName, Package, Version, user_datastore
 
 frontend = Blueprint("frontend", __name__)
@@ -20,19 +20,14 @@ def index():
 
 
 class GenerateApiKeyForm(FlaskForm):
-    """Form for generating an API key"""
+    """Form for generating an API key."""
 
     api_key = StringField("API Key")
     submit = SubmitField("Generate API Key")
 
 
-def generate_api_key():
-    """
-    Generate a random API key based on `secrets.token_hex`
-
-    :return: the generated API key
-    :rtype: str
-    """
+def _generate_api_key():
+    """Generate a random 64-character hex API key."""
     return secrets.token_hex(32)
 
 
@@ -46,7 +41,7 @@ def profile():
         )
     form = GenerateApiKeyForm()
     if form.validate_on_submit():
-        current_user.api_key = generate_api_key()
+        current_user.api_key = _generate_api_key()
         db.session.commit()
         return redirect(url_for("frontend.profile"), code=303)
     form.api_key.data = current_user.api_key
@@ -58,8 +53,10 @@ def profile():
 
 
 @frontend.route("/packages")
+@cache.cached(timeout=300)
 def packages():
-    # show only packages with at least one version, but ignore whether builds are active
+    # Show only packages with at least one version, but ignore whether builds
+    # are active.
     latest_version = (
         db.session.query(
             Version.package_id, db.func.max(Version.version).label("latest_version")
@@ -91,7 +88,7 @@ def packages():
 
 @frontend.route("/package/<name>")
 def package(name):
-    package = (
+    pkg = (
         Package.query.filter_by(name=name)
         .options(
             db.joinedload(Package.versions).joinedload(Version.icons),
@@ -100,9 +97,9 @@ def package(name):
         )
         .first()
     )
-    if package is None or not package.versions:
+    if pkg is None or not pkg.versions:
         abort(404)
-    return render_template("frontend/package.html", package=package)
+    return render_template("frontend/package.html", package=pkg)
 
 
 def unique_user_username(form, field):

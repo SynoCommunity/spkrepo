@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import io
 import os
-import re
 import shutil
 
 from flask import abort, current_app, flash, redirect, request, url_for
@@ -13,6 +12,7 @@ from flask_admin.contrib.sqla.tools import get_query_for_ids
 from flask_admin.form import ImageUploadField
 from flask_security import current_user
 from markupsafe import Markup
+from sqlalchemy.exc import SQLAlchemyError
 from wtforms import PasswordField
 from wtforms.validators import Regexp
 
@@ -32,16 +32,20 @@ from ..models import (
     User,
     Version,
 )
-from ..utils import SPK
+from ..utils import SPK, firmware_re, version_re
+
+# ---------------------------------------------------------------------------
+# Shared formatters
+# ---------------------------------------------------------------------------
 
 
 def _bool_formatter(v, c, m, p):
     value = getattr(m, p)
     if value is None:
-        return Markup('<i class="fa fa-question-circle" style="color: #aaaaaa;"></i>')
+        return Markup('<i class="fa fa-question-circle text-muted"></i>')
     if value:
-        return Markup('<i class="fa fa-check-circle" style="color: #27ae60;"></i>')
-    return Markup('<i class="fa fa-times-circle" style="color: #e74c3c;"></i>')
+        return Markup('<i class="fa fa-check-circle text-success"></i>')
+    return Markup('<i class="fa fa-times-circle text-danger"></i>')
 
 
 def _flash_action_results(successes, failures, skipped=None, item_label="item"):
@@ -63,193 +67,9 @@ def _flash_action_results(successes, failures, skipped=None, item_label="item"):
         flash(f"Failed to process {name}: {message}", "error")
 
 
-class UserView(ModelView):
-    """View for :class:`~spkrepo.models.User`"""
-
-    def __init__(self, **kwargs):
-        super(UserView, self).__init__(User, db, **kwargs)
-
-    # Permissions
-    def is_accessible(self):
-        return current_user.is_authenticated and current_user.has_role("admin")
-
-    can_create = False
-
-    # View
-    column_list = ("username", "email", "roles", "active", "confirmed_at")
-
-    column_formatters = {
-        "confirmed_at": lambda v, c, m, p: (
-            m.confirmed_at.strftime("%Y-%m-%d %H:%M:%S") if m.confirmed_at else None
-        )
-    }
-
-    # Form
-    form_columns = ("username", "roles", "active")
-    form_overrides = {"password": PasswordField}
-
-    # Actions
-    @action("activate", "Activate", "Are you sure you want to activate selected users?")
-    def action_activate(self, ids):
-        try:
-            users = get_query_for_ids(self.get_query(), self.model, ids).all()
-            for user in users:
-                user.active = True
-            db.session.commit()
-            flash(
-                "User was successfully activated."
-                if len(users) == 1
-                else f"{len(users)} users were successfully activated."
-            )
-        except Exception:  # pragma: no cover
-            db.session.rollback()
-            current_app.logger.exception("Failed to activate users")
-            flash("Failed to activate users. Please check the logs.", "error")
-
-    @action(
-        "deactivate",
-        "Deactivate",
-        "Are you sure you want to deactivate selected users?",
-    )
-    def action_deactivate(self, ids):
-        try:
-            users = get_query_for_ids(self.get_query(), self.model, ids).all()
-            for user in users:
-                user.active = False
-            db.session.commit()
-            flash(
-                "User was successfully deactivated."
-                if len(users) == 1
-                else f"{len(users)} users were successfully deactivated."
-            )
-        except Exception:  # pragma: no cover
-            db.session.rollback()
-            current_app.logger.exception("Failed to deactivate users")
-            flash("Failed to deactivate users. Please check the logs.", "error")
-
-
-class ArchitectureView(ModelView):
-    """View for :class:`~spkrepo.models.Architecture`"""
-
-    def __init__(self, **kwargs):
-        super(ArchitectureView, self).__init__(Architecture, db, **kwargs)
-
-    # Permissions
-    def is_accessible(self):
-        return current_user.is_authenticated and current_user.has_role("package_admin")
-
-    can_edit = False
-
-    can_delete = False
-
-    # Form
-    form_excluded_columns = "builds"
-
-
-class FirmwareView(ModelView):
-    """View for :class:`~spkrepo.models.Firmware`"""
-
-    def __init__(self, **kwargs):
-        super(FirmwareView, self).__init__(Firmware, db, **kwargs)
-
-    # Permissions
-    def is_accessible(self):
-        return current_user.is_authenticated and current_user.has_role("package_admin")
-
-    can_edit = False
-
-    can_delete = False
-
-    # Form
-    form_columns = ("version", "build", "type")
-    form_args = {
-        "version": {"validators": [Regexp(SPK.firmware_version_re)]},
-        "type": {"validators": [Regexp(SPK.firmware_type_re)]},
-    }
-
-
-class ServiceView(ModelView):
-    """View for :class:`~spkrepo.models.Service`"""
-
-    def __init__(self, **kwargs):
-        super(ServiceView, self).__init__(Service, db, **kwargs)
-
-    # Permissions
-    def is_accessible(self):
-        return current_user.is_authenticated and current_user.has_role("package_admin")
-
-    can_edit = False
-
-    can_delete = False
-
-
-ALLOWED_SCREENSHOT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
-
-
-def screenshot_namegen(obj, file_data):
-    ext = os.path.splitext(file_data.filename)[1].lower()
-    if ext not in ALLOWED_SCREENSHOT_EXTENSIONS:
-        raise ValueError(f"Invalid screenshot file extension: {ext!r}")
-    i = 1
-    while os.path.exists(
-        os.path.join(
-            current_app.config["DATA_PATH"],
-            obj.package.name,
-            f"screenshot_{i}{ext}",
-        )
-    ):
-        i += 1
-    return os.path.join(obj.package.name, f"screenshot_{i}{ext}")
-
-
-class ScreenshotView(ModelView):
-    """View for :class:`~spkrepo.models.Screenshot`"""
-
-    def __init__(self, **kwargs):
-        super(ScreenshotView, self).__init__(Screenshot, db, **kwargs)
-
-    # Permissions
-    def is_accessible(self):
-        return current_user.is_authenticated and current_user.has_role("package_admin")
-
-    can_edit = False
-
-    # View
-    column_labels = {
-        "package.name": "Package Name",
-        "path": "Screenshot",
-    }
-
-    def _display(view, context, model, name):
-        safe_url = Markup.escape(url_for("nas.data", path=model.path))
-        return Markup(
-            f'<img src="{safe_url}" alt="screenshot" height="100" width="100">'
-        )
-
-    column_formatters = {"path": _display}
-    column_sortable_list = (("package", "package.name"),)
-    column_default_sort = "package.name"
-    column_filters = ("package.name",)
-
-    # Hooks
-    def on_model_delete(self, model):
-        build_path = os.path.join(current_app.config["DATA_PATH"], model.path)
-        if os.path.exists(build_path):
-            os.remove(build_path)
-
-    # Form
-    form_overrides = {"path": ImageUploadField}
-    form_args = {
-        "path": {
-            "label": "Screenshot",
-            "namegen": screenshot_namegen,
-            "base_path": lambda: current_app.config["DATA_PATH"],
-        }
-    }
-
-
-firmware_re = re.compile(r"^(?P<version>\d\.\d)-(?P<build>\d{3,6})$")
-version_re = re.compile(r"^(?P<upstream_version>.*)-(?P<version>\d+)$")
+# ---------------------------------------------------------------------------
+# SPK helpers
+# ---------------------------------------------------------------------------
 
 
 def _resolve_firmware(session, value, allow_none=False):
@@ -436,13 +256,351 @@ def _resync_build_metadata(session, build):
         _apply_info_from_spk(session, build, spk, md5)
 
 
+# ---------------------------------------------------------------------------
+# Mixin for sign / unsign / resync actions shared by VersionView & BuildView
+# ---------------------------------------------------------------------------
+
+
+class SignResyncMixin:
+    """
+    Mixin that provides sign, unsign, resync_info, and resync_file actions,
+    plus the corresponding permission guards.
+
+    Subclasses must implement `_iter_builds(ids)` which yields (label, build)
+    pairs for the given list of selected ids.
+    """
+
+    # -- Permission properties (override in subclass if needed) -------------
+
+    @property
+    def can_sign(self):
+        return current_user.has_role("admin")
+
+    @property
+    def can_unsign(self):
+        return current_user.has_role("admin")
+
+    @property
+    def can_resync_info(self):
+        return current_user.has_role("admin")
+
+    @property
+    def can_resync_file(self):
+        return current_user.has_role("admin")
+
+    # -- Permission guards --------------------------------------------------
+
+    def is_action_allowed(self, name):
+        checks = {
+            "sign": self.can_sign,
+            "unsign": self.can_unsign,
+            "resync_info": self.can_resync_info,
+            "resync_file": self.can_resync_file,
+        }
+        if name in checks and not checks[name]:
+            return False
+        return super().is_action_allowed(name)
+
+    def handle_action(self, return_view=None):
+        action_name = request.form.get("action")
+        checks = {
+            "sign": self.can_sign,
+            "unsign": self.can_unsign,
+            "resync_info": self.can_resync_info,
+            "resync_file": self.can_resync_file,
+        }
+        if action_name in checks and not checks[action_name]:
+            abort(403)
+        return super().handle_action(return_view)
+
+    # -- Subclass contract --------------------------------------------------
+
+    def _iter_builds(self, ids):
+        """
+        Yield (label, build) for each build implied by the selected ids.
+        Override in VersionView to expand version -> builds.
+        """
+        raise NotImplementedError
+
+    # -- Shared actions -----------------------------------------------------
+
+    @action("sign", "Sign", "Are you sure you want to sign selected builds?")
+    def action_sign(self, ids):
+        try:
+            already_signed, success, failed = [], [], []
+            for label, build in self._iter_builds(ids):
+                with io.open(
+                    os.path.join(current_app.config["DATA_PATH"], build.path), "rb+"
+                ) as f:
+                    spk = SPK(f)
+                    if spk.signature is not None:
+                        already_signed.append(label)
+                        continue
+                    try:
+                        spk.sign(
+                            current_app.config["GNUPG_TIMESTAMP_URL"],
+                            current_app.config["GNUPG_PATH"],
+                        )
+                        _resync_build_file(build)
+                        db.session.commit()
+                        success.append(label)
+                    except Exception:
+                        current_app.logger.exception("Failed to sign build %s", label)
+                        db.session.rollback()
+                        failed.append(label)
+            _flash_action_results(
+                success,
+                [(f, "") for f in failed],
+                skipped=already_signed,
+                item_label="build",
+            )
+        except Exception:  # pragma: no cover
+            current_app.logger.exception("Failed to sign builds")
+            flash("Failed to sign builds. Please check the logs.", "error")
+
+    @action("unsign", "Unsign", "Are you sure you want to unsign selected builds?")
+    def action_unsign(self, ids):
+        try:
+            not_signed, success, failed = [], [], []
+            for label, build in self._iter_builds(ids):
+                with io.open(
+                    os.path.join(current_app.config["DATA_PATH"], build.path), "rb+"
+                ) as f:
+                    spk = SPK(f)
+                    if spk.signature is None:
+                        not_signed.append(label)
+                        continue
+                    try:
+                        spk.unsign()
+                        _resync_build_file(build)
+                        db.session.commit()
+                        success.append(label)
+                    except Exception:
+                        current_app.logger.exception("Failed to unsign build %s", label)
+                        db.session.rollback()
+                        failed.append(label)
+            _flash_action_results(
+                success,
+                [(f, "") for f in failed],
+                skipped=not_signed,
+                item_label="build",
+            )
+        except Exception:  # pragma: no cover
+            current_app.logger.exception("Failed to unsign builds")
+            flash("Failed to unsign builds. Please check the logs.", "error")
+
+    @action(
+        "resync_info",
+        "Resync Info",
+        "Reapply INFO metadata from selected builds?",
+    )
+    def action_resync_info(self, ids):
+        successes, failures = [], []
+        for label, build in self._iter_builds(ids):
+            try:
+                _resync_build_metadata(db.session, build)
+                db.session.commit()
+                successes.append(label)
+            except Exception as exc:  # pragma: no cover
+                db.session.rollback()
+                failures.append((label, str(exc)))
+        _flash_action_results(successes, failures, item_label="build")
+
+    @action(
+        "resync_file",
+        "Resync File",
+        "Recalculate md5 and size from selected build files?",
+    )
+    def action_resync_file(self, ids):
+        successes, failures = [], []
+        for label, build in self._iter_builds(ids):
+            try:
+                _resync_build_file(build)
+                db.session.commit()
+                successes.append(label)
+            except Exception as exc:
+                db.session.rollback()
+                failures.append((label, str(exc)))
+        _flash_action_results(successes, failures, item_label="build")
+
+
+# ---------------------------------------------------------------------------
+# Views
+# ---------------------------------------------------------------------------
+
+
+class UserView(ModelView):
+    """View for :class:`~spkrepo.models.User`"""
+
+    def __init__(self, **kwargs):
+        super().__init__(User, db, **kwargs)
+
+    def is_accessible(self):
+        return current_user.is_authenticated and current_user.has_role("admin")
+
+    can_create = False
+
+    column_list = ("username", "email", "roles", "active", "confirmed_at")
+    column_formatters = {
+        "confirmed_at": lambda v, c, m, p: (
+            m.confirmed_at.strftime("%Y-%m-%d %H:%M:%S") if m.confirmed_at else None
+        )
+    }
+
+    form_columns = ("username", "roles", "active")
+    form_overrides = {"password": PasswordField}
+
+    @action("activate", "Activate", "Are you sure you want to activate selected users?")
+    def action_activate(self, ids):
+        try:
+            users = get_query_for_ids(self.get_query(), self.model, ids).all()
+            for user in users:
+                user.active = True
+            db.session.commit()
+            flash(
+                "User was successfully activated."
+                if len(users) == 1
+                else f"{len(users)} users were successfully activated."
+            )
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception("Failed to activate users")
+            flash("Failed to activate users. Please check the logs.", "error")
+
+    @action(
+        "deactivate",
+        "Deactivate",
+        "Are you sure you want to deactivate selected users?",
+    )
+    def action_deactivate(self, ids):
+        try:
+            users = get_query_for_ids(self.get_query(), self.model, ids).all()
+            for user in users:
+                user.active = False
+            db.session.commit()
+            flash(
+                "User was successfully deactivated."
+                if len(users) == 1
+                else f"{len(users)} users were successfully deactivated."
+            )
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception("Failed to deactivate users")
+            flash("Failed to deactivate users. Please check the logs.", "error")
+
+
+class ArchitectureView(ModelView):
+    """View for :class:`~spkrepo.models.Architecture`"""
+
+    def __init__(self, **kwargs):
+        super().__init__(Architecture, db, **kwargs)
+
+    def is_accessible(self):
+        return current_user.is_authenticated and current_user.has_role("package_admin")
+
+    can_edit = False
+    can_delete = False
+
+    form_excluded_columns = "builds"
+
+
+class FirmwareView(ModelView):
+    """View for :class:`~spkrepo.models.Firmware`"""
+
+    def __init__(self, **kwargs):
+        super().__init__(Firmware, db, **kwargs)
+
+    def is_accessible(self):
+        return current_user.is_authenticated and current_user.has_role("package_admin")
+
+    can_edit = False
+    can_delete = False
+
+    form_columns = ("version", "build", "type")
+    form_args = {
+        "version": {"validators": [Regexp(SPK.firmware_version_re)]},
+        "type": {"validators": [Regexp(SPK.firmware_type_re)]},
+    }
+
+
+class ServiceView(ModelView):
+    """View for :class:`~spkrepo.models.Service`"""
+
+    def __init__(self, **kwargs):
+        super().__init__(Service, db, **kwargs)
+
+    def is_accessible(self):
+        return current_user.is_authenticated and current_user.has_role("package_admin")
+
+    can_edit = False
+    can_delete = False
+
+
+ALLOWED_SCREENSHOT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+
+def screenshot_namegen(obj, file_data):
+    ext = os.path.splitext(file_data.filename)[1].lower()
+    if ext not in ALLOWED_SCREENSHOT_EXTENSIONS:
+        raise ValueError(f"Invalid screenshot file extension: {ext!r}")
+    i = 1
+    while os.path.exists(
+        os.path.join(
+            current_app.config["DATA_PATH"],
+            obj.package.name,
+            f"screenshot_{i}{ext}",
+        )
+    ):
+        i += 1
+    return os.path.join(obj.package.name, f"screenshot_{i}{ext}")
+
+
+class ScreenshotView(ModelView):
+    """View for :class:`~spkrepo.models.Screenshot`"""
+
+    def __init__(self, **kwargs):
+        super().__init__(Screenshot, db, **kwargs)
+
+    def is_accessible(self):
+        return current_user.is_authenticated and current_user.has_role("package_admin")
+
+    can_edit = False
+
+    column_labels = {
+        "package.name": "Package Name",
+        "path": "Screenshot",
+    }
+
+    def _display(view, context, model, name):
+        safe_url = Markup.escape(url_for("nas.data", path=model.path))
+        return Markup(f'<img src="{safe_url}" alt="screenshot" height="100">')
+
+    column_formatters = {"path": _display}
+    column_sortable_list = (("package", "package.name"),)
+    column_default_sort = "package.name"
+    column_filters = ("package.name",)
+
+    def on_model_delete(self, model):
+        build_path = os.path.join(current_app.config["DATA_PATH"], model.path)
+        if os.path.exists(build_path):
+            os.remove(build_path)
+
+    form_overrides = {"path": ImageUploadField}
+    form_args = {
+        "path": {
+            "label": "Screenshot",
+            "namegen": screenshot_namegen,
+            "base_path": lambda: current_app.config["DATA_PATH"],
+        }
+    }
+
+
 class PackageView(ModelView):
     """View for :class:`~spkrepo.models.Package`"""
 
     def __init__(self, **kwargs):
-        super(PackageView, self).__init__(Package, db, **kwargs)
+        super().__init__(Package, db, **kwargs)
 
-    # Permissions
     def is_accessible(self):
         return current_user.is_authenticated and current_user.has_role("package_admin")
 
@@ -472,7 +630,6 @@ class PackageView(ModelView):
         )
         return form_class
 
-    # Hooks
     def on_model_change(self, form, model, is_created):
         if is_created:
             package_path = os.path.join(current_app.config["DATA_PATH"], model.name)
@@ -484,7 +641,6 @@ class PackageView(ModelView):
         if os.path.exists(package_path):
             shutil.rmtree(package_path)
 
-    # View
     column_list = (
         "name",
         "author",
@@ -516,50 +672,35 @@ class PackageView(ModelView):
     }
     column_filters = ("name", "author.username")
 
-    # Form
     form_columns = ("name", "author", "maintainers")
     form_args = {"name": {"validators": [Regexp(SPK.package_re)]}}
 
 
-class VersionView(ModelView):
+class VersionView(SignResyncMixin, ModelView):
     """View for :class:`~spkrepo.models.Version`"""
 
     def __init__(self, **kwargs):
-        super(VersionView, self).__init__(Version, db, **kwargs)
+        super().__init__(Version, db, **kwargs)
 
-    # Permissions
     def is_accessible(self):
         return current_user.is_authenticated and any(
             map(current_user.has_role, ("developer", "package_admin"))
         )
 
     can_create = False
-
     can_edit = False
-
     can_view_details = True
 
     @property
     def can_delete(self):
         return current_user.has_role("admin")
 
-    @property
-    def can_sign(self):
-        return current_user.has_role("admin")
+    def _iter_builds(self, ids):
+        versions = get_query_for_ids(self.get_query(), self.model, ids).all()
+        for version in versions:
+            for build in version.builds:
+                yield os.path.basename(build.path), build
 
-    @property
-    def can_unsign(self):
-        return current_user.has_role("admin")
-
-    @property
-    def can_resync_info(self):
-        return current_user.has_role("admin")
-
-    @property
-    def can_resync_file(self):
-        return current_user.has_role("admin")
-
-    # Hooks
     def on_model_delete(self, model):
         version_path = os.path.join(
             current_app.config["DATA_PATH"], model.package.name, str(model.version)
@@ -567,7 +708,6 @@ class VersionView(ModelView):
         if os.path.exists(version_path):
             shutil.rmtree(version_path)
 
-    # Define a formatter to truncate long text
     def _truncate_formatter(view, context, model, name):
         text = getattr(model, name)
         if not text:
@@ -576,7 +716,6 @@ class VersionView(ModelView):
             return Markup(f"{Markup.escape(text[:250])}...")
         return Markup.escape(text)
 
-    # View
     column_list = (
         "package",
         "upstream_version",
@@ -613,7 +752,6 @@ class VersionView(ModelView):
         ("all_builds_active", "all_builds_active"),
         ("startable", "startable"),
     )
-
     column_formatters = {
         "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
         "all_builds_active": _bool_formatter,
@@ -631,30 +769,26 @@ class VersionView(ModelView):
     }
     column_default_sort = (Version.insert_date, True)
 
-    # Custom queries
     def get_query(self):
+        q = super().get_query()
         if not current_user.has_role("package_admin"):
-            return (
-                super(VersionView, self)
-                .get_query()
-                .join(self.model.package)
+            q = (
+                q.join(self.model.package)
                 .join(Package.maintainers)
                 .filter(User.id == current_user.id)
             )
-        return super(VersionView, self).get_query()
+        return q
 
     def get_count_query(self):
+        q = super().get_count_query()
         if not current_user.has_role("package_admin"):
-            return (
-                super(VersionView, self)
-                .get_count_query()
-                .join(self.model.package)
+            q = (
+                q.join(self.model.package)
                 .join(Package.maintainers)
                 .filter(User.id == current_user.id)
             )
-        return super(VersionView, self).get_count_query()
+        return q
 
-    # Actions
     @action(
         "activate",
         "Activate",
@@ -671,11 +805,11 @@ class VersionView(ModelView):
                 "Builds on version were successfully activated."
                 if len(versions) == 1
                 else (
-                    "Builds have been successfully activated for "
+                    f"Builds have been successfully activated for "
                     f"{len(versions)} versions."
                 )
             )
-        except Exception:  # pragma: no cover
+        except SQLAlchemyError:
             db.session.rollback()
             current_app.logger.exception("Failed to activate versions' builds")
             flash(
@@ -698,206 +832,48 @@ class VersionView(ModelView):
                 "Builds on version were successfully deactivated."
                 if len(versions) == 1
                 else (
-                    "Builds have been successfully deactivated for "
+                    f"Builds have been successfully deactivated for "
                     f"{len(versions)} versions."
                 )
             )
-        except Exception:  # pragma: no cover
+        except SQLAlchemyError:
             db.session.rollback()
             current_app.logger.exception("Failed to deactivate versions' builds")
             flash(
                 "Failed to deactivate versions' builds. Please check the logs.", "error"
             )
 
-    @action("sign", "Sign", "Are you sure you want to sign selected builds?")
-    def action_sign(self, ids):
-        try:
-            versions = get_query_for_ids(self.get_query(), self.model, ids).all()
-            already_signed = []
-            success = []
-            failed = []
-            for version in versions:
-                for build in version.builds:
-                    filename = os.path.basename(build.path)
-                    with io.open(
-                        os.path.join(current_app.config["DATA_PATH"], build.path), "rb+"
-                    ) as f:
-                        spk = SPK(f)
-                        if spk.signature is not None:
-                            already_signed.append(filename)
-                            continue
-                        try:
-                            spk.sign(
-                                current_app.config["GNUPG_TIMESTAMP_URL"],
-                                current_app.config["GNUPG_PATH"],
-                            )
-                            _resync_build_file(build)
-                            db.session.commit()
-                            success.append(filename)
-                        except Exception:
-                            current_app.logger.exception(
-                                "Failed to sign build %s", filename
-                            )
-                            db.session.rollback()
-                            failed.append(filename)
-            _flash_action_results(
-                success,
-                [(f, "") for f in failed],
-                skipped=already_signed,
-                item_label="build",
-            )
-        except Exception:  # pragma: no cover
-            current_app.logger.exception("Failed to sign builds")
-            flash("Failed to sign builds. Please check the logs.", "error")
 
-    @action("unsign", "Unsign", "Are you sure you want to unsign selected builds?")
-    def action_unsign(self, ids):
-        try:
-            versions = get_query_for_ids(self.get_query(), self.model, ids).all()
-            not_signed = []
-            success = []
-            failed = []
-            for version in versions:
-                for build in version.builds:
-                    filename = os.path.basename(build.path)
-                    with io.open(
-                        os.path.join(current_app.config["DATA_PATH"], build.path), "rb+"
-                    ) as f:
-                        spk = SPK(f)
-                        if spk.signature is None:
-                            not_signed.append(filename)
-                            continue
-                        try:
-                            spk.unsign()
-                            _resync_build_file(build)
-                            db.session.commit()
-                            success.append(filename)
-                        except Exception:
-                            current_app.logger.exception(
-                                "Failed to unsign build %s", filename
-                            )
-                            db.session.rollback()
-                            failed.append(filename)
-            _flash_action_results(
-                success,
-                [(f, "") for f in failed],
-                skipped=not_signed,
-                item_label="build",
-            )
-        except Exception:  # pragma: no cover
-            current_app.logger.exception("Failed to unsign builds")
-            flash("Failed to unsign builds. Please check the logs.", "error")
-
-    @action(
-        "resync_info",
-        "Resync Info",
-        "Reapply INFO metadata from builds on selected versions?",
-    )
-    def action_resync_info(self, ids):
-        successes = []
-        failures = []
-
-        versions = get_query_for_ids(self.get_query(), self.model, ids).all()
-        for version in versions:
-            for build in version.builds:
-                filename = os.path.basename(build.path) if build.path else str(build.id)
-                try:
-                    _resync_build_metadata(db.session, build)
-                    db.session.commit()
-                    successes.append(filename)
-                except Exception as exc:  # pragma: no cover
-                    db.session.rollback()
-                    failures.append((filename, str(exc)))
-
-        _flash_action_results(successes, failures, item_label="build")
-
-    @action(
-        "resync_file",
-        "Resync File",
-        "Recalculate md5 and size from build files on selected versions?",
-    )
-    def action_resync_file(self, ids):
-        successes = []
-        failures = []
-
-        versions = get_query_for_ids(self.get_query(), self.model, ids).all()
-        for version in versions:
-            for build in version.builds:
-                filename = os.path.basename(build.path) if build.path else str(build.id)
-                try:
-                    _resync_build_file(build)
-                    db.session.commit()
-                    successes.append(filename)
-                except Exception as exc:
-                    db.session.rollback()
-                    failures.append((filename, str(exc)))
-
-        _flash_action_results(successes, failures, item_label="build")
-
-    def is_action_allowed(self, name):
-        if name == "resync_info" and not self.can_resync_info:
-            return False
-        if name == "resync_file" and not self.can_resync_file:
-            return False
-        if name == "sign" and not self.can_sign:
-            return False
-        if name == "unsign" and not self.can_unsign:
-            return False
-
-        return super(VersionView, self).is_action_allowed(name)
-
-    def handle_action(self, return_view=None):
-        action = request.form.get("action")
-        if action == "resync_info" and not self.can_resync_info:
-            abort(403)
-        if action == "resync_file" and not self.can_resync_file:
-            abort(403)
-        if action == "sign" and not self.can_sign:
-            abort(403)
-        if action == "unsign" and not self.can_unsign:
-            abort(403)
-        return super(VersionView, self).handle_action(return_view)
-
-
-class BuildView(ModelView):
+class BuildView(SignResyncMixin, ModelView):
     """View for :class:`~spkrepo.models.Build`"""
 
     def __init__(self, **kwargs):
-        super(BuildView, self).__init__(Build, db, **kwargs)
+        super().__init__(Build, db, **kwargs)
 
-    # Permissions
     def is_accessible(self):
         return current_user.is_authenticated and any(
             map(current_user.has_role, ("developer", "package_admin"))
         )
 
     can_create = False
-
     can_edit = False
-
     can_view_details = True
 
     @property
     def can_delete(self):
         return current_user.has_role("admin")
 
-    @property
-    def can_sign(self):
-        return current_user.has_role("admin")
+    def _iter_builds(self, ids):
+        for build_id in ids:
+            try:
+                build = db.session.get(self.model, int(build_id))
+            except (TypeError, ValueError):
+                continue
+            if build is None:
+                continue
+            label = os.path.basename(build.path) if build.path else str(build_id)
+            yield label, build
 
-    @property
-    def can_unsign(self):
-        return current_user.has_role("admin")
-
-    @property
-    def can_resync_info(self):
-        return current_user.has_role("admin")
-
-    @property
-    def can_resync_file(self):
-        return current_user.has_role("admin")
-
-    # View
     column_list = (
         "version.package",
         "version.version",
@@ -937,7 +913,6 @@ class BuildView(ModelView):
         ("active", "active"),
         ("size", "size"),
     )
-
     column_formatters = {
         "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
         "size": lambda v, c, m, p: (
@@ -947,38 +922,33 @@ class BuildView(ModelView):
     }
     column_default_sort = (Build.insert_date, True)
 
-    # Custom queries
     def get_query(self):
+        q = super().get_query()
         if not current_user.has_role("package_admin"):
-            return (
-                super(BuildView, self)
-                .get_query()
-                .join(self.model.version)
+            q = (
+                q.join(self.model.version)
                 .join(Version.package)
                 .join(Package.maintainers)
                 .filter(User.id == current_user.id)
             )
-        return super(BuildView, self).get_query()
+        return q
 
     def get_count_query(self):
+        q = super().get_count_query()
         if not current_user.has_role("package_admin"):
-            return (
-                super(BuildView, self)
-                .get_count_query()
-                .join(self.model.version)
+            q = (
+                q.join(self.model.version)
                 .join(Version.package)
                 .join(Package.maintainers)
                 .filter(User.id == current_user.id)
             )
-        return super(BuildView, self).get_count_query()
+        return q
 
-    # Hooks
     def on_model_delete(self, model):
         build_path = os.path.join(current_app.config["DATA_PATH"], model.path)
         if os.path.exists(build_path):
             os.remove(build_path)
 
-    # Actions
     @action(
         "activate", "Activate", "Are you sure you want to activate selected builds?"
     )
@@ -993,7 +963,7 @@ class BuildView(ModelView):
                 if len(builds) == 1
                 else f"{len(builds)} builds were successfully activated."
             )
-        except Exception:  # pragma: no cover
+        except SQLAlchemyError:
             db.session.rollback()
             current_app.logger.exception("Failed to activate builds")
             flash("Failed to activate builds. Please check the logs.", "error")
@@ -1014,169 +984,15 @@ class BuildView(ModelView):
                 if len(builds) == 1
                 else f"{len(builds)} builds were successfully deactivated."
             )
-        except Exception:  # pragma: no cover
+        except SQLAlchemyError:
             db.session.rollback()
             current_app.logger.exception("Failed to deactivate builds")
             flash("Failed to deactivate builds. Please check the logs.", "error")
 
-    @action("sign", "Sign", "Are you sure you want to sign selected builds?")
-    def action_sign(self, ids):
-        try:
-            builds = get_query_for_ids(self.get_query(), self.model, ids).all()
-            already_signed = []
-            success = []
-            failed = []
-            for build in builds:
-                filename = os.path.basename(build.path)
-                with io.open(
-                    os.path.join(current_app.config["DATA_PATH"], build.path), "rb+"
-                ) as f:
-                    spk = SPK(f)
-                    if spk.signature is not None:
-                        already_signed.append(filename)
-                        continue
-                    try:
-                        spk.sign(
-                            current_app.config["GNUPG_TIMESTAMP_URL"],
-                            current_app.config["GNUPG_PATH"],
-                        )
-                        _resync_build_file(build)
-                        db.session.commit()
-                        success.append(filename)
-                    except Exception:
-                        current_app.logger.exception(
-                            "Failed to sign build %s", filename
-                        )
-                        db.session.rollback()
-                        failed.append(filename)
-            _flash_action_results(
-                success,
-                [(f, "") for f in failed],
-                skipped=already_signed,
-                item_label="build",
-            )
-        except Exception:  # pragma: no cover
-            current_app.logger.exception("Failed to sign builds")
-            flash("Failed to sign builds. Please check the logs.", "error")
 
-    @action("unsign", "Unsign", "Are you sure you want to unsign selected builds?")
-    def action_unsign(self, ids):
-        try:
-            builds = get_query_for_ids(self.get_query(), self.model, ids).all()
-            not_signed = []
-            success = []
-            failed = []
-            for build in builds:
-                filename = os.path.basename(build.path)
-                with io.open(
-                    os.path.join(current_app.config["DATA_PATH"], build.path), "rb+"
-                ) as f:
-                    spk = SPK(f)
-                    if spk.signature is None:
-                        not_signed.append(filename)
-                        continue
-                    try:
-                        spk.unsign()
-                        _resync_build_file(build)
-                        db.session.commit()
-                        success.append(filename)
-                    except Exception:
-                        current_app.logger.exception(
-                            "Failed to unsign build %s", filename
-                        )
-                        db.session.rollback()
-                        failed.append(filename)
-            _flash_action_results(
-                success,
-                [(f, "") for f in failed],
-                skipped=not_signed,
-                item_label="build",
-            )
-        except Exception:  # pragma: no cover
-            current_app.logger.exception("Failed to unsign builds")
-            flash("Failed to unsign builds. Please check the logs.", "error")
-
-    @action(
-        "resync_info",
-        "Resync Info",
-        "Reapply INFO metadata from selected builds?",
-    )
-    def action_resync_info(self, ids):
-        successes = []
-        failures = []
-
-        for build_id in ids:
-            try:
-                build = db.session.get(self.model, int(build_id))
-            except (TypeError, ValueError):
-                continue
-
-            if build is None:
-                continue
-
-            filename = os.path.basename(build.path) if build.path else str(build_id)
-            try:
-                _resync_build_metadata(db.session, build)
-                db.session.commit()
-                successes.append(filename)
-            except Exception as exc:  # pragma: no cover
-                db.session.rollback()
-                failures.append((filename, str(exc)))
-
-        _flash_action_results(successes, failures, item_label="build")
-
-    @action(
-        "resync_file",
-        "Resync File",
-        "Recalculate md5 and size from selected build files?",
-    )
-    def action_resync_file(self, ids):
-        successes = []
-        failures = []
-
-        for build_id in ids:
-            try:
-                build = db.session.get(self.model, int(build_id))
-            except (TypeError, ValueError):
-                continue
-
-            if build is None:
-                continue
-
-            filename = os.path.basename(build.path) if build.path else str(build_id)
-            try:
-                _resync_build_file(build)
-                db.session.commit()
-                successes.append(filename)
-            except Exception as exc:
-                db.session.rollback()
-                failures.append((filename, str(exc)))
-
-        _flash_action_results(successes, failures, item_label="build")
-
-    def is_action_allowed(self, name):
-        if name == "resync_info" and not self.can_resync_info:
-            return False
-        if name == "resync_file" and not self.can_resync_file:
-            return False
-        if name == "sign" and not self.can_sign:
-            return False
-        if name == "unsign" and not self.can_unsign:
-            return False
-
-        return super(BuildView, self).is_action_allowed(name)
-
-    def handle_action(self, return_view=None):
-        action = request.form.get("action")
-        if action == "resync_info" and not self.can_resync_info:
-            abort(403)
-        if action == "resync_file" and not self.can_resync_file:
-            abort(403)
-        if action == "sign" and not self.can_sign:
-            abort(403)
-        if action == "unsign" and not self.can_unsign:
-            abort(403)
-        return super(BuildView, self).handle_action(return_view)
+# ---------------------------------------------------------------------------
+# Admin index
+# ---------------------------------------------------------------------------
 
 
 class IndexView(AdminIndexView):
@@ -1191,6 +1007,10 @@ class IndexView(AdminIndexView):
             "admin"
         )
 
+        def _maintainer_filter(q):
+            """Apply maintainer filter for non-privileged users."""
+            return q.join(Package.maintainers).filter(User.id == current_user.id)
+
         if is_privileged:
             package_count = Package.query.count()
             build_count = Build.query.count()
@@ -1199,29 +1019,25 @@ class IndexView(AdminIndexView):
                 Version.query.order_by(Version.insert_date.desc()).limit(5).all()
             )
         else:
-            package_count = (
-                Package.query.join(Package.maintainers)
-                .filter(User.id == current_user.id)
-                .count()
-            )
+            package_count = _maintainer_filter(Package.query).count()
             build_count = (
-                Build.query.join(Build.version)
-                .join(Version.package)
-                .join(Package.maintainers)
+                _maintainer_filter(
+                    Build.query.join(Build.version).join(Version.package)
+                )
                 .filter(User.id == current_user.id)
                 .count()
             )
             inactive_build_count = (
-                Build.query.filter_by(active=False)
-                .join(Build.version)
-                .join(Version.package)
-                .join(Package.maintainers)
+                _maintainer_filter(
+                    Build.query.filter_by(active=False)
+                    .join(Build.version)
+                    .join(Version.package)
+                )
                 .filter(User.id == current_user.id)
                 .count()
             )
             recent_versions = (
-                Version.query.join(Version.package)
-                .join(Package.maintainers)
+                _maintainer_filter(Version.query.join(Version.package))
                 .filter(User.id == current_user.id)
                 .order_by(Version.insert_date.desc())
                 .limit(5)

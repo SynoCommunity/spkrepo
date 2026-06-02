@@ -51,9 +51,7 @@ def get_catalog(arch, build, major, language, beta):
 
     if not beta:
         latest_version = latest_version.filter(
-            db.or_(
-                Version.report_url.is_(None), Version.report_url == ""
-            )  # Exclude beta
+            db.or_(Version.report_url.is_(None), Version.report_url == "")
         )
 
     latest_version = (
@@ -142,11 +140,9 @@ def get_catalog(arch, build, major, language, beta):
     )
 
     # Step 4: Construct response with "packages"
-    packages = []
-    for b in latest_build:
-        packages.append(build_package_entry(b, language, arch, build))
+    packages = [build_package_entry(b, language, arch, build) for b in latest_build]
 
-    # DSM 5.1
+    # DSM 5.1+
     if build >= 5004:
         result = {"packages": packages}
         # DSM 6 only
@@ -162,6 +158,12 @@ def get_catalog(arch, build, major, language, beta):
         result = packages
 
     return result
+
+
+def _set_if_truthy(entry, key, value):
+    """Set entry[key] = value only if value is truthy."""
+    if value:
+        entry[key] = value
 
 
 def build_package_entry(b, language, arch, build):
@@ -196,33 +198,28 @@ def build_package_entry(b, language, arch, build):
         "conflictpkgs": b.buildmanifest.conflicts if b.buildmanifest else None,
         "download_count": b.version.package.download_count,
         "recent_download_count": b.version.package.recent_download_count,
+        "snapshot": (
+            [
+                url_for(".data", path=screenshot.path, _external=True)
+                for screenshot in b.version.package.screenshots
+            ]
+            if b.version.package.screenshots
+            else []
+        ),
     }
 
-    entry["snapshot"] = (
-        [
-            url_for(".data", path=screenshot.path, _external=True)
-            for screenshot in b.version.package.screenshots
-        ]
-        if b.version.package.screenshots
-        else []
-    )
     if b.version.report_url:
         entry["report_url"] = b.version.report_url
         entry["beta"] = True
-    if b.version.changelog:
-        entry["changelog"] = b.version.changelog
-    if b.version.distributor:
-        entry["distributor"] = b.version.distributor
-    if b.version.distributor_url:
-        entry["distributor_url"] = b.version.distributor_url
-    if b.version.maintainer:
-        entry["maintainer"] = b.version.maintainer
-    if b.version.maintainer_url:
-        entry["maintainer_url"] = b.version.maintainer_url
-    if b.md5:
-        entry["md5"] = b.md5
-    if b.size:
-        entry["size"] = b.size
+
+    _set_if_truthy(entry, "changelog", b.version.changelog)
+    _set_if_truthy(entry, "distributor", b.version.distributor)
+    _set_if_truthy(entry, "distributor_url", b.version.distributor_url)
+    _set_if_truthy(entry, "maintainer", b.version.maintainer)
+    _set_if_truthy(entry, "maintainer_url", b.version.maintainer_url)
+    _set_if_truthy(entry, "md5", b.md5)
+    _set_if_truthy(entry, "size", b.size)
+
     if b.version.startable is not None:
         entry["startable"] = "yes" if b.version.startable else "no"
 
@@ -231,7 +228,6 @@ def build_package_entry(b, language, arch, build):
 
 @nas.route("/", methods=["POST", "GET"])
 def catalog():
-    # check consistency
     if (
         "build" not in request.values
         or "arch" not in request.values
@@ -239,7 +235,6 @@ def catalog():
     ):
         abort(400)
 
-    # read parameters
     language = request.values["language"]
     if not is_valid_language(language):
         abort(422)
@@ -250,19 +245,19 @@ def catalog():
         build = int(request.values["build"])
     except ValueError:
         abort(422)
-    # DSM 7.0
+
+    # DSM 7.0+ does not support beta packages
     if build < 40000:
         beta = request.values.get("package_update_channel") == "beta"
     else:
-        beta = False  # Ensure no beta packages are returned for DSM 7+
-    # Check if "major" is provided
+        beta = False
+
     if "major" in request.values:
         try:
-            major = int(request.values["major"])  # Use provided major version
+            major = int(request.values["major"])
         except ValueError:
             abort(422)
     else:
-        # Find major version from firmware table (if not provided)
         closest_firmware = (
             Firmware.query.filter(Firmware.build <= build, Firmware.type == "dsm")
             .order_by(Firmware.build.desc())
@@ -270,26 +265,20 @@ def catalog():
         )
         if not closest_firmware or not closest_firmware.version:
             abort(422)
-        # Extract major version from firmware.version (e.g., "7.2" → "7")
         major = int(closest_firmware.version.split(".")[0])
 
-    # get the catalog
-    catalog = get_catalog(arch, build, major, language, beta)
-
-    return Response(json.dumps(catalog), mimetype="application/json")
+    result = get_catalog(arch, build, major, language, beta)
+    return Response(json.dumps(result), mimetype="application/json")
 
 
 @nas.route("/download/<int:architecture_id>/<int:firmware_build>/<int:build_id>")
 def download(architecture_id, firmware_build, build_id):
-    # check build
     build = db.get_or_404(Build, build_id)
     if not build.active:
         abort(403)
 
-    # architecture
     architecture = db.get_or_404(Architecture, architecture_id)
 
-    # check consistency
     if (
         architecture not in build.architectures
         or firmware_build < build.firmware_min.build
@@ -299,18 +288,16 @@ def download(architecture_id, firmware_build, build_id):
     ):
         abort(400)
 
-    # insert in database
-    download = Download(
+    dl = Download(
         build=build,
         architecture=architecture,
         firmware_build=firmware_build,
         ip_address=request.remote_addr,
         user_agent=request.user_agent.string,
     )
-    db.session.add(download)
+    db.session.add(dl)
     db.session.commit()
 
-    # redirect
     return redirect(url_for(".data", path=build.path))
 
 

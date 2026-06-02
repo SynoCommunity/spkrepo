@@ -83,7 +83,7 @@ class PackageTestCase(BaseTestCase):
             response_data,
         )
         self.assertNotIn("beta", response_data)
-        self.assertIn("label label-success", response_data)
+        self.assertIn("badge badge-success", response_data)
 
     def test_get_not_active_stable(self):
         build = BuildFactory(
@@ -108,7 +108,7 @@ class PackageTestCase(BaseTestCase):
             response_data,
         )
         self.assertNotIn("beta", response_data)
-        self.assertIn("label label-default", response_data)
+        self.assertIn("badge badge-secondary", response_data)
 
     def test_get_active_not_stable(self):
         build = BuildFactory(
@@ -132,7 +132,7 @@ class PackageTestCase(BaseTestCase):
             response_data,
         )
         self.assertIn("beta", response_data)
-        self.assertIn("label label-success", response_data)
+        self.assertIn("badge badge-success", response_data)
 
     def test_get_not_active_not_stable(self):
         build = BuildFactory(
@@ -156,7 +156,7 @@ class PackageTestCase(BaseTestCase):
             response_data,
         )
         self.assertIn("beta", response_data)
-        self.assertIn("label label-default", response_data)
+        self.assertIn("badge badge-secondary", response_data)
         self.assertIn("Inactive: Manual installation only.", response_data)
 
     def test_get_no_package(self):

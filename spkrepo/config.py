@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 import os
 
-DEBUG = True
+DEBUG = False
 TESTING = False
 SECRET_KEY = "secret-key"
 MAX_CONTENT_LENGTH = 170 * 1024 * 1024
+
 # Enable subdomain-based routing (False in local dev; True in prod)
 SUBDOMAIN_MATCHING = False
 
@@ -22,9 +23,10 @@ SECURITY_RECOVERABLE = True
 SECURITY_CHANGEABLE = True
 SECURITY_PASSWORD_HASH = "sha512_crypt"
 SECURITY_PASSWORD_SALT = "password-salt"
+SECURITY_PASSWORD_CONFIRM_REQUIRED = False
 
 # SQLAlchemy
-SQLALCHEMY_ECHO = True
+SQLALCHEMY_ECHO = False
 SQLALCHEMY_DATABASE_URI = os.environ.get(
     "SPKREPO_SQLALCHEMY_DATABASE_URI",
     "postgresql+psycopg2://spkrepo:spkrepo@localhost/spkrepo",

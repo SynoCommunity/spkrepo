@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from flask_babel import Babel
 from flask_caching import Cache
-from flask_debugtoolbar import DebugToolbarExtension
 from flask_mail import Mail
 from flask_migrate import Migrate
 from flask_security import Security
@@ -9,21 +8,21 @@ from flask_sqlalchemy import SQLAlchemy
 
 # Flask-Babel
 babel = Babel()
-
 # Cache
 cache = Cache()
-
-# Debug Toolbar
-debug_toolbar = DebugToolbarExtension()
-
 # Mail
 mail = Mail()
-
 # Migrate
 migrate = Migrate()
-
 # Security
 security = Security()
-
 # SQLAlchemy
 db = SQLAlchemy()
+
+# Debug Toolbar — dev dependency, may not be installed in production
+try:
+    from flask_debugtoolbar import DebugToolbarExtension
+
+    debug_toolbar = DebugToolbarExtension()
+except ImportError:
+    debug_toolbar = None

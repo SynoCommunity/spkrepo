@@ -3,10 +3,11 @@ import hashlib
 import io
 import os
 import shutil
+from datetime import datetime, timezone
 
 from flask import current_app
 from flask_security import RoleMixin, SQLAlchemyUserDatastore, UserMixin
-from sqlalchemy import event
+from sqlalchemy import event, select
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Session
@@ -17,14 +18,14 @@ from .ext import db
 
 user_role = db.Table(
     "user_role",
-    db.Column("user_id", db.Integer(), db.ForeignKey("user.id")),
-    db.Column("role_id", db.Integer(), db.ForeignKey("role.id")),
+    db.Column("user_id", db.Integer(), db.ForeignKey("user.id"), index=True),
+    db.Column("role_id", db.Integer(), db.ForeignKey("role.id"), index=True),
 )
 
 package_user_maintainer = db.Table(
     "package_user_maintainer",
-    db.Column("package_id", db.Integer(), db.ForeignKey("package.id")),
-    db.Column("user_id", db.Integer(), db.ForeignKey("user.id")),
+    db.Column("package_id", db.Integer(), db.ForeignKey("package.id"), index=True),
+    db.Column("user_id", db.Integer(), db.ForeignKey("user.id"), index=True),
 )
 
 
@@ -51,6 +52,16 @@ def _compile_days_ago_postgresql(element, compiler, **kw):
 @compiles(_days_ago)
 def _compile_days_ago_default(element, compiler, **kw):
     return f"datetime(CURRENT_TIMESTAMP, '-{element.days} days')"
+
+
+# Architecture code mappings — module-level constants, not instance data
+_ARCH_FROM_SYNO = {"88f6281": "88f628x", "88f6282": "88f628x"}
+_ARCH_TO_SYNO = {"88f628x": "88f6281"}
+
+
+def _utcnow():
+    """Return the current UTC time. Used as a per-insert Python-side default."""
+    return datetime.now(timezone.utc)
 
 
 class User(db.Model, UserMixin):
@@ -96,7 +107,9 @@ class Role(db.Model, RoleMixin):
 
     @classmethod
     def find(cls, name):
-        return cls.query.filter(cls.name == name).first()
+        return (
+            db.session.execute(select(cls).filter(cls.name == name)).scalars().first()
+        )
 
     def __str__(self):
         return self.name
@@ -120,15 +133,17 @@ class Architecture(db.Model):
         "Build", secondary="build_architecture", back_populates="architectures"
     )
 
-    # Other
-    from_syno = {"88f6281": "88f628x", "88f6282": "88f628x"}
-    to_syno = {"88f628x": "88f6281"}
+    # Architecture code translation maps (references module-level constants)
+    from_syno = _ARCH_FROM_SYNO
+    to_syno = _ARCH_TO_SYNO
 
     @classmethod
     def find(cls, code, syno=False):
         if syno:
-            return cls.query.filter(cls.code == cls.from_syno.get(code, code)).first()
-        return cls.query.filter(cls.code == code).first()
+            code = _ARCH_FROM_SYNO.get(code, code)
+        return (
+            db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
+        )
 
     def __str__(self):
         return self.code
@@ -147,7 +162,9 @@ class Language(db.Model):
 
     @classmethod
     def find(cls, code):
-        return cls.query.filter(cls.code == code).first()
+        return (
+            db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
+        )
 
     def __str__(self):
         return self.name
@@ -167,7 +184,9 @@ class Firmware(db.Model):
 
     @classmethod
     def find(cls, build):
-        return cls.query.filter(cls.build == build).first()
+        return (
+            db.session.execute(select(cls).filter(cls.build == build)).scalars().first()
+        )
 
     @property
     def firmware_string(self):
@@ -185,7 +204,9 @@ class Screenshot(db.Model):
 
     # Columns
     id = db.Column(db.Integer, primary_key=True)
-    package_id = db.Column(db.Integer, db.ForeignKey("package.id"), nullable=False)
+    package_id = db.Column(
+        db.Integer, db.ForeignKey("package.id"), nullable=False, index=True
+    )
     path = db.Column(db.Unicode(200), nullable=False)
 
     # Relationships
@@ -198,7 +219,9 @@ class Screenshot(db.Model):
             f.write(stream.read())
 
     def _after_insert(self):
-        assert os.path.exists(os.path.join(current_app.config["DATA_PATH"], self.path))
+        path = os.path.join(current_app.config["DATA_PATH"], self.path)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Expected file not found after insert: {path}")
 
     def _after_delete(self):
         path = os.path.join(current_app.config["DATA_PATH"], self.path)
@@ -234,7 +257,9 @@ class Icon(db.Model):
             f.write(stream.read())
 
     def _after_insert(self):
-        assert os.path.exists(os.path.join(current_app.config["DATA_PATH"], self.path))
+        path = os.path.join(current_app.config["DATA_PATH"], self.path)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Expected file not found after insert: {path}")
 
     def _after_delete(self):
         path = os.path.join(current_app.config["DATA_PATH"], self.path)
@@ -257,7 +282,9 @@ class Service(db.Model):
 
     @classmethod
     def find(cls, code):
-        return cls.query.filter(cls.code == code).first()
+        return (
+            db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
+        )
 
     def __str__(self):
         return self.code
@@ -310,8 +337,8 @@ class Description(db.Model):
 
 version_service_dependency = db.Table(
     "version_service_dependency",
-    db.Column("version_id", db.Integer(), db.ForeignKey("version.id")),
-    db.Column("service_id", db.Integer(), db.ForeignKey("service.id")),
+    db.Column("version_id", db.Integer(), db.ForeignKey("version.id"), index=True),
+    db.Column("service_id", db.Integer(), db.ForeignKey("service.id"), index=True),
 )
 
 
@@ -320,14 +347,16 @@ class Download(db.Model):
 
     # Columns
     id = db.Column(db.Integer, primary_key=True)
-    build_id = db.Column(db.Integer, db.ForeignKey("build.id"), nullable=False)
+    build_id = db.Column(
+        db.Integer, db.ForeignKey("build.id"), nullable=False, index=True
+    )
     architecture_id = db.Column(
-        db.Integer, db.ForeignKey("architecture.id"), nullable=False
+        db.Integer, db.ForeignKey("architecture.id"), nullable=False, index=True
     )
     firmware_build = db.Column(db.Integer, nullable=False)
     ip_address = db.Column(db.Unicode(46), nullable=False)
     user_agent = db.Column(db.Unicode(255))
-    date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    date = db.Column(db.DateTime, default=_utcnow, nullable=False, index=True)
 
     # Relationships
     build = db.relationship("Build", back_populates="downloads")
@@ -342,8 +371,10 @@ class Download(db.Model):
 
 build_architecture = db.Table(
     "build_architecture",
-    db.Column("build_id", db.Integer(), db.ForeignKey("build.id")),
-    db.Column("architecture_id", db.Integer(), db.ForeignKey("architecture.id")),
+    db.Column("build_id", db.Integer(), db.ForeignKey("build.id"), index=True),
+    db.Column(
+        "architecture_id", db.Integer(), db.ForeignKey("architecture.id"), index=True
+    ),
 )
 
 
@@ -354,16 +385,19 @@ class Build(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     version_id = db.Column(db.Integer, db.ForeignKey("version.id"), nullable=False)
     firmware_min_id = db.Column(
-        db.Integer, db.ForeignKey("firmware.id"), nullable=False
+        db.Integer, db.ForeignKey("firmware.id"), nullable=False, index=True
     )
-    firmware_max_id = db.Column(db.Integer, db.ForeignKey("firmware.id"))
-    publisher_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    firmware_max_id = db.Column(db.Integer, db.ForeignKey("firmware.id"), index=True)
+    publisher_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), index=True)
     checksum = db.Column(db.Unicode(32))
     path = db.Column(db.Unicode(2048))
     md5 = db.Column(db.Unicode(32))
     size = db.Column(db.Integer)
-    insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    insert_date = db.Column(db.DateTime, default=_utcnow, nullable=False)
     active = db.Column(db.Boolean(), default=False, nullable=False)
+
+    # Constraints
+    __table_args__ = (db.Index("idx_build_version_active", "version_id", "active"),)
 
     # Relationships
     version = db.relationship("Version", back_populates="builds", lazy=False)
@@ -414,12 +448,9 @@ class Build(db.Model):
     def calculate_md5(self):
         if not self.path:
             raise ValueError("Path cannot be empty.")
-
         file_path = os.path.join(current_app.config["DATA_PATH"], self.path)
-
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found at path: {file_path}")
-
         with io.open(file_path, "rb") as f:
             md5_hash = hashlib.md5()
             for chunk in iter(lambda: f.read(4096), b""):
@@ -429,21 +460,26 @@ class Build(db.Model):
     def calculate_size(self):
         if not self.path:
             raise ValueError("Path cannot be empty.")
-
         file_path = os.path.join(current_app.config["DATA_PATH"], self.path)
-
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found at path: {file_path}")
-
         return os.path.getsize(file_path)
 
+    def _before_insert(self):
+        self._insert_path = os.path.join(current_app.config["DATA_PATH"], self.path)
+
     def _after_insert(self):
-        assert os.path.exists(os.path.join(current_app.config["DATA_PATH"], self.path))
+        if not os.path.exists(self._insert_path):
+            raise FileNotFoundError(
+                f"Expected file not found after insert: {self._insert_path}"
+            )
+
+    def _before_delete(self):
+        self._delete_path = os.path.join(current_app.config["DATA_PATH"], self.path)
 
     def _after_delete(self):
-        path = os.path.join(current_app.config["DATA_PATH"], self.path)
-        if os.path.exists(path):
-            os.remove(path)
+        if os.path.exists(self._delete_path):
+            os.remove(self._delete_path)
 
     def __str__(self):
         return self.path
@@ -492,7 +528,7 @@ class Version(db.Model):
     upgrade_wizard = db.Column(db.Boolean)
     startable = db.Column(db.Boolean)
     license = db.Column(db.UnicodeText)
-    insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    insert_date = db.Column(db.DateTime, default=_utcnow, nullable=False)
 
     # Relationships
     package = db.relationship("Package", back_populates="versions", lazy=False)
@@ -551,13 +587,21 @@ class Version(db.Model):
     def version_string(self):
         return self.upstream_version + "-" + str(self.version)
 
+    def _before_insert(self):
+        self._insert_path = os.path.join(current_app.config["DATA_PATH"], self.path)
+
     def _after_insert(self):
-        assert os.path.exists(os.path.join(current_app.config["DATA_PATH"], self.path))
+        if not os.path.exists(self._insert_path):
+            raise FileNotFoundError(
+                f"Expected file not found after insert: {self._insert_path}"
+            )
+
+    def _before_delete(self):
+        self._delete_path = os.path.join(current_app.config["DATA_PATH"], self.path)
 
     def _after_delete(self):
-        path = os.path.join(current_app.config["DATA_PATH"], self.path)
-        if os.path.exists(path):
-            shutil.rmtree(path)
+        if os.path.exists(self._delete_path):
+            shutil.rmtree(self._delete_path)
 
     def __str__(self):
         return self.version_string
@@ -569,12 +613,16 @@ class Version(db.Model):
     def builds_per_dsm(self):
         result = {}
         for build in self.builds:
-            result.setdefault(build.firmware_min.version[0:1], []).append(build)
+            result.setdefault(build.firmware_min.version.split(".")[0], []).append(
+                build
+            )
         return result
 
     @property
     def total_size(self):
-        return sum(b.size for b in self.builds if b.size is not None) or None
+        # Returns None if no builds have a known size, rather than 0
+        total = sum(b.size for b in self.builds if b.size is not None)
+        return total or None
 
 
 class Package(db.Model):
@@ -583,10 +631,10 @@ class Package(db.Model):
     # Columns
     id = db.Column(db.Integer, primary_key=True)
     author_user_id = db.Column(
-        db.Integer, db.ForeignKey("user.id", ondelete="SET NULL")
+        db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), index=True
     )
     name = db.Column(db.Unicode(50), nullable=False)
-    insert_date = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    insert_date = db.Column(db.DateTime, default=_utcnow, nullable=False)
     download_count = db.column_property(
         db.select(db.func.count(Download.id))
         .select_from(Download.__table__.join(Build).join(Version))
@@ -631,7 +679,9 @@ class Package(db.Model):
 
     @classmethod
     def find(cls, name):
-        return cls.query.filter(cls.name == name).first()
+        return (
+            db.session.execute(select(cls).filter(cls.name == name)).scalars().first()
+        )
 
     def __str__(self):
         return self.name
