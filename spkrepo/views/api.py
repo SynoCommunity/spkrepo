@@ -51,8 +51,9 @@ def api_auth_required(f):
     return wrapper
 
 
-def _cleanup_on_failure(data_path, package_name, version_number, build_path,
-                         create_package, create_version):
+def _cleanup_on_failure(
+    data_path, package_name, version_number, build_path, create_package, create_version
+):
     """Remove partially saved files after a failed SPK save."""
     if create_package:
         shutil.rmtree(os.path.join(data_path, package_name), ignore_errors=True)
@@ -336,8 +337,12 @@ class Packages(Resource):
         except Exception as e:  # pragma: no cover
             logger.exception("Failed to save SPK files for package %s", package.name)
             _cleanup_on_failure(
-                data_path, package.name, version.version,
-                build.path, create_package, create_version,
+                data_path,
+                package.name,
+                version.version,
+                build.path,
+                create_package,
+                create_version,
             )
             abort(500, message="Failed to save files", details=str(e))
 

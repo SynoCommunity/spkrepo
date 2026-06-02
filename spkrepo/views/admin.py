@@ -34,10 +34,10 @@ from ..models import (
 )
 from ..utils import SPK, firmware_re, version_re
 
-
 # ---------------------------------------------------------------------------
 # Shared formatters
 # ---------------------------------------------------------------------------
+
 
 def _bool_formatter(v, c, m, p):
     value = getattr(m, p)
@@ -70,6 +70,7 @@ def _flash_action_results(successes, failures, skipped=None, item_label="item"):
 # ---------------------------------------------------------------------------
 # SPK helpers
 # ---------------------------------------------------------------------------
+
 
 def _resolve_firmware(session, value, allow_none=False):
     if not value:
@@ -259,6 +260,7 @@ def _resync_build_metadata(session, build):
 # Mixin for sign / unsign / resync actions shared by VersionView & BuildView
 # ---------------------------------------------------------------------------
 
+
 class SignResyncMixin:
     """
     Mixin that provides sign, unsign, resync_info, and resync_file actions,
@@ -374,9 +376,7 @@ class SignResyncMixin:
                         db.session.commit()
                         success.append(label)
                     except Exception:
-                        current_app.logger.exception(
-                            "Failed to unsign build %s", label
-                        )
+                        current_app.logger.exception("Failed to unsign build %s", label)
                         db.session.rollback()
                         failed.append(label)
             _flash_action_results(
@@ -427,6 +427,7 @@ class SignResyncMixin:
 # ---------------------------------------------------------------------------
 # Views
 # ---------------------------------------------------------------------------
+
 
 class UserView(ModelView):
     """View for :class:`~spkrepo.models.User`"""
@@ -572,9 +573,7 @@ class ScreenshotView(ModelView):
 
     def _display(view, context, model, name):
         safe_url = Markup.escape(url_for("nas.data", path=model.path))
-        return Markup(
-            f'<img src="{safe_url}" alt="screenshot" height="100">'
-        )
+        return Markup(f'<img src="{safe_url}" alt="screenshot" height="100">')
 
     column_formatters = {"path": _display}
     column_sortable_list = (("package", "package.name"),)
@@ -805,12 +804,17 @@ class VersionView(SignResyncMixin, ModelView):
             flash(
                 "Builds on version were successfully activated."
                 if len(versions) == 1
-                else f"Builds have been successfully activated for {len(versions)} versions."
+                else (
+                    f"Builds have been successfully activated for "
+                    f"{len(versions)} versions."
+                )
             )
         except SQLAlchemyError:
             db.session.rollback()
             current_app.logger.exception("Failed to activate versions' builds")
-            flash("Failed to activate versions' builds. Please check the logs.", "error")
+            flash(
+                "Failed to activate versions' builds. Please check the logs.", "error"
+            )
 
     @action(
         "deactivate",
@@ -827,7 +831,10 @@ class VersionView(SignResyncMixin, ModelView):
             flash(
                 "Builds on version were successfully deactivated."
                 if len(versions) == 1
-                else f"Builds have been successfully deactivated for {len(versions)} versions."
+                else (
+                    f"Builds have been successfully deactivated for "
+                    f"{len(versions)} versions."
+                )
             )
         except SQLAlchemyError:
             db.session.rollback()
@@ -987,6 +994,7 @@ class BuildView(SignResyncMixin, ModelView):
 # Admin index
 # ---------------------------------------------------------------------------
 
+
 class IndexView(AdminIndexView):
     @expose("/")
     def index(self):
@@ -995,7 +1003,9 @@ class IndexView(AdminIndexView):
         if not any(map(current_user.has_role, ("developer", "package_admin", "admin"))):
             abort(403)
 
-        is_privileged = current_user.has_role("package_admin") or current_user.has_role("admin")
+        is_privileged = current_user.has_role("package_admin") or current_user.has_role(
+            "admin"
+        )
 
         def _maintainer_filter(q):
             """Apply maintainer filter for non-privileged users."""
@@ -1013,19 +1023,21 @@ class IndexView(AdminIndexView):
             build_count = (
                 _maintainer_filter(
                     Build.query.join(Build.version).join(Version.package)
-                ).filter(User.id == current_user.id).count()
+                )
+                .filter(User.id == current_user.id)
+                .count()
             )
             inactive_build_count = (
                 _maintainer_filter(
                     Build.query.filter_by(active=False)
                     .join(Build.version)
                     .join(Version.package)
-                ).filter(User.id == current_user.id).count()
+                )
+                .filter(User.id == current_user.id)
+                .count()
             )
             recent_versions = (
-                _maintainer_filter(
-                    Version.query.join(Version.package)
-                )
+                _maintainer_filter(Version.query.join(Version.package))
                 .filter(User.id == current_user.id)
                 .order_by(Version.insert_date.desc())
                 .limit(5)

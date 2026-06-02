@@ -92,7 +92,8 @@ class UserFactory(SQLAlchemyModelFactory):
     github_access_token = None
     fs_uniquifier = factory.LazyAttribute(lambda x: fake.md5())
     active = True
-    # Use LazyAttribute so each user gets the time of their creation, not class load time
+    # Use LazyAttribute so each user gets the time of their creation,
+    # not class load time
     confirmed_at = factory.LazyAttribute(lambda x: datetime.datetime.now())
 
     @factory.post_generation

@@ -51,9 +51,7 @@ def get_catalog(arch, build, major, language, beta):
 
     if not beta:
         latest_version = latest_version.filter(
-            db.or_(
-                Version.report_url.is_(None), Version.report_url == ""
-            )
+            db.or_(Version.report_url.is_(None), Version.report_url == "")
         )
 
     latest_version = (
@@ -200,10 +198,14 @@ def build_package_entry(b, language, arch, build):
         "conflictpkgs": b.buildmanifest.conflicts if b.buildmanifest else None,
         "download_count": b.version.package.download_count,
         "recent_download_count": b.version.package.recent_download_count,
-        "snapshot": [
-            url_for(".data", path=screenshot.path, _external=True)
-            for screenshot in b.version.package.screenshots
-        ] if b.version.package.screenshots else [],
+        "snapshot": (
+            [
+                url_for(".data", path=screenshot.path, _external=True)
+                for screenshot in b.version.package.screenshots
+            ]
+            if b.version.package.screenshots
+            else []
+        ),
     }
 
     if b.version.report_url:

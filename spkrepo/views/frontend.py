@@ -55,7 +55,8 @@ def profile():
 @frontend.route("/packages")
 @cache.cached(timeout=300)
 def packages():
-    # Show only packages with at least one version, but ignore whether builds are active.
+    # Show only packages with at least one version, but ignore whether builds
+    # are active.
     latest_version = (
         db.session.query(
             Version.package_id, db.func.max(Version.version).label("latest_version")

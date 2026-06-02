@@ -107,7 +107,9 @@ class Role(db.Model, RoleMixin):
 
     @classmethod
     def find(cls, name):
-        return db.session.execute(select(cls).filter(cls.name == name)).scalars().first()
+        return (
+            db.session.execute(select(cls).filter(cls.name == name)).scalars().first()
+        )
 
     def __str__(self):
         return self.name
@@ -139,7 +141,9 @@ class Architecture(db.Model):
     def find(cls, code, syno=False):
         if syno:
             code = _ARCH_FROM_SYNO.get(code, code)
-        return db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
+        return (
+            db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
+        )
 
     def __str__(self):
         return self.code
@@ -158,7 +162,9 @@ class Language(db.Model):
 
     @classmethod
     def find(cls, code):
-        return db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
+        return (
+            db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
+        )
 
     def __str__(self):
         return self.name
@@ -178,7 +184,9 @@ class Firmware(db.Model):
 
     @classmethod
     def find(cls, build):
-        return db.session.execute(select(cls).filter(cls.build == build)).scalars().first()
+        return (
+            db.session.execute(select(cls).filter(cls.build == build)).scalars().first()
+        )
 
     @property
     def firmware_string(self):
@@ -272,7 +280,9 @@ class Service(db.Model):
 
     @classmethod
     def find(cls, code):
-        return db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
+        return (
+            db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
+        )
 
     def __str__(self):
         return self.code
@@ -594,7 +604,9 @@ class Version(db.Model):
     def builds_per_dsm(self):
         result = {}
         for build in self.builds:
-            result.setdefault(build.firmware_min.version.split(".")[0], []).append(build)
+            result.setdefault(build.firmware_min.version.split(".")[0], []).append(
+                build
+            )
         return result
 
     @property
@@ -658,7 +670,9 @@ class Package(db.Model):
 
     @classmethod
     def find(cls, name):
-        return db.session.execute(select(cls).filter(cls.name == name)).scalars().first()
+        return (
+            db.session.execute(select(cls).filter(cls.name == name)).scalars().first()
+        )
 
     def __str__(self):
         return self.name

@@ -22,6 +22,7 @@ db = SQLAlchemy()
 # Debug Toolbar — dev dependency, may not be installed in production
 try:
     from flask_debugtoolbar import DebugToolbarExtension
+
     debug_toolbar = DebugToolbarExtension()
 except ImportError:
     debug_toolbar = None
