@@ -53,36 +53,36 @@ def profile():
 
 
 @frontend.route("/packages")
-@cache.cached(timeout=300)
 def packages():
-    # Show only packages with at least one version, but ignore whether builds
-    # are active.
-    latest_version = (
-        db.session.query(
-            Version.package_id, db.func.max(Version.version).label("latest_version")
+    versions = cache.get("packages_versions")
+    if versions is None:
+        latest_version = (
+            db.session.query(
+                Version.package_id, db.func.max(Version.version).label("latest_version")
+            )
+            .join(Build)
+            .group_by(Version.package_id)
+            .subquery()
         )
-        .join(Build)
-        .group_by(Version.package_id)
-        .subquery()
-    )
-    versions = (
-        Version.query.join(Version.package)
-        .options(
-            db.joinedload(Version.package),
-            db.joinedload(Version.icons),
-            db.joinedload(Version.displaynames).joinedload(DisplayName.language),
-            db.joinedload(Version.descriptions).joinedload(Description.language),
+        versions = (
+            Version.query.join(Version.package)
+            .options(
+                db.joinedload(Version.package),
+                db.joinedload(Version.icons),
+                db.joinedload(Version.displaynames).joinedload(DisplayName.language),
+                db.joinedload(Version.descriptions).joinedload(Description.language),
+            )
+            .join(
+                latest_version,
+                db.and_(
+                    Version.package_id == latest_version.c.package_id,
+                    Version.version == latest_version.c.latest_version,
+                ),
+            )
+            .order_by(Package.name)
+            .all()
         )
-        .join(
-            latest_version,
-            db.and_(
-                Version.package_id == latest_version.c.package_id,
-                Version.version == latest_version.c.latest_version,
-            ),
-        )
-        .order_by(Package.name)
-        .all()
-    )
+        cache.set("packages_versions", versions, timeout=300)
     return render_template("frontend/packages.html", versions=versions)
 
 
