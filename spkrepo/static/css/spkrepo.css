@@ -37,10 +37,12 @@
 }
 .package-description {
     height: 100px;
+    width: 100%;
     overflow: hidden;
     display: -webkit-box;
     -webkit-line-clamp: 4;
     -webkit-box-orient: vertical;
+    word-break: break-word;
 }
 .package-screenshots {
     text-align: center;
