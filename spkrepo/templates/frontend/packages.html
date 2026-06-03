@@ -7,7 +7,7 @@
     {% for version in version_row %}
     <div class="col-md-4">
       <div class="d-flex">
-        <div class="flex-shrink-0 mr-3">
+        <div class="flex-shrink-0 mr-3" style="width: 72px;">
           <a href="{{ url_for('frontend.package', name=version.package.name) }}">
             <img src="{{ url_for('nas.data', path=version.icons['72'].path) }}" alt="Icon">
           </a>
