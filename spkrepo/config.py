@@ -16,6 +16,14 @@ GNUPG_TIMESTAMP_URL = "http://timestamp.synology.com/timestamp.php"
 GNUPG_PATH = None
 GNUPG_FINGERPRINT = "gnupg-fingerprint"
 
+# Object Storage (S3-compatible)
+OBJECT_STORAGE_ENDPOINT = "https://us-east.object.fastlystorage.app"
+OBJECT_STORAGE_REGION = "us-east"
+OBJECT_STORAGE_BUCKET = "your-log-bucket"
+OBJECT_STORAGE_PREFIX = "logs/"
+OBJECT_STORAGE_ACCESS_KEY = "your-read-key"
+OBJECT_STORAGE_SECRET_KEY = "your-read-secret"
+
 # Security
 SECURITY_CONFIRMABLE = True
 SECURITY_REGISTERABLE = True
