@@ -6,7 +6,6 @@ from flask import (
     abort,
     current_app,
     json,
-    redirect,
     request,
     send_from_directory,
     url_for,
@@ -19,7 +18,6 @@ from ..models import (
     Build,
     Description,
     DisplayName,
-    Download,
     Firmware,
     Language,
     Package,
@@ -277,36 +275,6 @@ def catalog():
 
     result = get_catalog(arch, build, major, language, beta)
     return Response(json.dumps(result), mimetype="application/json")
-
-
-@nas.route("/download/<int:architecture_id>/<int:firmware_build>/<int:build_id>")
-def download(architecture_id, firmware_build, build_id):
-    build = db.get_or_404(Build, build_id)
-    if not build.active:
-        abort(403)
-
-    architecture = db.get_or_404(Architecture, architecture_id)
-
-    if (
-        architecture not in build.architectures
-        or firmware_build < build.firmware_min.build
-        or (
-            build.firmware_max is not None and firmware_build > build.firmware_max.build
-        )
-    ):
-        abort(400)
-
-    dl = Download(
-        build=build,
-        architecture=architecture,
-        firmware_build=firmware_build,
-        ip_address=request.remote_addr,
-        user_agent=request.user_agent.string,
-    )
-    db.session.add(dl)
-    db.session.commit()
-
-    return redirect(url_for(".data", path=build.path))
 
 
 @nas.route("/<path:path>")
