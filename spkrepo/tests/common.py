@@ -31,7 +31,7 @@ from spkrepo.models import (
     BuildManifest,
     Description,
     DisplayName,
-    Download,
+    DownloadStat,
     Firmware,
     Icon,
     Language,
@@ -327,19 +327,19 @@ class BuildFactory(SQLAlchemyModelFactory):
         return super(BuildFactory, cls).create_batch(size, **kwargs)
 
 
-class DownloadFactory(SQLAlchemyModelFactory):
+class DownloadStatFactory(SQLAlchemyModelFactory):
     class Meta:
         sqlalchemy_session = db.session
-        model = Download
+        model = DownloadStat
 
+    package = factory.LazyAttribute(lambda x: x.build.version.package)
     build = factory.SubFactory(BuildFactory)
     architecture = factory.LazyAttribute(lambda x: x.build.architectures[0])
     firmware_build = factory.LazyAttribute(
         lambda x: random.choice([f.build for f in Firmware.query.all()])
     )
-    ip_address = factory.LazyAttribute(lambda x: fake.ipv4())
-    user_agent = factory.LazyAttribute(lambda x: fake.user_agent())
-    date = factory.LazyAttribute(lambda x: fake.date_time_this_month())
+    date = factory.LazyAttribute(lambda x: fake.date_this_month())
+    count = factory.LazyAttribute(lambda x: random.randint(1, 1000))
 
 
 class BaseTestCase(TestCase):

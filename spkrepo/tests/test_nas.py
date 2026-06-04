@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from flask import url_for
 
 from spkrepo.ext import db
-from spkrepo.models import Architecture, Download, Firmware
+from spkrepo.models import Architecture, Firmware
 from spkrepo.tests.common import (
     BaseTestCase,
     BuildFactory,
-    DownloadFactory,
+    DownloadStatFactory,
     PackageFactory,
 )
 
@@ -264,12 +264,23 @@ class CatalogTestCase(BaseTestCase):
             architectures=[Architecture.find("cedarview")],
             firmware_min=Firmware.find(1594),
         )
-        DownloadFactory.create_batch(1, build=build, date=datetime.now())
-        DownloadFactory.create_batch(
-            2, build=build, date=datetime.now() - timedelta(days=30)
+        DownloadStatFactory(
+            package=package,
+            build=build,
+            date=datetime.now().date(),
+            count=1,
         )
-        DownloadFactory.create_batch(
-            4, build=build, date=datetime.now() - timedelta(days=100)
+        DownloadStatFactory(
+            package=package,
+            build=build,
+            date=(datetime.now() - timedelta(days=30)).date(),
+            count=2,
+        )
+        DownloadStatFactory(
+            package=package,
+            build=build,
+            date=(datetime.now() - timedelta(days=100)).date(),
+            count=4,
         )
         db.session.commit()
         data = dict(arch="cedarview", build="1594", language="enu")
@@ -614,166 +625,3 @@ class CatalogTestCase(BaseTestCase):
         self.assertEqual(entry["report_url"], build.version.report_url)
         self.assertIn("beta", entry)
         self.assertTrue(entry["beta"])
-
-
-class DownloadTestCase(BaseTestCase):
-    def test_generic(self):
-        architecture = Architecture.find("88f6281", syno=True)
-        build = BuildFactory(
-            active=True,
-            version__report_url=None,
-            architectures=[architecture],
-            firmware_min=Firmware.find(1594),
-        )
-        db.session.commit()
-        self.assertEqual(Download.query.count(), 0)
-        response = self.client.get(
-            url_for(
-                "nas.download",
-                architecture_id=architecture.id,
-                firmware_build=4458,
-                build_id=build.id,
-            ),
-            environ_base={"REMOTE_ADDR": "127.0.0.1"},
-            headers={"User-Agent": "My User Agent"},
-        )
-        self.assert302(response)
-        self.assertEqual(Download.query.count(), 1)
-        download = Download.query.first()
-        self.assertEqual(download.ip_address, "127.0.0.1")
-        self.assertEqual(download.user_agent, "My User Agent")
-        self.assertEqual(download.firmware_build, 4458)
-        self.assertAlmostEqual(
-            download.date,
-            datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None),
-            delta=timedelta(seconds=10),
-        )
-
-    def test_wrong_build(self):
-        architecture = Architecture.find("88f6281", syno=True)
-        build = BuildFactory(
-            active=False,
-            version__report_url=None,
-            architectures=[architecture],
-            firmware_min=Firmware.find(1594),
-        )
-        db.session.commit()
-        self.assertEqual(Download.query.count(), 0)
-        response = self.client.get(
-            url_for(
-                "nas.download",
-                architecture_id=architecture.id,
-                firmware_build=4458,
-                build_id=build.id + 1,
-            )
-        )
-        self.assert404(response)
-        self.assertEqual(Download.query.count(), 0)
-
-    def test_inactive_build(self):
-        architecture = Architecture.find("88f6281", syno=True)
-        build = BuildFactory(
-            active=False,
-            version__report_url=None,
-            architectures=[architecture],
-            firmware_min=Firmware.find(1594),
-        )
-        db.session.commit()
-        self.assertEqual(Download.query.count(), 0)
-        response = self.client.get(
-            url_for(
-                "nas.download",
-                architecture_id=architecture.id,
-                firmware_build=4458,
-                build_id=build.id,
-            )
-        )
-        self.assert403(response)
-        self.assertEqual(Download.query.count(), 0)
-
-    def test_wrong_architecture(self):
-        architecture = Architecture.find("88f6281", syno=True)
-        build = BuildFactory(
-            active=True,
-            version__report_url=None,
-            architectures=[architecture],
-            firmware_min=Firmware.find(1594),
-        )
-        db.session.commit()
-        self.assertEqual(Download.query.count(), 0)
-        response = self.client.get(
-            url_for(
-                "nas.download",
-                architecture_id=10,
-                firmware_build=4458,
-                build_id=build.id,
-            )
-        )
-        self.assert404(response)
-        self.assertEqual(Download.query.count(), 0)
-
-    def test_incorrect_architecture(self):
-        architecture = Architecture.find("88f6281", syno=True)
-        build = BuildFactory(
-            active=True,
-            version__report_url=None,
-            architectures=[architecture],
-            firmware_min=Firmware.find(1594),
-        )
-        db.session.commit()
-        self.assertEqual(Download.query.count(), 0)
-        response = self.client.get(
-            url_for(
-                "nas.download",
-                architecture_id=Architecture.find("cedarview").id,
-                firmware_build=4458,
-                build_id=build.id,
-            )
-        )
-        self.assert400(response)
-        self.assertEqual(Download.query.count(), 0)
-
-    def test_incorrect_firmware_build(self):
-        architecture = Architecture.find("88f6281", syno=True)
-        build = BuildFactory(
-            active=True,
-            version__report_url=None,
-            architectures=[architecture],
-            firmware_min=Firmware.find(1594),
-        )
-        db.session.commit()
-        self.assertEqual(Download.query.count(), 0)
-        response = self.client.get(
-            url_for(
-                "nas.download",
-                architecture_id=architecture.id,
-                firmware_build=1593,
-                build_id=build.id,
-            )
-        )
-        self.assert400(response)
-        self.assertEqual(Download.query.count(), 0)
-
-    def test_firmware_build_above_firmware_max(self):
-        architecture = Architecture.find("88f6281", syno=True)
-        firmware_min = Firmware.find(1594)
-        firmware_max = Firmware.find(4458)
-        build = BuildFactory(
-            active=True,
-            version__report_url=None,
-            architectures=[architecture],
-            firmware_min=firmware_min,
-            firmware_max=firmware_max,
-        )
-        db.session.commit()
-        self.assertEqual(Download.query.count(), 0)
-        response = self.client.get(
-            url_for(
-                "nas.download",
-                architecture_id=architecture.id,
-                firmware_build=firmware_max.build + 1,
-                build_id=build.id,
-            )
-        )
-        self.assert400(response)
-        self.assertEqual(Download.query.count(), 0)

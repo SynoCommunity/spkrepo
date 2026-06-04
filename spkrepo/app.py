@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import logging
+import sys
+
 import jinja2
 from flask import Flask
 from flask_admin import Admin
@@ -28,6 +31,20 @@ from .views import (
 def create_app(config=None, register_blueprints=True, init_admin=True):
     """Create a Flask app."""
     app = Flask("spkrepo")
+
+    # Logging setup
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    handler.setFormatter(formatter)
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    # Avoid duplicate handlers if reloaded
+    if not root.handlers:
+        root.addHandler(handler)
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
+    logging.getLogger("boto3").setLevel(logging.WARNING)
+    logging.getLogger("botocore").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     # Configuration
     app.config.from_object(default_config)

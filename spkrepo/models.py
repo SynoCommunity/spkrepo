@@ -30,7 +30,7 @@ package_user_maintainer = db.Table(
 
 
 class _days_ago(FunctionElement):
-    """Dialect-aware SQL expression for a timestamp N days in the past."""
+    """Dialect-aware SQL expression for a date N days in the past."""
 
     inherit_cache = True
 
@@ -41,17 +41,17 @@ class _days_ago(FunctionElement):
 
 @compiles(_days_ago, "sqlite")
 def _compile_days_ago_sqlite(element, compiler, **kw):
-    return f"datetime(CURRENT_TIMESTAMP, '-{element.days} days')"
+    return f"date('now', '-{element.days} days')"
 
 
 @compiles(_days_ago, "postgresql")
 def _compile_days_ago_postgresql(element, compiler, **kw):
-    return f"NOW() - INTERVAL '{element.days} days'"
+    return f"CURRENT_DATE - INTERVAL '{element.days} days'"
 
 
 @compiles(_days_ago)
 def _compile_days_ago_default(element, compiler, **kw):
-    return f"datetime(CURRENT_TIMESTAMP, '-{element.days} days')"
+    return f"date('now', '-{element.days} days')"
 
 
 # Architecture code mappings — module-level constants, not instance data
@@ -342,31 +342,49 @@ version_service_dependency = db.Table(
 )
 
 
-class Download(db.Model):
-    __tablename__ = "download"
+class DownloadStat(db.Model):
+    __tablename__ = "download_stat"
 
     # Columns
     id = db.Column(db.Integer, primary_key=True)
+    package_id = db.Column(
+        db.Integer, db.ForeignKey("package.id"), nullable=False, index=True
+    )
     build_id = db.Column(
-        db.Integer, db.ForeignKey("build.id"), nullable=False, index=True
+        db.Integer,
+        db.ForeignKey("build.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     architecture_id = db.Column(
         db.Integer, db.ForeignKey("architecture.id"), nullable=False, index=True
     )
-    firmware_build = db.Column(db.Integer, nullable=False)
-    ip_address = db.Column(db.Unicode(46), nullable=False)
-    user_agent = db.Column(db.Unicode(255))
-    date = db.Column(db.DateTime, default=_utcnow, nullable=False, index=True)
+    firmware_build = db.Column(db.Integer, nullable=False, index=True)
+    date = db.Column(db.Date, nullable=False, index=True)
+    count = db.Column(db.Integer, nullable=False, default=0)
+
+    # Constraints
+    __table_args__ = (
+        db.UniqueConstraint(
+            "package_id",
+            "architecture_id",
+            "firmware_build",
+            "date",
+            name="uq_download_stat",
+        ),
+        db.Index("ix_download_stat_package_id_date", "package_id", "date"),
+    )
 
     # Relationships
-    build = db.relationship("Build", back_populates="downloads")
+    package = db.relationship("Package", back_populates="download_stats")
+    build = db.relationship("Build", back_populates="download_stats")
     architecture = db.relationship("Architecture")
 
-    def __str__(self):
-        return self.ip_address
-
     def __repr__(self):
-        return f"<{self.__class__.__name__} {self.ip_address}>"
+        return (
+            f"<{self.__class__.__name__} package={self.package_id} "
+            f"date={self.date} count={self.count}>"
+        )
 
 
 build_architecture = db.Table(
@@ -418,10 +436,11 @@ class Build(db.Model):
         lazy=False,
     )
     publisher = db.relationship("User", foreign_keys=[publisher_user_id])
-    downloads = db.relationship(
-        "Download",
+    download_stats = db.relationship(
+        "DownloadStat",
         back_populates="build",
-        cascade="save-update, merge, delete, delete-orphan",
+        cascade="save-update, merge",
+        passive_deletes=True,
     )
     buildmanifest = db.relationship(
         "BuildManifest",
@@ -515,7 +534,9 @@ class Version(db.Model):
 
     # Columns
     id = db.Column(db.Integer, primary_key=True)
-    package_id = db.Column(db.Integer, db.ForeignKey("package.id"), nullable=False)
+    package_id = db.Column(
+        db.Integer, db.ForeignKey("package.id"), nullable=False, index=True
+    )
     version = db.Column(db.Integer, nullable=False, index=True)
     upstream_version = db.Column(db.Unicode(20), nullable=False)
     changelog = db.Column(db.UnicodeText)
@@ -636,22 +657,19 @@ class Package(db.Model):
     name = db.Column(db.Unicode(50), nullable=False)
     insert_date = db.Column(db.DateTime, default=_utcnow, nullable=False)
     download_count = db.column_property(
-        db.select(db.func.count(Download.id))
-        .select_from(Download.__table__.join(Build).join(Version))
-        .where(Version.package_id == id)
+        db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+        .where(DownloadStat.package_id == id)
         .scalar_subquery(),
         deferred=True,
     )
     recent_download_count = db.column_property(
-        db.select(db.func.count(Download.id))
-        .select_from(Download.__table__.join(Build).join(Version))
+        db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
         .where(
             db.and_(
-                Version.package_id == id,
-                Download.date >= _days_ago(90),
+                DownloadStat.package_id == id,
+                DownloadStat.date >= _days_ago(90),
             )
         )
-        .correlate_except(Download)
         .scalar_subquery(),
         deferred=True,
     )
@@ -672,6 +690,11 @@ class Package(db.Model):
         "User",
         secondary="package_user_maintainer",
         back_populates="maintained_packages",
+    )
+    download_stats = db.relationship(
+        "DownloadStat",
+        back_populates="package",
+        cascade="all, delete-orphan",
     )
 
     # Constraints
