@@ -887,8 +887,8 @@ class BuildView(SignResyncMixin, ModelView):
         "version.version",
         "architectures",
         "firmware_min",
-        "firmware_max",
-        "size",
+        "publisher",
+        "insert_date",
         "active",
     )
     column_labels = {
@@ -909,17 +909,16 @@ class BuildView(SignResyncMixin, ModelView):
         "version.version",
         "architectures.code",
         "firmware_min.version",
-        "firmware_max.version",
-        "size",
+        "publisher.username",
         "active",
     )
     column_sortable_list = (
         ("version.package", "version.package.name"),
         ("version.version", "version.version"),
         ("firmware_min", "firmware_min.build"),
-        ("firmware_max", "firmware_max.build"),
+        ("publisher", "publisher.username"),
+        ("insert_date", "insert_date"),
         ("active", "active"),
-        ("size", "size"),
     )
     column_formatters = {
         "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
