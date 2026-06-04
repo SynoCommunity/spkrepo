@@ -16,7 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from wtforms import PasswordField
 from wtforms.validators import Regexp
 
-from ..ext import db
+from ..ext import cache, db
 from ..models import (
     Architecture,
     Build,
@@ -641,6 +641,12 @@ class PackageView(ModelView):
         if os.path.exists(package_path):
             shutil.rmtree(package_path)
 
+    def after_model_change(self, form, model, is_created):
+        cache.delete("packages_versions")
+
+    def after_model_delete(self, model):
+        cache.delete("packages_versions")
+
     column_list = (
         "name",
         "author",
@@ -801,6 +807,7 @@ class VersionView(SignResyncMixin, ModelView):
                 for build in version.builds:
                     build.active = True
             db.session.commit()
+            cache.delete("packages_versions")
             flash(
                 "Builds on version were successfully activated."
                 if len(versions) == 1
@@ -828,6 +835,7 @@ class VersionView(SignResyncMixin, ModelView):
                 for build in version.builds:
                     build.active = False
             db.session.commit()
+            cache.delete("packages_versions")
             flash(
                 "Builds on version were successfully deactivated."
                 if len(versions) == 1
@@ -879,8 +887,8 @@ class BuildView(SignResyncMixin, ModelView):
         "version.version",
         "architectures",
         "firmware_min",
-        "firmware_max",
-        "size",
+        "publisher",
+        "insert_date",
         "active",
     )
     column_labels = {
@@ -901,17 +909,16 @@ class BuildView(SignResyncMixin, ModelView):
         "version.version",
         "architectures.code",
         "firmware_min.version",
-        "firmware_max.version",
-        "size",
+        "publisher.username",
         "active",
     )
     column_sortable_list = (
         ("version.package", "version.package.name"),
         ("version.version", "version.version"),
         ("firmware_min", "firmware_min.build"),
-        ("firmware_max", "firmware_max.build"),
+        ("publisher", "publisher.username"),
+        ("insert_date", "insert_date"),
         ("active", "active"),
-        ("size", "size"),
     )
     column_formatters = {
         "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
@@ -949,6 +956,12 @@ class BuildView(SignResyncMixin, ModelView):
         if os.path.exists(build_path):
             os.remove(build_path)
 
+    def after_model_change(self, form, model, is_created):
+        cache.delete("packages_versions")
+
+    def after_model_delete(self, model):
+        cache.delete("packages_versions")
+
     @action(
         "activate", "Activate", "Are you sure you want to activate selected builds?"
     )
@@ -958,6 +971,7 @@ class BuildView(SignResyncMixin, ModelView):
             for build in builds:
                 build.active = True
             db.session.commit()
+            cache.delete("packages_versions")
             flash(
                 "Build was successfully activated."
                 if len(builds) == 1
@@ -979,6 +993,7 @@ class BuildView(SignResyncMixin, ModelView):
             for build in builds:
                 build.active = False
             db.session.commit()
+            cache.delete("packages_versions")
             flash(
                 "Build was successfully deactivated."
                 if len(builds) == 1
