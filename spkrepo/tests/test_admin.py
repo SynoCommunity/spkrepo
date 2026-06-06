@@ -210,8 +210,14 @@ class VersionTestCase(BaseTestCase):
         self.assertEqual(len(Version.query.all()), 0)
         self.assertTrue(not os.path.exists(version_path))
 
-    def test_action_resync_info_requires_admin(self):
+    def test_action_resync_info_visible_to_package_admin(self):
         with self.logged_user("package_admin"):
+            response = self.client.get(url_for("version.index_view"))
+            self.assert200(response)
+            self.assertIn("Resync Info", response.data.decode())
+
+    def test_action_resync_info_requires_admin_or_package_admin(self):
+        with self.logged_user("developer"):
             response = self.client.get(url_for("version.index_view"))
             self.assert200(response)
             self.assertNotIn("Resync Info", response.data.decode())
@@ -332,8 +338,14 @@ class VersionTestCase(BaseTestCase):
         )
         self.assertEqual(refreshed_build.md5, refreshed_build.calculate_md5())
 
-    def test_action_resync_file_requires_admin(self):
+    def test_action_resync_file_visible_to_package_admin(self):
         with self.logged_user("package_admin"):
+            response = self.client.get(url_for("version.index_view"))
+            self.assert200(response)
+            self.assertIn("Resync File", response.data.decode())
+
+    def test_action_resync_file_requires_admin_or_package_admin(self):
+        with self.logged_user("developer"):
             response = self.client.get(url_for("version.index_view"))
             self.assert200(response)
             self.assertNotIn("Resync File", response.data.decode())
@@ -440,20 +452,48 @@ class VersionTestCase(BaseTestCase):
         self.assertFalse(db.session.get(Build, build1.id).active)
         self.assertFalse(db.session.get(Build, build2.id).active)
 
-    def test_action_resync_info_blocked_for_non_admin(self):
+    def test_action_resync_info_allowed_for_package_admin(self):
         build = BuildFactory()
         db.session.commit()
         with self.logged_user("package_admin"):
+            response = self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build.version.id]),
+            )
+        self.assert200(response)
+        self.assertIn("refreshed", response.data.decode())
+
+    def test_action_resync_info_blocked_for_developer(self):
+        build = BuildFactory()
+        db.session.commit()
+        with self.logged_user("developer") as user:
+            build.version.package.maintainers.append(user)
+            db.session.commit()
             response = self.client.post(
                 url_for("version.action_view"),
                 data=dict(action="resync_info", rowid=[build.version.id]),
             )
         self.assert403(response)
 
-    def test_action_resync_file_blocked_for_non_admin(self):
+    def test_action_resync_file_allowed_for_package_admin(self):
         build = BuildFactory()
         db.session.commit()
         with self.logged_user("package_admin"):
+            response = self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_file", rowid=[build.version.id]),
+            )
+        self.assert200(response)
+        self.assertIn("refreshed", response.data.decode())
+
+    def test_action_resync_file_blocked_for_developer(self):
+        build = BuildFactory()
+        db.session.commit()
+        with self.logged_user("developer") as user:
+            build.version.package.maintainers.append(user)
+            db.session.commit()
             response = self.client.post(
                 url_for("version.action_view"),
                 data=dict(action="resync_file", rowid=[build.version.id]),
@@ -549,8 +589,14 @@ class BuildTestCase(BaseTestCase):
             self.assertFalse(build1.active)
             self.assertFalse(build2.active)
 
-    def test_action_resync_info_requires_admin(self):
+    def test_action_resync_info_visible_to_package_admin(self):
         with self.logged_user("package_admin"):
+            response = self.client.get(url_for("build.index_view"))
+            self.assert200(response)
+            self.assertIn("Resync Info", response.data.decode())
+
+    def test_action_resync_info_requires_admin_or_package_admin(self):
+        with self.logged_user("developer"):
             response = self.client.get(url_for("build.index_view"))
             self.assert200(response)
             self.assertNotIn("Resync Info", response.data.decode())
@@ -603,8 +649,14 @@ class BuildTestCase(BaseTestCase):
             original_architectures,
         )
 
-    def test_action_resync_file_requires_admin(self):
+    def test_action_resync_file_visible_to_package_admin(self):
         with self.logged_user("package_admin"):
+            response = self.client.get(url_for("build.index_view"))
+            self.assert200(response)
+            self.assertIn("Resync File", response.data.decode())
+
+    def test_action_resync_file_requires_admin_or_package_admin(self):
+        with self.logged_user("developer"):
             response = self.client.get(url_for("build.index_view"))
             self.assert200(response)
             self.assertNotIn("Resync File", response.data.decode())
@@ -632,23 +684,85 @@ class BuildTestCase(BaseTestCase):
         self.assertIsNotNone(refreshed_build.size)
         self.assertGreater(refreshed_build.size, 0)
 
-    def test_action_resync_info_blocked_for_non_admin(self):
+    def test_action_resync_info_allowed_for_package_admin(self):
         build = BuildFactory()
         db.session.commit()
         with self.logged_user("package_admin"):
+            response = self.client.post(
+                url_for("build.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build.id]),
+            )
+        self.assert200(response)
+        self.assertIn("refreshed", response.data.decode())
+
+    def test_action_resync_info_blocked_for_developer(self):
+        build = BuildFactory()
+        db.session.commit()
+        with self.logged_user("developer") as user:
+            build.version.package.maintainers.append(user)
+            db.session.commit()
             response = self.client.post(
                 url_for("build.action_view"),
                 data=dict(action="resync_info", rowid=[build.id]),
             )
         self.assert403(response)
 
-    def test_action_resync_file_blocked_for_non_admin(self):
+    def test_action_resync_file_allowed_for_package_admin(self):
         build = BuildFactory()
         db.session.commit()
         with self.logged_user("package_admin"):
             response = self.client.post(
                 url_for("build.action_view"),
+                follow_redirects=True,
                 data=dict(action="resync_file", rowid=[build.id]),
+            )
+        self.assert200(response)
+        self.assertIn("refreshed", response.data.decode())
+
+    def test_action_resync_file_blocked_for_developer(self):
+        build = BuildFactory()
+        db.session.commit()
+        with self.logged_user("developer") as user:
+            build.version.package.maintainers.append(user)
+            db.session.commit()
+            response = self.client.post(
+                url_for("build.action_view"),
+                data=dict(action="resync_file", rowid=[build.id]),
+            )
+        self.assert403(response)
+
+    def test_action_unsign_skips_active_build(self):
+        build = BuildFactory(active=True)
+        db.session.commit()
+        with self.logged_user("package_admin", "admin"):
+            response = self.client.post(
+                url_for("build.action_view"),
+                follow_redirects=True,
+                data=dict(action="unsign", rowid=[build.id]),
+            )
+        self.assert200(response)
+        self.assertIn("must be deactivated before unsigning", response.data.decode())
+        db.session.expire_all()
+        self.assertTrue(db.session.get(Build, build.id).active)
+
+    def test_action_sign_requires_admin(self):
+        build = BuildFactory()
+        db.session.commit()
+        with self.logged_user("package_admin"):
+            response = self.client.post(
+                url_for("build.action_view"),
+                data=dict(action="sign", rowid=[build.id]),
+            )
+        self.assert403(response)
+
+    def test_action_unsign_requires_admin(self):
+        build = BuildFactory(active=False)
+        db.session.commit()
+        with self.logged_user("package_admin"):
+            response = self.client.post(
+                url_for("build.action_view"),
+                data=dict(action="unsign", rowid=[build.id]),
             )
         self.assert403(response)
 

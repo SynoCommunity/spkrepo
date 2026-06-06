@@ -639,11 +639,20 @@ class Version(db.Model):
             )
         return result
 
-    @property
+    @hybrid_property
     def total_size(self):
         # Returns None if no builds have a known size, rather than 0
         total = sum(b.size for b in self.builds if b.size is not None)
         return total or None
+
+    @total_size.expression
+    def total_size(cls):
+        return (
+            db.select(db.func.sum(Build.size))
+            .where(Build.version_id == cls.id)
+            .correlate(cls)
+            .scalar_subquery()
+        )
 
 
 class Package(db.Model):

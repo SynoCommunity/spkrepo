@@ -282,11 +282,11 @@ class SignResyncMixin:
 
     @property
     def can_resync_info(self):
-        return current_user.has_role("admin")
+        return current_user.has_role("admin") or current_user.has_role("package_admin")
 
     @property
     def can_resync_file(self):
-        return current_user.has_role("admin")
+        return current_user.has_role("admin") or current_user.has_role("package_admin")
 
     # -- Permission guards --------------------------------------------------
 
@@ -361,8 +361,11 @@ class SignResyncMixin:
     @action("unsign", "Unsign", "Are you sure you want to unsign selected builds?")
     def action_unsign(self, ids):
         try:
-            not_signed, success, failed = [], [], []
+            not_signed, active_skipped, success, failed = [], [], [], []
             for label, build in self._iter_builds(ids):
+                if build.active:
+                    active_skipped.append(label)
+                    continue
                 with io.open(
                     os.path.join(current_app.config["DATA_PATH"], build.path), "rb+"
                 ) as f:
@@ -379,6 +382,18 @@ class SignResyncMixin:
                         current_app.logger.exception("Failed to unsign build %s", label)
                         db.session.rollback()
                         failed.append(label)
+            if active_skipped:
+                count = len(active_skipped)
+                flash(
+                    (
+                        f"Build {active_skipped[0]} must be deactivated before "
+                        f"unsigning."
+                        if count == 1
+                        else f"Skipped {count} active builds — deactivate before "
+                        f"unsigning: {', '.join(active_skipped)}"
+                    ),
+                    "warning",
+                )
             _flash_action_results(
                 success,
                 [(f, "") for f in failed],
@@ -449,6 +464,12 @@ class UserView(ModelView):
 
     form_columns = ("username", "roles", "active")
     form_overrides = {"password": PasswordField}
+
+    def after_model_change(self, form, model, is_created):
+        cache.delete("packages_versions")
+
+    def after_model_delete(self, model):
+        cache.delete("packages_versions")
 
     @action("activate", "Activate", "Are you sure you want to activate selected users?")
     def action_activate(self, ids):
@@ -581,9 +602,9 @@ class ScreenshotView(ModelView):
     column_filters = ("package.name",)
 
     def on_model_delete(self, model):
-        build_path = os.path.join(current_app.config["DATA_PATH"], model.path)
-        if os.path.exists(build_path):
-            os.remove(build_path)
+        screenshot_path = os.path.join(current_app.config["DATA_PATH"], model.path)
+        if os.path.exists(screenshot_path):
+            os.remove(screenshot_path)
 
     form_overrides = {"path": ImageUploadField}
     form_args = {
@@ -705,7 +726,8 @@ class VersionView(SignResyncMixin, ModelView):
         versions = get_query_for_ids(self.get_query(), self.model, ids).all()
         for version in versions:
             for build in version.builds:
-                yield os.path.basename(build.path), build
+                label = os.path.basename(build.path) if build.path else str(build.id)
+                yield label, build
 
     def on_model_delete(self, model):
         version_path = os.path.join(
@@ -757,6 +779,7 @@ class VersionView(SignResyncMixin, ModelView):
         ("insert_date", "insert_date"),
         ("all_builds_active", "all_builds_active"),
         ("startable", "startable"),
+        ("total_size", "total_size"),
     )
     column_formatters = {
         "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
@@ -1035,25 +1058,16 @@ class IndexView(AdminIndexView):
             )
         else:
             package_count = _maintainer_filter(Package.query).count()
-            build_count = (
-                _maintainer_filter(
-                    Build.query.join(Build.version).join(Version.package)
-                )
-                .filter(User.id == current_user.id)
-                .count()
-            )
-            inactive_build_count = (
-                _maintainer_filter(
-                    Build.query.filter_by(active=False)
-                    .join(Build.version)
-                    .join(Version.package)
-                )
-                .filter(User.id == current_user.id)
-                .count()
-            )
+            build_count = _maintainer_filter(
+                Build.query.join(Build.version).join(Version.package)
+            ).count()
+            inactive_build_count = _maintainer_filter(
+                Build.query.filter_by(active=False)
+                .join(Build.version)
+                .join(Version.package)
+            ).count()
             recent_versions = (
                 _maintainer_filter(Version.query.join(Version.package))
-                .filter(User.id == current_user.id)
                 .order_by(Version.insert_date.desc())
                 .limit(5)
                 .all()
