@@ -682,6 +682,12 @@ class Package(db.Model):
         .scalar_subquery(),
         deferred=True,
     )
+    last_download_date = db.column_property(
+        db.select(db.func.max(DownloadStat.date))
+        .where(DownloadStat.package_id == id)
+        .scalar_subquery(),
+        deferred=True,
+    )
 
     # Relationships
     versions = db.relationship(

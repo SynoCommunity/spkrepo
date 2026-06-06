@@ -1,0 +1,74 @@
+{% extends 'admin/master.html' %}
+{% import 'admin/lib.html' as lib with context %}
+
+{% block body %}
+  {% block navlinks %}
+  <ul class="nav nav-tabs">
+    <li class="nav-item">
+      <a class="nav-link" href="{{ return_url }}">{{ _gettext('List') }}</a>
+    </li>
+    {%- if admin_view.can_create -%}
+    <li class="nav-item">
+      <a class="nav-link" href="{{ get_url('.create_view', url=return_url) }}">{{ _gettext('Create') }}</a>
+    </li>
+    {%- endif -%}
+    {%- if admin_view.can_edit -%}
+    <li class="nav-item">
+      <a class="nav-link" href="{{ get_url('.edit_view', id=request.args.get('id'), url=return_url) }}">{{ _gettext('Edit') }}</a>
+    </li>
+    {%- endif -%}
+    <li class="nav-item">
+      <a class="nav-link active disabled" href="javascript:void(0)">{{ _gettext('Details') }}</a>
+    </li>
+  </ul>
+  {% endblock %}
+
+  {% block details_search %}
+    <div class="form-inline fa_filter_container col-lg-6">
+      <label for="fa_filter">{{ _gettext('Filter') }}</label>
+      <input id="fa_filter" type="text" class="ml-3 form-control">
+    </div>
+  {% endblock %}
+
+  {% block details_table %}
+    <table class="table table-hover table-bordered searchable">
+      {% for c, name in details_columns %}
+        <tr>
+          <td><b>{% if c == 'recent_download_count' %}Recent Downloads (90d){% else %}{{ name }}{% endif %}</b></td>
+          <td>
+            {% if c == 'arch_breakdown' %}
+              {% if arch_breakdown %}
+                <table style="width: 100%; max-width: 380px; border: none; border-spacing: 0">
+                  {% for code, count, pct in arch_breakdown %}
+                    <tr>
+                      <td style="white-space: nowrap; padding-right: 10px; font-family: monospace; width: 1%">
+                        {{ code }}
+                      </td>
+                      <td style="width: 100%; padding-right: 10px">
+                        <div style="background: #e9ecef; border-radius: 3px; height: 14px">
+                          <div style="background: #5b9bd5; border-radius: 3px; height: 14px; width: {{ pct | round(1) }}%"></div>
+                        </div>
+                      </td>
+                      <td style="white-space: nowrap; color: #666; font-size: 0.9em">
+                        {{ "{:,}".format(count) }} ({{ pct | round | int }}%)
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </table>
+              {% else %}
+                <span class="text-muted">No downloads in the last 90 days</span>
+              {% endif %}
+            {% else %}
+              {{ get_value(model, c) }}
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% endblock %}
+{% endblock %}
+
+{% block tail %}
+  {{ super() }}
+  <script {{ admin_csp_nonce_attribute }} src="{{ admin_static.url(filename='admin/js/details_filter.js', v='1.0.0') }}"></script>
+{% endblock %}

@@ -2,6 +2,7 @@
 import io
 import os
 import shutil
+from datetime import date, timedelta
 
 from flask import abort, current_app, flash, redirect, request, url_for
 from flask_admin import AdminIndexView, expose
@@ -23,6 +24,7 @@ from ..models import (
     BuildManifest,
     Description,
     DisplayName,
+    DownloadStat,
     Firmware,
     Icon,
     Language,
@@ -668,12 +670,49 @@ class PackageView(ModelView):
     def after_model_delete(self, model):
         cache.delete("packages_versions")
 
+    can_view_details = True
+    details_template = "admin/package_detail.html"
+
+    @expose("/details/")
+    def details_view(self):
+        self._template_args["arch_breakdown"] = self._get_arch_breakdown()
+        return super().details_view()
+
+    def _get_arch_breakdown(self):
+        from flask import request as flask_request
+
+        pkg_id = flask_request.args.get("id", type=int)
+        if not pkg_id:
+            return None
+        cutoff = date.today() - timedelta(days=90)
+        rows = db.session.execute(
+            db.select(
+                Architecture.code,
+                db.func.sum(DownloadStat.count).label("total"),
+            )
+            .join(Architecture, Architecture.id == DownloadStat.architecture_id)
+            .where(
+                db.and_(
+                    DownloadStat.package_id == pkg_id,
+                    DownloadStat.date >= cutoff,
+                )
+            )
+            .group_by(Architecture.code)
+            .order_by(db.desc("total"))
+            .limit(3)
+        ).all()
+        if not rows:
+            return None
+        grand_total = sum(total for _, total in rows)
+        return [(code, total, total / grand_total * 100) for code, total in rows]
+
     column_list = (
         "name",
         "author",
         "maintainers",
         "download_count",
         "recent_download_count",
+        "last_download_date",
         "insert_date",
     )
     column_sortable_list = (
@@ -682,22 +721,44 @@ class PackageView(ModelView):
         ("insert_date", "insert_date"),
         ("download_count", "download_count"),
         ("recent_download_count", "recent_download_count"),
+        ("last_download_date", "last_download_date"),
     )
     column_formatters = {
-        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "insert_date": lambda v, c, m, p: (
+            m.insert_date.strftime("%Y-%m-%d") if m.insert_date else None
+        ),
         "download_count": lambda v, c, m, p: (
             f"{m.download_count:,}" if m.download_count else "0"
         ),
         "recent_download_count": lambda v, c, m, p: (
             f"{m.recent_download_count:,}" if m.recent_download_count else "0"
         ),
+        "last_download_date": lambda v, c, m, p: (
+            m.last_download_date.strftime("%Y-%m-%d") if m.last_download_date else None
+        ),
+    }
+
+    column_formatters_detail = {
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
     }
     column_labels = {
         "download_count": "Downloads",
         "recent_download_count": "Recent Downloads",
+        "last_download_date": "Last Download",
         "author.username": "Author",
+        "arch_breakdown": "Top Architectures (90d)",
     }
     column_filters = ("name", "author.username")
+    column_details_list = (
+        "name",
+        "author",
+        "maintainers",
+        "insert_date",
+        "download_count",
+        "recent_download_count",
+        "last_download_date",
+        "arch_breakdown",
+    )
 
     form_columns = ("name", "author", "maintainers")
     form_args = {"name": {"validators": [Regexp(SPK.package_re)]}}
@@ -782,7 +843,9 @@ class VersionView(SignResyncMixin, ModelView):
         ("total_size", "total_size"),
     )
     column_formatters = {
-        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "insert_date": lambda v, c, m, p: (
+            m.insert_date.strftime("%Y-%m-%d") if m.insert_date else None
+        ),
         "all_builds_active": _bool_formatter,
         "startable": _bool_formatter,
         "beta": _bool_formatter,
@@ -791,6 +854,7 @@ class VersionView(SignResyncMixin, ModelView):
         ),
     }
     column_formatters_detail = {
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
         "install_wizard": _bool_formatter,
         "upgrade_wizard": _bool_formatter,
         "startable": _bool_formatter,
@@ -944,11 +1008,16 @@ class BuildView(SignResyncMixin, ModelView):
         ("active", "active"),
     )
     column_formatters = {
-        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "insert_date": lambda v, c, m, p: (
+            m.insert_date.strftime("%Y-%m-%d") if m.insert_date else None
+        ),
         "size": lambda v, c, m, p: (
             f"{m.size / 1024 / 1024:.1f} MB" if m.size else None
         ),
         "active": _bool_formatter,
+    }
+    column_formatters_detail = {
+        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
     }
     column_default_sort = (Build.insert_date, True)
 
