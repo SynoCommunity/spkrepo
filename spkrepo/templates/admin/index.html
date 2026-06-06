@@ -71,6 +71,7 @@
               <th>Version</th>
               <th>Total Size</th>
               <th>All Active</th>
+              <th>Downloads (90d)</th>
               <th>Date</th>
             </tr>
           </thead>
@@ -87,11 +88,12 @@
                   <i class="fa fa-times-circle" style="color: #e74c3c;"></i>
                 {% endif %}
               </td>
-              <td>{{ version.insert_date.strftime('%Y-%m-%d %H:%M') }}</td>
+              <td>{{ "{:,}".format(version.recent_download_count) if version.recent_download_count else '—' }}</td>
+              <td>{{ version.insert_date.strftime('%Y-%m-%d') }}</td>
             </tr>
             {% else %}
             <tr>
-              <td colspan="5" class="text-center text-muted">No versions uploaded yet.</td>
+              <td colspan="6" class="text-center text-muted">No versions uploaded yet.</td>
             </tr>
             {% endfor %}
           </tbody>

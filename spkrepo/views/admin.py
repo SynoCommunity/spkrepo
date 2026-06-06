@@ -823,6 +823,8 @@ class VersionView(SignResyncMixin, ModelView):
         "install_wizard": "Install Wizard",
         "upgrade_wizard": "Upgrade Wizard",
         "total_size": "Total Size",
+        "download_count": "Downloads",
+        "recent_download_count": "Recent Downloads (90d)",
     }
     column_filters = (
         "package.name",
@@ -859,6 +861,12 @@ class VersionView(SignResyncMixin, ModelView):
         "upgrade_wizard": _bool_formatter,
         "startable": _bool_formatter,
         "license": _truncate_formatter,
+        "download_count": lambda v, c, m, p: (
+            f"{m.download_count:,}" if m.download_count else "0"
+        ),
+        "recent_download_count": lambda v, c, m, p: (
+            f"{m.recent_download_count:,}" if m.recent_download_count else "0"
+        ),
     }
     column_default_sort = (Version.insert_date, True)
 
