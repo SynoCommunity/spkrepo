@@ -655,6 +655,30 @@ class Version(db.Model):
         )
 
 
+Version.download_count = db.column_property(
+    db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+    .join(Build, Build.id == DownloadStat.build_id)
+    .where(Build.version_id == Version.id)
+    .correlate(Version)
+    .scalar_subquery(),
+    deferred=True,
+)
+
+Version.recent_download_count = db.column_property(
+    db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+    .join(Build, Build.id == DownloadStat.build_id)
+    .where(
+        db.and_(
+            Build.version_id == Version.id,
+            DownloadStat.date >= _days_ago(90),
+        )
+    )
+    .correlate(Version)
+    .scalar_subquery(),
+    deferred=True,
+)
+
+
 class Package(db.Model):
     __tablename__ = "package"
 
@@ -679,6 +703,12 @@ class Package(db.Model):
                 DownloadStat.date >= _days_ago(90),
             )
         )
+        .scalar_subquery(),
+        deferred=True,
+    )
+    last_download_date = db.column_property(
+        db.select(db.func.max(DownloadStat.date))
+        .where(DownloadStat.package_id == id)
         .scalar_subquery(),
         deferred=True,
     )
