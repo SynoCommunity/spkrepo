@@ -161,9 +161,9 @@ class Packages(Resource):
                     ),
                 )
 
-        # Services — validate only here; version object takes ownership on creation
+        # Services — resolve once here; reused in version creation below
         try:
-            resolve_services(spk.info.get("install_dep_services"))
+            services = resolve_services(spk.info.get("install_dep_services"))
         except ValueError as e:
             abort(422, message=str(e))
 
@@ -223,10 +223,7 @@ class Packages(Resource):
 
             for key, value in spk.info.items():
                 if key == "install_dep_services":
-                    for service_name in value.split():
-                        version.service_dependencies.append(
-                            resolve_services(service_name)[0]
-                        )
+                    version.service_dependencies = services
                 elif key == "displayname":
                     version.displaynames["enu"] = DisplayName(
                         language=Language.find("enu"), displayname=value

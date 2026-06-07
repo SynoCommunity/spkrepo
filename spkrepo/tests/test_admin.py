@@ -337,6 +337,48 @@ class VersionTestCase(BaseTestCase):
         )
         self.assertEqual(refreshed_build.md5, refreshed_build.calculate_md5())
 
+    def test_action_resync_info_invalidates_cache(self):
+        build = BuildFactory()
+        db.session.commit()
+        from spkrepo.ext import cache as app_cache
+
+        app_cache.set("packages_versions", "stale")
+        with self.logged_user("package_admin", "admin"):
+            self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build.version.id]),
+            )
+        self.assertIsNone(app_cache.get("packages_versions"))
+
+    def test_action_resync_file_invalidates_cache(self):
+        build = BuildFactory()
+        db.session.commit()
+        from spkrepo.ext import cache as app_cache
+
+        app_cache.set("packages_versions", "stale")
+        with self.logged_user("package_admin", "admin"):
+            self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_file", rowid=[build.version.id]),
+            )
+        self.assertIsNone(app_cache.get("packages_versions"))
+
+    def test_action_resync_info_single_build_no_siblings_succeeds(self):
+        # A version with only one build must resync cleanly with no sibling check.
+        build = BuildFactory()
+        db.session.commit()
+        self.assertEqual(len(build.version.builds), 1)
+        with self.logged_user("package_admin", "admin"):
+            response = self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build.version.id]),
+            )
+        self.assert200(response)
+        self.assertIn("refreshed", response.data.decode())
+
     def test_action_resync_info_rejects_inconsistent_sibling_builds(self):
         # If two builds under the same version have different version-level metadata
         # on disk, resync must fail with an error rather than silently overwriting.
@@ -677,6 +719,48 @@ class BuildTestCase(BaseTestCase):
             original_architectures,
         )
 
+    def test_action_resync_info_single_build_no_siblings_succeeds(self):
+        # A build with no siblings must resync cleanly.
+        build = BuildFactory()
+        db.session.commit()
+        self.assertEqual(len(build.version.builds), 1)
+        with self.logged_user("package_admin", "admin"):
+            response = self.client.post(
+                url_for("build.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build.id]),
+            )
+        self.assert200(response)
+        self.assertIn("refreshed", response.data.decode())
+
+    def test_action_resync_info_invalidates_cache(self):
+        build = BuildFactory()
+        db.session.commit()
+        from spkrepo.ext import cache as app_cache
+
+        app_cache.set("packages_versions", "stale")
+        with self.logged_user("package_admin", "admin"):
+            self.client.post(
+                url_for("build.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build.id]),
+            )
+        self.assertIsNone(app_cache.get("packages_versions"))
+
+    def test_action_resync_file_invalidates_cache(self):
+        build = BuildFactory()
+        db.session.commit()
+        from spkrepo.ext import cache as app_cache
+
+        app_cache.set("packages_versions", "stale")
+        with self.logged_user("package_admin", "admin"):
+            self.client.post(
+                url_for("build.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_file", rowid=[build.id]),
+            )
+        self.assertIsNone(app_cache.get("packages_versions"))
+
     def test_action_resync_info_rejects_inconsistent_sibling_build(self):
         # Resyncing a single build must fail if its sibling SPK has different
         # version-level metadata, to prevent last-write-wins corruption.
@@ -684,16 +768,36 @@ class BuildTestCase(BaseTestCase):
         build2 = BuildFactory(version=build1.version)
         db.session.commit()
 
-        # Overwrite build2's SPK on disk with a displayname that differs
-        # from what is stored in the DB (and from build1's SPK).
-        existing_displayname = build1.version.displaynames["enu"].displayname
-        info = create_info(build2)
-        info["displayname"] = existing_displayname + " SIBLING MODIFIED"
-        info["displayname_enu"] = existing_displayname + " SIBLING MODIFIED"
-        spk_path = os.path.join(current_app.config["DATA_PATH"], build2.path)
-        with open(spk_path, "wb") as f:
-            with create_spk(build2, info=info) as spk:
+        # Build build2's info independently and set a displayname that is
+        # guaranteed to differ from what build1's SPK contains on disk.
+        # We must override both the bare and the suffixed key because create_info
+        # emits both "displayname" and "displayname_enu".
+        original_displayname = build1.version.displaynames["enu"].displayname
+        modified_displayname = original_displayname + " SIBLING MODIFIED"
+
+        info2 = create_info(build2)
+        info2["displayname"] = modified_displayname
+        info2["displayname_enu"] = modified_displayname
+
+        spk2_path = os.path.join(current_app.config["DATA_PATH"], build2.path)
+        with open(spk2_path, "wb") as f:
+            with create_spk(build2, info=info2) as spk:
                 f.write(spk.read())
+
+        # Sanity check: build1's SPK on disk must still have the original name.
+        from spkrepo.utils import SPK, extract_version_metadata
+        import io as _io
+
+        spk1_path = os.path.join(current_app.config["DATA_PATH"], build1.path)
+        with _io.open(spk1_path, "rb") as f:
+            meta1 = extract_version_metadata(SPK(f))
+        with _io.open(spk2_path, "rb") as f:
+            meta2 = extract_version_metadata(SPK(f))
+        self.assertNotEqual(
+            meta1["displaynames"],
+            meta2["displaynames"],
+            "Precondition failed: SPK files must differ before running resync",
+        )
 
         with self.logged_user("package_admin", "admin"):
             response = self.client.post(

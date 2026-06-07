@@ -274,9 +274,11 @@ class SignResyncMixin:
                 _resync_build_metadata(db.session, build)
                 db.session.commit()
                 successes.append(label)
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:
                 db.session.rollback()
                 failures.append((label, str(exc)))
+        if successes:
+            cache.delete("packages_versions")
         _flash_action_results(successes, failures, item_label="build")
 
     @action(
@@ -294,6 +296,8 @@ class SignResyncMixin:
             except Exception as exc:
                 db.session.rollback()
                 failures.append((label, str(exc)))
+        if successes:
+            cache.delete("packages_versions")
         _flash_action_results(successes, failures, item_label="build")
 
 
@@ -879,9 +883,6 @@ class BuildView(SignResyncMixin, ModelView):
             f"{m.size / 1024 / 1024:.1f} MB" if m.size else None
         ),
         "active": _bool_formatter,
-    }
-    column_formatters_detail = {
-        "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
     }
     column_formatters_detail = {
         "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),

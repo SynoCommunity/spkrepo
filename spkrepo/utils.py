@@ -565,6 +565,18 @@ def apply_info_from_spk(session, build, spk, md5_hash):
     unconditionally — callers must ensure consistency has already been checked
     via :func:`assert_version_metadata_matches_db` before calling this.
 
+    .. note::
+        Icon files are written to disk before the database is flushed. If a
+        subsequent error causes the caller to roll back the session, any newly
+        written icon files will be left on disk. Callers that require strict
+        atomicity should handle cleanup themselves (e.g. via
+        :func:`~spkrepo.api._cleanup_on_failure`).
+
+    .. note::
+        This function calls ``session.flush()`` at the end to push all pending
+        changes to the database within the current transaction. The caller is
+        responsible for committing or rolling back.
+
     :param session: SQLAlchemy session
     :param build: the :class:`~spkrepo.models.Build` to update
     :param spk: a parsed :class:`SPK` instance
@@ -644,8 +656,12 @@ def apply_info_from_spk(session, build, spk, md5_hash):
                 language=language, description=value
             )
 
+    # Icon files are written to disk here. If anything raises after this point
+    # the caller's session rollback will undo the DB changes but the files will
+    # remain on disk — see docstring note above.
     existing_icons = dict(version.icons)
     new_sizes = set(spk.icons.keys()) if spk.icons else set()
+    written_icon_paths = []
     for stale_size in set(existing_icons) - new_sizes:
         del version.icons[stale_size]
 
@@ -654,18 +670,31 @@ def apply_info_from_spk(session, build, spk, md5_hash):
             current_app.config["DATA_PATH"], package.name, str(version.version)
         )
         os.makedirs(version_path, exist_ok=True)
-        for size, icon_stream in spk.icons.items():
-            icon_stream.seek(0)
-            icon_path = os.path.join(
-                package.name, str(version.version), f"icon_{size}.png"
-            )
-            icon = version.icons.get(size)
-            if icon is None:
-                icon = Icon(path=icon_path, size=size)
-                version.icons[size] = icon
-            else:
-                icon.path = icon_path
-            icon.save(icon_stream)
+        try:
+            for size, icon_stream in spk.icons.items():
+                icon_stream.seek(0)
+                icon_path = os.path.join(
+                    package.name, str(version.version), f"icon_{size}.png"
+                )
+                icon = version.icons.get(size)
+                if icon is None:
+                    icon = Icon(path=icon_path, size=size)
+                    version.icons[size] = icon
+                else:
+                    icon.path = icon_path
+                icon.save(icon_stream)
+                written_icon_paths.append(
+                    os.path.join(current_app.config["DATA_PATH"], icon_path)
+                )
+        except Exception:
+            # Clean up any icon files written in this call before re-raising,
+            # so a failed resync does not leave orphaned files on disk.
+            for path in written_icon_paths:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            raise
 
     # -- Build-level fields --------------------------------------------------
 
