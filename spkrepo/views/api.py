@@ -14,20 +14,24 @@ from flask_security import current_user
 from ..exceptions import SPKParseError, SPKSignError
 from ..ext import db
 from ..models import (
-    Architecture,
     Build,
     BuildManifest,
     Description,
     DisplayName,
-    Firmware,
     Icon,
     Language,
     Package,
-    Service,
     Version,
     user_datastore,
 )
-from ..utils import SPK, firmware_re, version_re
+from ..utils import (
+    SPK,
+    assert_version_metadata_matches_db,
+    resolve_architectures,
+    resolve_firmware,
+    resolve_services,
+    version_re,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -128,31 +132,26 @@ class Packages(Resource):
             abort(422, message="Package contains a signature")
 
         # Architectures
-        architectures = []
-        for info_arch in spk.info["arch"].split():
-            architecture = Architecture.find(info_arch, syno=True)
-            if architecture is None:
-                abort(422, message=f"Unknown architecture: {info_arch}")
-            architectures.append(architecture)
+        try:
+            architectures = resolve_architectures(db.session, spk.info.get("arch"))
+        except ValueError as e:
+            abort(422, message=str(e))
 
-        # Firmware
+        # Firmware min
         input_firmware = spk.info.get("firmware") or spk.info.get("os_min_ver")
-        match = firmware_re.match(input_firmware)
-        if not match:
-            abort(422, message="Invalid firmware")
-        firmware = Firmware.find(int(match.group("build")))
-        if firmware is None:
-            abort(422, message="Unknown firmware")
+        try:
+            firmware = resolve_firmware(db.session, input_firmware)
+        except ValueError as e:
+            abort(422, message=str(e))
 
+        # Firmware max
         firmware_max = None
         input_firmware_max = spk.info.get("os_max_ver")
         if input_firmware_max:
-            max_match = firmware_re.match(input_firmware_max)
-            if not max_match:
-                abort(422, message="Invalid maximum firmware")
-            firmware_max = Firmware.find(int(max_match.group("build")))
-            if firmware_max is None:
-                abort(422, message="Unknown maximum firmware")
+            try:
+                firmware_max = resolve_firmware(db.session, input_firmware_max)
+            except ValueError as e:
+                abort(422, message=str(e))
             if firmware_max.build < firmware.build:
                 abort(
                     422,
@@ -162,13 +161,11 @@ class Packages(Resource):
                     ),
                 )
 
-        # Services
-        input_install_dep_services = spk.info.get("install_dep_services", None)
-        if input_install_dep_services:
-            for info_dep_service in input_install_dep_services.split():
-                service_name = Service.find(info_dep_service)
-                if service_name is None:
-                    abort(422, message=f"Unknown dependent service: {info_dep_service}")
+        # Services — resolve once here; reused in version creation below
+        try:
+            services = resolve_services(spk.info.get("install_dep_services"))
+        except ValueError as e:
+            abort(422, message=str(e))
 
         # Package
         create_package = False
@@ -189,20 +186,21 @@ class Packages(Resource):
         match = version_re.match(spk.info["version"])
         if not match:
             abort(422, message="Invalid version")
+
         version = {v.version: v for v in package.versions}.get(
             int(match.group("version"))
         )
-        if version is not None and version.upstream_version != match.group(
-            "upstream_version"
-        ):
-            abort(
-                422,
-                message=(
-                    f"Upstream version mismatch: expected {version.upstream_version}, "
-                    f"got {match.group('upstream_version')}"
-                ),
-            )
-        if version is None:
+
+        if version is not None:
+            # Existing version — enforce full metadata consistency before proceeding.
+            # This catches cases where a build pipeline bug produces SPKs with
+            # differing version-level metadata (e.g. different SPK_VER) for builds
+            # that are part of the same logical release.
+            try:
+                assert_version_metadata_matches_db(version, spk)
+            except ValueError as e:
+                abort(422, message=str(e))
+        else:
             create_version = True
             version_startable = True
             if spk.info.get("startable") is False or spk.info.get("ctl_stop") is False:
@@ -225,8 +223,7 @@ class Packages(Resource):
 
             for key, value in spk.info.items():
                 if key == "install_dep_services":
-                    for service_name in value.split():
-                        version.service_dependencies.append(Service.find(service_name))
+                    version.service_dependencies = services
                 elif key == "displayname":
                     version.displaynames["enu"] = DisplayName(
                         language=Language.find("enu"), displayname=value

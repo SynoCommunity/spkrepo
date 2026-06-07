@@ -21,20 +21,15 @@ from ..ext import cache, db
 from ..models import (
     Architecture,
     Build,
-    BuildManifest,
-    Description,
-    DisplayName,
     DownloadStat,
     Firmware,
-    Icon,
-    Language,
     Package,
     Screenshot,
     Service,
     User,
     Version,
 )
-from ..utils import SPK, firmware_re, version_re
+from ..utils import SPK, apply_info_from_spk, extract_version_metadata
 
 # ---------------------------------------------------------------------------
 # Shared formatters
@@ -74,171 +69,6 @@ def _flash_action_results(successes, failures, skipped=None, item_label="item"):
 # ---------------------------------------------------------------------------
 
 
-def _resolve_firmware(session, value, allow_none=False):
-    if not value:
-        if allow_none:
-            return None
-        raise ValueError("Missing firmware information in INFO")
-
-    match = firmware_re.match(value)
-    if not match:
-        raise ValueError(f"Invalid firmware value: {value}")
-
-    firmware = Firmware.find(int(match.group("build")))
-    if firmware is None:
-        raise ValueError(f"Unknown firmware: {value}")
-
-    return session.merge(firmware, load=False)
-
-
-def _apply_info_from_spk(session, build, spk, md5_hash):
-    info = spk.info
-    package = build.version.package
-
-    if info.get("package") != package.name:
-        raise ValueError("INFO package does not match build package")
-
-    version_match = version_re.match(info.get("version", ""))
-    if not version_match:
-        raise ValueError("Invalid INFO version value")
-
-    version_number = int(version_match.group("version"))
-    if version_number != build.version.version:
-        raise ValueError("INFO version does not match build version")
-
-    version = build.version
-    version.upstream_version = version_match.group("upstream_version")
-    version.changelog = info.get("changelog")
-    version.report_url = info.get("report_url")
-    version.distributor = info.get("distributor")
-    version.distributor_url = info.get("distributor_url")
-    version.maintainer = info.get("maintainer")
-    version.maintainer_url = info.get("maintainer_url")
-    version.install_wizard = "install" in spk.wizards
-    version.upgrade_wizard = "upgrade" in spk.wizards
-
-    startable = True  # default per Synology docs
-    if info.get("startable") is False or info.get("ctl_stop") is False:
-        startable = False
-    version.startable = startable
-
-    version.license = spk.license
-
-    install_services = info.get("install_dep_services")
-    services = []
-    if install_services:
-        for service_code in install_services.split():
-            service = Service.find(service_code)
-            if service is None:
-                raise ValueError(f"Unknown dependent service: {service_code}")
-            services.append(service)
-    version.service_dependencies = services
-
-    version.displaynames.clear()
-    default_display = info.get("displayname")
-    if default_display:
-        language = Language.find("enu")
-        if language is None:
-            raise ValueError("Language 'enu' is not defined")
-        version.displaynames[language.code] = DisplayName(
-            language=language, displayname=default_display
-        )
-
-    for key, value in info.items():
-        if key.startswith("displayname_"):
-            language_code = key.split("_", 1)[1]
-            language = Language.find(language_code)
-            if language is None:
-                raise ValueError(f"Unknown INFO displayname language: {language_code}")
-            version.displaynames[language.code] = DisplayName(
-                language=language, displayname=value
-            )
-
-    version.descriptions.clear()
-    default_description = info.get("description")
-    if default_description:
-        language = Language.find("enu")
-        if language is None:
-            raise ValueError("Language 'enu' is not defined")
-        version.descriptions[language.code] = Description(
-            language=language, description=default_description
-        )
-
-    for key, value in info.items():
-        if key.startswith("description_"):
-            language_code = key.split("_", 1)[1]
-            language = Language.find(language_code)
-            if language is None:
-                raise ValueError(f"Unknown INFO description language: {language_code}")
-            version.descriptions[language.code] = Description(
-                language=language, description=value
-            )
-
-    existing_icons = dict(version.icons)
-    new_sizes = set(spk.icons.keys()) if spk.icons else set()
-    for stale_size in set(existing_icons) - new_sizes:
-        del version.icons[stale_size]
-
-    if spk.icons:
-        version_path = os.path.join(
-            current_app.config["DATA_PATH"], package.name, str(version.version)
-        )
-        os.makedirs(version_path, exist_ok=True)
-        for size, icon_stream in spk.icons.items():
-            icon_stream.seek(0)
-            icon_path = os.path.join(
-                package.name, str(version.version), f"icon_{size}.png"
-            )
-            icon = version.icons.get(size)
-            if icon is None:
-                icon = Icon(path=icon_path, size=size)
-                version.icons[size] = icon
-            else:
-                icon.path = icon_path
-            icon.save(icon_stream)
-
-    arch_value = info.get("arch")
-    if not arch_value:
-        raise ValueError("Missing 'arch' field in INFO")
-    architectures = []
-    for info_arch in arch_value.split():
-        architecture = Architecture.find(info_arch, syno=True)
-        if architecture is None:
-            raise ValueError(f"Unknown architecture: {info_arch}")
-        architectures.append(session.merge(architecture, load=False))
-    build.architectures = architectures
-
-    firmware = _resolve_firmware(
-        session, info.get("firmware") or info.get("os_min_ver")
-    )
-    build.firmware_min = firmware
-
-    firmware_max_value = info.get("os_max_ver")
-    firmware_max = _resolve_firmware(session, firmware_max_value, allow_none=True)
-    if firmware_max and firmware_max.build < firmware.build:
-        raise ValueError(
-            "Maximum firmware must be greater than or equal to minimum firmware"
-        )
-    build.firmware_max = firmware_max
-
-    build.checksum = info.get("checksum")
-    build.md5 = md5_hash
-
-    manifest = build.buildmanifest
-    if manifest is None:
-        manifest = BuildManifest()
-        build.buildmanifest = manifest
-
-    manifest.dependencies = info.get("install_dep_packages")
-    manifest.conf_dependencies = spk.conf_dependencies
-    manifest.conflicts = info.get("install_conflict_packages")
-    manifest.conf_conflicts = spk.conf_conflicts
-    manifest.conf_privilege = spk.conf_privilege
-    manifest.conf_resource = spk.conf_resource
-
-    session.flush()
-
-
 def _resync_build_file(build):
     """Recalculate md5 and size from the build file on disk."""
     if not build.path:
@@ -248,14 +78,36 @@ def _resync_build_file(build):
 
 
 def _resync_build_metadata(session, build):
+    """Re-read the SPK file for a build, check it is consistent with all sibling
+    builds under the same version, then apply the metadata to the database.
+
+    Raises ValueError if the build's SPK metadata conflicts with any sibling SPK,
+    preventing last-write-wins corruption of shared version-level fields.
+    """
     if not build.path:
         raise ValueError("Build has no file path")
 
     file_path = os.path.join(current_app.config["DATA_PATH"], build.path)
     with io.open(file_path, "rb") as stream:
         spk = SPK(stream)
+        incoming_meta = extract_version_metadata(spk)
+
+        for sibling in build.version.builds:
+            if sibling.id == build.id or not sibling.path:
+                continue
+            sibling_path = os.path.join(current_app.config["DATA_PATH"], sibling.path)
+            with io.open(sibling_path, "rb") as s2:
+                sibling_meta = extract_version_metadata(SPK(s2))
+            if sibling_meta != incoming_meta:
+                raise ValueError(
+                    f"Version-level metadata mismatch between "
+                    f"{os.path.basename(build.path)} and "
+                    f"{os.path.basename(sibling.path)} — resync aborted. "
+                    f"Inspect the SPK files to resolve the inconsistency."
+                )
+
         md5 = spk.calculate_md5()
-        _apply_info_from_spk(session, build, spk, md5)
+        apply_info_from_spk(session, build, spk, md5)
 
 
 # ---------------------------------------------------------------------------
@@ -418,9 +270,11 @@ class SignResyncMixin:
                 _resync_build_metadata(db.session, build)
                 db.session.commit()
                 successes.append(label)
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:
                 db.session.rollback()
                 failures.append((label, str(exc)))
+        if successes:
+            cache.delete("packages_versions")
         _flash_action_results(successes, failures, item_label="build")
 
     @action(
@@ -438,6 +292,8 @@ class SignResyncMixin:
             except Exception as exc:
                 db.session.rollback()
                 failures.append((label, str(exc)))
+        if successes:
+            cache.delete("packages_versions")
         _flash_action_results(successes, failures, item_label="build")
 
 
@@ -1026,6 +882,9 @@ class BuildView(SignResyncMixin, ModelView):
     }
     column_formatters_detail = {
         "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "size": lambda v, c, m, p: (
+            f"{m.size / 1024 / 1024:.1f} MB" if m.size else None
+        ),
     }
     column_default_sort = (Build.insert_date, True)
 

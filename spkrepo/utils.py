@@ -4,6 +4,7 @@ import binascii
 import hashlib
 import io
 import json
+import os
 import re
 import tarfile
 import time
@@ -11,10 +12,21 @@ from configparser import ConfigParser
 
 import gnupg
 import requests
+from flask import current_app
 
 from .exceptions import SPKParseError, SPKSignError
 from .ext import db
-from .models import Architecture, Firmware, Language, Role, Service
+from .models import (
+    Architecture,
+    BuildManifest,
+    Description,
+    DisplayName,
+    Firmware,
+    Icon,
+    Language,
+    Role,
+    Service,
+)
 
 #: Regex for a firmware string e.g. "6.2-23739"
 firmware_re = re.compile(r"^(?P<version>\d+\.\d)-(?P<build>\d{3,6})$")
@@ -351,6 +363,370 @@ class SPK(object):
 
         response.encoding = "ascii"
         return response.text
+
+
+# ---------------------------------------------------------------------------
+# Shared SPK processing helpers
+# ---------------------------------------------------------------------------
+
+
+def resolve_firmware(session, value, allow_none=False):
+    """Resolve a firmware string like '6.2-23739' to a
+    :class:`~spkrepo.models.Firmware`.
+
+    :param session: SQLAlchemy session
+    :param value: firmware string from SPK INFO
+    :param allow_none: if True, a missing/empty value returns None instead of raising
+    :raises ValueError: if the value is missing (and allow_none is False), malformed,
+                        or not found in the database
+    """
+    if not value:
+        if allow_none:
+            return None
+        raise ValueError("Missing firmware information in INFO")
+
+    match = firmware_re.match(value)
+    if not match:
+        raise ValueError(f"Invalid firmware value: {value}")
+
+    firmware = Firmware.find(int(match.group("build")))
+    if firmware is None:
+        raise ValueError(f"Unknown firmware: {value}")
+
+    return session.merge(firmware, load=False)
+
+
+def resolve_architectures(session, arch_string):
+    """Resolve a space-separated architecture string from SPK INFO to a list of
+    :class:`~spkrepo.models.Architecture` instances.
+
+    :param session: SQLAlchemy session
+    :param arch_string: space-separated arch string e.g. "88f628x x86_64"
+    :raises ValueError: if arch_string is missing or any architecture is unknown
+    """
+    if not arch_string:
+        raise ValueError("Missing 'arch' field in INFO")
+    architectures = []
+    for info_arch in arch_string.split():
+        architecture = Architecture.find(info_arch, syno=True)
+        if architecture is None:
+            raise ValueError(f"Unknown architecture: {info_arch}")
+        architectures.append(session.merge(architecture, load=False))
+    return architectures
+
+
+def resolve_services(service_string):
+    """Resolve a space-separated service dependency string from SPK INFO to a list of
+    :class:`~spkrepo.models.Service` instances.
+
+    :param service_string: space-separated service codes e.g. "apache-web mysql",
+                           or None/empty for no dependencies
+    :raises ValueError: if any service code is not found in the database
+    """
+    if not service_string:
+        return []
+    services = []
+    for service_code in service_string.split():
+        service = Service.find(service_code)
+        if service is None:
+            raise ValueError(f"Unknown dependent service: {service_code}")
+        services.append(service)
+    return services
+
+
+def extract_version_metadata(spk):
+    """Extract all version-level fields from an SPK into a plain dict without
+    touching the database. Used to compare builds of the same version for
+    consistency before writing anything.
+
+    :param spk: a parsed :class:`SPK` instance
+    :returns: dict of version-level field values
+    """
+    info = spk.info
+    version_match = version_re.match(info.get("version", ""))
+    startable = True
+    if info.get("startable") is False or info.get("ctl_stop") is False:
+        startable = False
+    # Normalise displaynames to language-code keys (matching DB storage):
+    # INFO key "displayname" -> "enu", "displayname_fre" -> "fre", etc.
+    # Note: create_info also emits "displayname_enu" alongside "displayname",
+    # so we process suffixed keys first, then let the bare key set "enu" last,
+    # ensuring an override of info["displayname"] is not shadowed by
+    # info["displayname_enu"] still holding the original value.
+    displaynames = {}
+    for k, v in info.items():
+        if k.startswith("displayname_"):
+            displaynames[k.split("_", 1)[1]] = v
+    if "displayname" in info:
+        displaynames["enu"] = info["displayname"]
+
+    # Same normalisation for descriptions.
+    descriptions = {}
+    for k, v in info.items():
+        if k.startswith("description_"):
+            descriptions[k.split("_", 1)[1]] = v
+    if "description" in info:
+        descriptions["enu"] = info["description"]
+
+    return {
+        "upstream_version": (
+            version_match.group("upstream_version") if version_match else None
+        ),
+        "changelog": info.get("changelog"),
+        "report_url": info.get("report_url"),
+        "distributor": info.get("distributor"),
+        "distributor_url": info.get("distributor_url"),
+        "maintainer": info.get("maintainer"),
+        "maintainer_url": info.get("maintainer_url"),
+        "install_wizard": "install" in spk.wizards,
+        "upgrade_wizard": "upgrade" in spk.wizards,
+        "startable": startable,
+        "license": spk.license,
+        "install_dep_services": (
+            set(info["install_dep_services"].split())
+            if info.get("install_dep_services")
+            else set()
+        ),
+        "displaynames": displaynames,
+        "descriptions": descriptions,
+    }
+
+
+def assert_version_metadata_matches_db(version, spk):
+    """Raise :exc:`ValueError` if the SPK's version-level metadata conflicts with
+    what is already stored on an existing :class:`~spkrepo.models.Version` record.
+
+    Call this before writing anything when uploading a new build to an existing
+    version, to ensure all builds within a version carry consistent metadata.
+
+    :param version: the existing :class:`~spkrepo.models.Version` DB record
+    :param spk: a parsed :class:`SPK` instance for the incoming build
+    :raises ValueError: listing all mismatched fields if any inconsistency is found
+    """
+    incoming = extract_version_metadata(spk)
+    mismatches = []
+
+    simple_fields = (
+        "upstream_version",
+        "changelog",
+        "report_url",
+        "distributor",
+        "distributor_url",
+        "maintainer",
+        "maintainer_url",
+        "install_wizard",
+        "upgrade_wizard",
+        "startable",
+        "license",
+    )
+    for field in simple_fields:
+        spk_val = incoming[field]
+        db_val = getattr(version, field)
+        # startable=None in the DB means "default true", same as SPK omitting the key
+        if field == "startable" and db_val is None:
+            db_val = True
+        if spk_val != db_val:
+            mismatches.append(f"{field}: SPK has {spk_val!r}, DB has {db_val!r}")
+
+    existing_services = {s.code for s in version.service_dependencies}
+    if incoming["install_dep_services"] != existing_services:
+        mismatches.append(
+            f"service_dependencies: SPK has {incoming['install_dep_services']}, "
+            f"DB has {existing_services}"
+        )
+
+    existing_displaynames = {k: v.displayname for k, v in version.displaynames.items()}
+    if incoming["displaynames"] != existing_displaynames:
+        mismatches.append(
+            f"displaynames: SPK has {incoming['displaynames']}, "
+            f"DB has {existing_displaynames}"
+        )
+
+    existing_descriptions = {k: v.description for k, v in version.descriptions.items()}
+    if incoming["descriptions"] != existing_descriptions:
+        mismatches.append(
+            f"descriptions: SPK has {incoming['descriptions']}, "
+            f"DB has {existing_descriptions}"
+        )
+
+    if mismatches:
+        raise ValueError(
+            "SPK version-level metadata conflicts with existing builds:\n"
+            + "\n".join(f"  - {m}" for m in mismatches)
+        )
+
+
+def apply_info_from_spk(session, build, spk, md5_hash):
+    """Apply all metadata from a parsed SPK onto the given build and its parent
+    version. This is the single source of truth for writing SPK metadata to the
+    database, used by both the upload path (api.py) and the resync path (admin.py).
+
+    Version-level fields (shared across all builds of a version) are written
+    unconditionally — callers must ensure consistency has already been checked
+    via :func:`assert_version_metadata_matches_db` before calling this.
+
+    .. note::
+        Icon files are written to disk before the database is flushed. If a
+        subsequent error causes the caller to roll back the session, any newly
+        written icon files will be left on disk. Callers that require strict
+        atomicity should handle cleanup themselves (e.g. via
+        :func:`~spkrepo.api._cleanup_on_failure`).
+
+    .. note::
+        This function calls ``session.flush()`` at the end to push all pending
+        changes to the database within the current transaction. The caller is
+        responsible for committing or rolling back.
+
+    :param session: SQLAlchemy session
+    :param build: the :class:`~spkrepo.models.Build` to update
+    :param spk: a parsed :class:`SPK` instance
+    :param md5_hash: pre-calculated MD5 hex string of the SPK file
+    :raises ValueError: on any validation failure (package mismatch, bad version, etc.)
+    """
+    info = spk.info
+    package = build.version.package
+
+    if info.get("package") != package.name:
+        raise ValueError("INFO package does not match build package")
+
+    version_match = version_re.match(info.get("version", ""))
+    if not version_match:
+        raise ValueError("Invalid INFO version value")
+
+    version_number = int(version_match.group("version"))
+    if version_number != build.version.version:
+        raise ValueError("INFO version does not match build version")
+
+    # -- Version-level fields ------------------------------------------------
+
+    version = build.version
+    version.upstream_version = version_match.group("upstream_version")
+    version.changelog = info.get("changelog")
+    version.report_url = info.get("report_url")
+    version.distributor = info.get("distributor")
+    version.distributor_url = info.get("distributor_url")
+    version.maintainer = info.get("maintainer")
+    version.maintainer_url = info.get("maintainer_url")
+    version.install_wizard = "install" in spk.wizards
+    version.upgrade_wizard = "upgrade" in spk.wizards
+
+    startable = True  # default per Synology docs
+    if info.get("startable") is False or info.get("ctl_stop") is False:
+        startable = False
+    version.startable = startable
+
+    version.license = spk.license
+    version.service_dependencies = resolve_services(info.get("install_dep_services"))
+
+    version.displaynames.clear()
+    default_display = info.get("displayname")
+    if default_display:
+        language = Language.find("enu")
+        if language is None:
+            raise ValueError("Language 'enu' is not defined")
+        version.displaynames[language.code] = DisplayName(
+            language=language, displayname=default_display
+        )
+    for key, value in info.items():
+        if key.startswith("displayname_"):
+            language_code = key.split("_", 1)[1]
+            language = Language.find(language_code)
+            if language is None:
+                raise ValueError(f"Unknown INFO displayname language: {language_code}")
+            version.displaynames[language.code] = DisplayName(
+                language=language, displayname=value
+            )
+
+    version.descriptions.clear()
+    default_description = info.get("description")
+    if default_description:
+        language = Language.find("enu")
+        if language is None:
+            raise ValueError("Language 'enu' is not defined")
+        version.descriptions[language.code] = Description(
+            language=language, description=default_description
+        )
+    for key, value in info.items():
+        if key.startswith("description_"):
+            language_code = key.split("_", 1)[1]
+            language = Language.find(language_code)
+            if language is None:
+                raise ValueError(f"Unknown INFO description language: {language_code}")
+            version.descriptions[language.code] = Description(
+                language=language, description=value
+            )
+
+    # Icon files are written to disk here. If anything raises after this point
+    # the caller's session rollback will undo the DB changes but the files will
+    # remain on disk — see docstring note above.
+    existing_icons = dict(version.icons)
+    new_sizes = set(spk.icons.keys()) if spk.icons else set()
+    written_icon_paths = []
+    for stale_size in set(existing_icons) - new_sizes:
+        del version.icons[stale_size]
+
+    if spk.icons:
+        version_path = os.path.join(
+            current_app.config["DATA_PATH"], package.name, str(version.version)
+        )
+        os.makedirs(version_path, exist_ok=True)
+        try:
+            for size, icon_stream in spk.icons.items():
+                icon_stream.seek(0)
+                icon_path = os.path.join(
+                    package.name, str(version.version), f"icon_{size}.png"
+                )
+                icon = version.icons.get(size)
+                if icon is None:
+                    icon = Icon(path=icon_path, size=size)
+                    version.icons[size] = icon
+                else:
+                    icon.path = icon_path
+                icon.save(icon_stream)
+                written_icon_paths.append(
+                    os.path.join(current_app.config["DATA_PATH"], icon_path)
+                )
+        except Exception:
+            # Clean up any icon files written in this call before re-raising,
+            # so a failed resync does not leave orphaned files on disk.
+            for path in written_icon_paths:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            raise
+
+    # -- Build-level fields --------------------------------------------------
+
+    build.architectures = resolve_architectures(session, info.get("arch"))
+    build.firmware_min = resolve_firmware(
+        session, info.get("firmware") or info.get("os_min_ver")
+    )
+
+    firmware_max_value = info.get("os_max_ver")
+    firmware_max = resolve_firmware(session, firmware_max_value, allow_none=True)
+    if firmware_max and firmware_max.build < build.firmware_min.build:
+        raise ValueError(
+            "Maximum firmware must be greater than or equal to minimum firmware"
+        )
+    build.firmware_max = firmware_max
+
+    build.checksum = info.get("checksum")
+    build.md5 = md5_hash
+
+    manifest = build.buildmanifest
+    if manifest is None:
+        manifest = BuildManifest()
+        build.buildmanifest = manifest
+
+    manifest.dependencies = info.get("install_dep_packages")
+    manifest.conf_dependencies = spk.conf_dependencies
+    manifest.conflicts = info.get("install_conflict_packages")
+    manifest.conf_conflicts = spk.conf_conflicts
+    manifest.conf_privilege = spk.conf_privilege
+    manifest.conf_resource = spk.conf_resource
+
+    session.flush()
 
 
 def populate_db():

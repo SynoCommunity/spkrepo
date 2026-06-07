@@ -562,7 +562,8 @@ class PackagesTestCase(BaseTestCase):
         self.assert422(response)
         self.assertIn("Invalid SPK", response.data.decode())
 
-    def test_post_existing_version_matching_upstream(self):
+    def test_post_existing_version_matching_metadata(self):
+        # A second build for the same version with identical metadata must succeed.
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
         db.session.commit()
 
@@ -593,6 +594,7 @@ class PackagesTestCase(BaseTestCase):
             )
 
     def test_post_existing_version_mismatched_upstream(self):
+        # A second build with a different upstream_version must be rejected with 422.
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
         db.session.commit()
 
@@ -622,7 +624,122 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn("Upstream version mismatch", response.data.decode())
+        self.assertIn("upstream_version", response.data.decode())
+
+    def test_post_existing_version_mismatched_displayname_rejected(self):
+        # A second build with a different displayname must be rejected with 422.
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        build = BuildFactory.build(
+            architectures=[Architecture.find("88f628x")],
+        )
+        with create_spk(build) as spk:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            )
+
+        # Fetch the persisted version from the DB.
+        persisted_version = Build.query.one().version
+        existing_displayname = persisted_version.displaynames["enu"].displayname
+
+        # Second build: different arch to avoid conflict, modified displayname AND
+        # displayname_enu so the bare key is not shadowed by the suffixed key.
+        new_build = BuildFactory.build(
+            version=persisted_version,
+            architectures=[Architecture.find("cedarview")],
+        )
+        info = create_info(new_build)
+        info["displayname"] = existing_displayname + " MODIFIED"
+        info["displayname_enu"] = existing_displayname + " MODIFIED"
+        with create_spk(new_build, info=info) as spk:
+            response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
+            )
+        self.assert422(response)
+        self.assertIn("displaynames", response.data.decode())
+
+    def test_post_existing_version_mismatched_changelog_rejected(self):
+        # A second build with a different changelog must be rejected with 422.
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        build = BuildFactory.build(
+            architectures=[Architecture.find("88f628x")],
+        )
+        with create_spk(build) as spk:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            )
+
+        persisted_version = Build.query.one().version
+        existing_changelog = persisted_version.changelog or ""
+
+        new_build = BuildFactory.build(
+            version=persisted_version,
+            architectures=[Architecture.find("cedarview")],
+        )
+        info = create_info(new_build)
+        info["changelog"] = existing_changelog + " MODIFIED"
+        with create_spk(new_build, info=info) as spk:
+            response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
+            )
+        self.assert422(response)
+        self.assertIn("changelog", response.data.decode())
+
+    def test_post_existing_version_metadata_mismatch_does_not_persist(self):
+        # A rejected upload must not partially modify the DB.
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        build = BuildFactory.build(
+            architectures=[Architecture.find("88f628x")],
+        )
+        with create_spk(build) as spk:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            )
+
+        persisted_version = Build.query.one().version
+        original_displayname = persisted_version.displaynames["enu"].displayname
+
+        new_build = BuildFactory.build(
+            version=persisted_version,
+            architectures=[Architecture.find("cedarview")],
+        )
+        info = create_info(new_build)
+        info["displayname"] = original_displayname + " MODIFIED"
+        info["displayname_enu"] = original_displayname + " MODIFIED"
+        with create_spk(new_build, info=info) as spk:
+            response = self.client.post(
+                url_for("api.packages"),
+                headers=authorization_header(user),
+                data=spk.read(),
+            )
+        self.assert422(response)
+
+        db.session.expire_all()
+        self.assertEqual(
+            Build.query.one().version.displaynames["enu"].displayname,
+            original_displayname,
+        )
 
     def test_post_201_response_body(self):
         # The 201 response body must contain package, version, firmware, architectures.
@@ -680,7 +797,7 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn("Invalid maximum firmware", response.data.decode())
+        self.assertIn("Invalid firmware value", response.data.decode())
 
     def test_post_unknown_firmware_max(self):
         # os_max_ver with valid format but unknown build number returns 422.
@@ -697,7 +814,7 @@ class PackagesTestCase(BaseTestCase):
                 data=spk.read(),
             )
         self.assert422(response)
-        self.assertIn("Unknown maximum firmware", response.data.decode())
+        self.assertIn("Unknown firmware", response.data.decode())
 
     def test_post_firmware_max_less_than_firmware_min(self):
         # os_max_ver < firmware returns 422.

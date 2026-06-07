@@ -6,11 +6,14 @@ from flask import current_app, url_for
 from spkrepo.ext import db
 from spkrepo.models import Build, Firmware, Package, Version
 from spkrepo.tests.common import (
+    Architecture,
     BaseTestCase,
     BuildFactory,
     PackageFactory,
     VersionFactory,
     create_image,
+    create_info,
+    create_spk,
 )
 
 
@@ -274,8 +277,7 @@ class VersionTestCase(BaseTestCase):
 
     def test_action_resync_info_refreshes_build_metadata(self):
         # Pin firmware_min to the lowest seeded firmware so we can always find
-        # a different one to corrupt the build with, making the
-        # restore assertion meaningful.
+        # a different one to corrupt the build with.
         build = BuildFactory(
             firmware_min=Firmware.query.order_by(Firmware.build.asc()).first(),
             firmware_max=Firmware.query.order_by(Firmware.build.desc()).first(),
@@ -289,7 +291,7 @@ class VersionTestCase(BaseTestCase):
         original_dependencies = build.buildmanifest.dependencies
         original_conf_privilege = build.buildmanifest.conf_privilege
 
-        # Corrupt the build — use a firmware that is guaranteed to differ
+        # Corrupt the build
         corrupting_firmware = Firmware.query.filter(
             Firmware.id != original_firmware_min.id
         ).first()
@@ -304,7 +306,6 @@ class VersionTestCase(BaseTestCase):
 
         db.session.commit()
 
-        # Verify the corruption took effect so we know the resync is actually doing work
         self.assertNotEqual(build.firmware_min.id, original_firmware_min.id)
         self.assertIsNone(build.firmware_max)
 
@@ -325,7 +326,6 @@ class VersionTestCase(BaseTestCase):
             original_architectures,
         )
         self.assertEqual(refreshed_build.firmware_min.id, original_firmware_min.id)
-        # firmware_max was set to a known value and should be restored
         self.assertIsNotNone(refreshed_build.firmware_max)
         self.assertEqual(refreshed_build.firmware_max.id, original_firmware_max.id)
         self.assertEqual(
@@ -337,6 +337,86 @@ class VersionTestCase(BaseTestCase):
             original_conf_privilege,
         )
         self.assertEqual(refreshed_build.md5, refreshed_build.calculate_md5())
+
+    def test_action_resync_info_invalidates_cache(self):
+        build = BuildFactory()
+        db.session.commit()
+        from spkrepo.ext import cache as app_cache
+
+        app_cache.set("packages_versions", "stale")
+        with self.logged_user("package_admin", "admin"):
+            self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build.version.id]),
+            )
+        self.assertIsNone(app_cache.get("packages_versions"))
+
+    def test_action_resync_file_invalidates_cache(self):
+        build = BuildFactory()
+        db.session.commit()
+        from spkrepo.ext import cache as app_cache
+
+        app_cache.set("packages_versions", "stale")
+        with self.logged_user("package_admin", "admin"):
+            self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_file", rowid=[build.version.id]),
+            )
+        self.assertIsNone(app_cache.get("packages_versions"))
+
+    def test_action_resync_info_single_build_no_siblings_succeeds(self):
+        # A version with only one build must resync cleanly with no sibling check.
+        build = BuildFactory()
+        db.session.commit()
+        self.assertEqual(len(build.version.builds), 1)
+        with self.logged_user("package_admin", "admin"):
+            response = self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build.version.id]),
+            )
+        self.assert200(response)
+        self.assertIn("refreshed", response.data.decode())
+
+    def test_action_resync_info_rejects_inconsistent_sibling_builds(self):
+        # If two builds under the same version have different version-level metadata
+        # on disk, resync must fail with an error rather than silently overwriting.
+        # Pin to distinct architectures so Build.generate_filename produces
+        # different paths for each build — otherwise one SPK overwrites the other.
+        build1 = BuildFactory(architectures=[Architecture.find("88f628x")])
+        build2 = BuildFactory(
+            version=build1.version,
+            architectures=[Architecture.find("cedarview")],
+        )
+        db.session.commit()
+
+        self.assertNotEqual(
+            build1.path,
+            build2.path,
+            "Precondition failed: builds must have different SPK paths",
+        )
+
+        existing_displayname = build1.version.displaynames["enu"].displayname
+        info = create_info(build2)
+        info["displayname"] = existing_displayname + " SIBLING MODIFIED"
+        info["displayname_enu"] = existing_displayname + " SIBLING MODIFIED"
+        spk_path = os.path.join(current_app.config["DATA_PATH"], build2.path)
+        with open(spk_path, "wb") as f:
+            with create_spk(build2, info=info) as spk:
+                f.write(spk.read())
+
+        with self.logged_user("package_admin", "admin"):
+            response = self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build1.version.id]),
+            )
+        self.assert200(response)
+        # The flash message must report failure, not success.
+        self.assertIn("Failed", response.data.decode())
+        self.assertNotIn("refreshed", response.data.decode())
 
     def test_action_resync_file_visible_to_package_admin(self):
         with self.logged_user("package_admin"):
@@ -649,6 +729,105 @@ class BuildTestCase(BaseTestCase):
             original_architectures,
         )
 
+    def test_action_resync_info_single_build_no_siblings_succeeds(self):
+        # A build with no siblings must resync cleanly.
+        build = BuildFactory()
+        db.session.commit()
+        self.assertEqual(len(build.version.builds), 1)
+        with self.logged_user("package_admin", "admin"):
+            response = self.client.post(
+                url_for("build.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build.id]),
+            )
+        self.assert200(response)
+        self.assertIn("refreshed", response.data.decode())
+
+    def test_action_resync_info_invalidates_cache(self):
+        build = BuildFactory()
+        db.session.commit()
+        from spkrepo.ext import cache as app_cache
+
+        app_cache.set("packages_versions", "stale")
+        with self.logged_user("package_admin", "admin"):
+            self.client.post(
+                url_for("build.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build.id]),
+            )
+        self.assertIsNone(app_cache.get("packages_versions"))
+
+    def test_action_resync_file_invalidates_cache(self):
+        build = BuildFactory()
+        db.session.commit()
+        from spkrepo.ext import cache as app_cache
+
+        app_cache.set("packages_versions", "stale")
+        with self.logged_user("package_admin", "admin"):
+            self.client.post(
+                url_for("build.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_file", rowid=[build.id]),
+            )
+        self.assertIsNone(app_cache.get("packages_versions"))
+
+    def test_action_resync_info_rejects_inconsistent_sibling_build(self):
+        # Resyncing a single build must fail if its sibling SPK has different
+        # version-level metadata, to prevent last-write-wins corruption.
+        # Pin to distinct architectures so Build.generate_filename produces
+        # different paths for each build — otherwise one SPK overwrites the other.
+        build1 = BuildFactory(architectures=[Architecture.find("88f628x")])
+        build2 = BuildFactory(
+            version=build1.version,
+            architectures=[Architecture.find("cedarview")],
+        )
+        db.session.commit()
+
+        # Verify the two builds have different paths on disk.
+        self.assertNotEqual(
+            build1.path,
+            build2.path,
+            "Precondition failed: builds must have different SPK paths",
+        )
+
+        original_displayname = build1.version.displaynames["enu"].displayname
+        modified_displayname = original_displayname + " SIBLING MODIFIED"
+
+        info2 = create_info(build2)
+        info2["displayname"] = modified_displayname
+        info2["displayname_enu"] = modified_displayname
+
+        spk2_path = os.path.join(current_app.config["DATA_PATH"], build2.path)
+        with open(spk2_path, "wb") as f:
+            with create_spk(build2, info=info2) as spk:
+                f.write(spk.read())
+
+        # Sanity check: build1's SPK on disk must still have the original name.
+        import io as _io
+
+        from spkrepo.utils import SPK, extract_version_metadata
+
+        spk1_path = os.path.join(current_app.config["DATA_PATH"], build1.path)
+        with _io.open(spk1_path, "rb") as f:
+            meta1 = extract_version_metadata(SPK(f))
+        with _io.open(spk2_path, "rb") as f:
+            meta2 = extract_version_metadata(SPK(f))
+        self.assertNotEqual(
+            meta1["displaynames"],
+            meta2["displaynames"],
+            "Precondition failed: SPK files must differ before running resync",
+        )
+
+        with self.logged_user("package_admin", "admin"):
+            response = self.client.post(
+                url_for("build.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build1.id]),
+            )
+        self.assert200(response)
+        self.assertIn("Failed", response.data.decode())
+        self.assertNotIn("refreshed", response.data.decode())
+
     def test_action_resync_file_visible_to_package_admin(self):
         with self.logged_user("package_admin"):
             response = self.client.get(url_for("build.index_view"))
@@ -770,7 +949,7 @@ class BuildTestCase(BaseTestCase):
         # A developer who is a maintainer on a package sees only that package's builds.
         with self.logged_user("developer") as user:
             own_package = PackageFactory(maintainers=[user])
-            BuildFactory(version__package=own_package)  # creates the build on disk
+            BuildFactory(version__package=own_package)
             other_build = BuildFactory()
             db.session.commit()
             response = self.client.get(url_for("build.index_view"))
@@ -820,8 +999,6 @@ class ScreenshotDeleteTestCase(BaseTestCase):
     def test_delete_removes_file(self):
         package = PackageFactory(add_screenshot=False)
         db.session.commit()
-        # Use a single logged_user context so create and delete are performed
-        # by the same user, matching the normal admin workflow.
         with self.logged_user("package_admin"):
             self.client.post(
                 url_for("screenshot.create_view"),
