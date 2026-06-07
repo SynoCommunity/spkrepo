@@ -11,6 +11,8 @@ from spkrepo.tests.common import (
     PackageFactory,
     VersionFactory,
     create_image,
+    create_info,
+    create_spk,
 )
 
 
@@ -274,8 +276,7 @@ class VersionTestCase(BaseTestCase):
 
     def test_action_resync_info_refreshes_build_metadata(self):
         # Pin firmware_min to the lowest seeded firmware so we can always find
-        # a different one to corrupt the build with, making the
-        # restore assertion meaningful.
+        # a different one to corrupt the build with.
         build = BuildFactory(
             firmware_min=Firmware.query.order_by(Firmware.build.asc()).first(),
             firmware_max=Firmware.query.order_by(Firmware.build.desc()).first(),
@@ -289,7 +290,7 @@ class VersionTestCase(BaseTestCase):
         original_dependencies = build.buildmanifest.dependencies
         original_conf_privilege = build.buildmanifest.conf_privilege
 
-        # Corrupt the build — use a firmware that is guaranteed to differ
+        # Corrupt the build
         corrupting_firmware = Firmware.query.filter(
             Firmware.id != original_firmware_min.id
         ).first()
@@ -304,7 +305,6 @@ class VersionTestCase(BaseTestCase):
 
         db.session.commit()
 
-        # Verify the corruption took effect so we know the resync is actually doing work
         self.assertNotEqual(build.firmware_min.id, original_firmware_min.id)
         self.assertIsNone(build.firmware_max)
 
@@ -325,7 +325,6 @@ class VersionTestCase(BaseTestCase):
             original_architectures,
         )
         self.assertEqual(refreshed_build.firmware_min.id, original_firmware_min.id)
-        # firmware_max was set to a known value and should be restored
         self.assertIsNotNone(refreshed_build.firmware_max)
         self.assertEqual(refreshed_build.firmware_max.id, original_firmware_max.id)
         self.assertEqual(
@@ -337,6 +336,35 @@ class VersionTestCase(BaseTestCase):
             original_conf_privilege,
         )
         self.assertEqual(refreshed_build.md5, refreshed_build.calculate_md5())
+
+    def test_action_resync_info_rejects_inconsistent_sibling_builds(self):
+        # If two builds under the same version have different version-level metadata
+        # on disk, resync must fail with an error rather than silently overwriting.
+        build1 = BuildFactory()
+        build2 = BuildFactory(version=build1.version)
+        db.session.commit()
+
+        # Overwrite build2's SPK on disk with a displayname that differs
+        # from what is in the DB (and from build1's SPK).
+        existing_displayname = build1.version.displaynames["enu"].displayname
+        info = create_info(build2)
+        info["displayname"] = existing_displayname + " SIBLING MODIFIED"
+        info["displayname_enu"] = existing_displayname + " SIBLING MODIFIED"
+        spk_path = os.path.join(current_app.config["DATA_PATH"], build2.path)
+        with open(spk_path, "wb") as f:
+            with create_spk(build2, info=info) as spk:
+                f.write(spk.read())
+
+        with self.logged_user("package_admin", "admin"):
+            response = self.client.post(
+                url_for("version.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build1.version.id]),
+            )
+        self.assert200(response)
+        # The flash message must report failure, not success.
+        self.assertIn("Failed", response.data.decode())
+        self.assertNotIn("refreshed", response.data.decode())
 
     def test_action_resync_file_visible_to_package_admin(self):
         with self.logged_user("package_admin"):
@@ -649,6 +677,34 @@ class BuildTestCase(BaseTestCase):
             original_architectures,
         )
 
+    def test_action_resync_info_rejects_inconsistent_sibling_build(self):
+        # Resyncing a single build must fail if its sibling SPK has different
+        # version-level metadata, to prevent last-write-wins corruption.
+        build1 = BuildFactory()
+        build2 = BuildFactory(version=build1.version)
+        db.session.commit()
+
+        # Overwrite build2's SPK on disk with a displayname that differs
+        # from what is stored in the DB (and from build1's SPK).
+        existing_displayname = build1.version.displaynames["enu"].displayname
+        info = create_info(build2)
+        info["displayname"] = existing_displayname + " SIBLING MODIFIED"
+        info["displayname_enu"] = existing_displayname + " SIBLING MODIFIED"
+        spk_path = os.path.join(current_app.config["DATA_PATH"], build2.path)
+        with open(spk_path, "wb") as f:
+            with create_spk(build2, info=info) as spk:
+                f.write(spk.read())
+
+        with self.logged_user("package_admin", "admin"):
+            response = self.client.post(
+                url_for("build.action_view"),
+                follow_redirects=True,
+                data=dict(action="resync_info", rowid=[build1.id]),
+            )
+        self.assert200(response)
+        self.assertIn("Failed", response.data.decode())
+        self.assertNotIn("refreshed", response.data.decode())
+
     def test_action_resync_file_visible_to_package_admin(self):
         with self.logged_user("package_admin"):
             response = self.client.get(url_for("build.index_view"))
@@ -770,7 +826,7 @@ class BuildTestCase(BaseTestCase):
         # A developer who is a maintainer on a package sees only that package's builds.
         with self.logged_user("developer") as user:
             own_package = PackageFactory(maintainers=[user])
-            BuildFactory(version__package=own_package)  # creates the build on disk
+            BuildFactory(version__package=own_package)
             other_build = BuildFactory()
             db.session.commit()
             response = self.client.get(url_for("build.index_view"))
@@ -820,8 +876,6 @@ class ScreenshotDeleteTestCase(BaseTestCase):
     def test_delete_removes_file(self):
         package = PackageFactory(add_screenshot=False)
         db.session.commit()
-        # Use a single logged_user context so create and delete are performed
-        # by the same user, matching the normal admin workflow.
         with self.logged_user("package_admin"):
             self.client.post(
                 url_for("screenshot.create_view"),
