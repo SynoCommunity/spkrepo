@@ -29,11 +29,7 @@ from ..models import (
     User,
     Version,
 )
-from ..utils import (
-    SPK,
-    apply_info_from_spk,
-    extract_version_metadata,
-)
+from ..utils import SPK, apply_info_from_spk, extract_version_metadata
 
 # ---------------------------------------------------------------------------
 # Shared formatters

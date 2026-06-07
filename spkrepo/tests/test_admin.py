@@ -785,8 +785,9 @@ class BuildTestCase(BaseTestCase):
                 f.write(spk.read())
 
         # Sanity check: build1's SPK on disk must still have the original name.
-        from spkrepo.utils import SPK, extract_version_metadata
         import io as _io
+
+        from spkrepo.utils import SPK, extract_version_metadata
 
         spk1_path = os.path.join(current_app.config["DATA_PATH"], build1.path)
         with _io.open(spk1_path, "rb") as f:

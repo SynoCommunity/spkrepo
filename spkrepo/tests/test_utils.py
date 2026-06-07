@@ -17,8 +17,8 @@ from spkrepo.tests.common import (
 )
 from spkrepo.utils import (
     SPK,
-    extract_version_metadata,
     assert_version_metadata_matches_db,
+    extract_version_metadata,
 )
 
 
