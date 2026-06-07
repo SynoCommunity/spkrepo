@@ -6,6 +6,7 @@ from flask import current_app, url_for
 from spkrepo.ext import db
 from spkrepo.models import Build, Firmware, Package, Version
 from spkrepo.tests.common import (
+    Architecture,
     BaseTestCase,
     BuildFactory,
     PackageFactory,
@@ -382,12 +383,21 @@ class VersionTestCase(BaseTestCase):
     def test_action_resync_info_rejects_inconsistent_sibling_builds(self):
         # If two builds under the same version have different version-level metadata
         # on disk, resync must fail with an error rather than silently overwriting.
-        build1 = BuildFactory()
-        build2 = BuildFactory(version=build1.version)
+        # Pin to distinct architectures so Build.generate_filename produces
+        # different paths for each build — otherwise one SPK overwrites the other.
+        build1 = BuildFactory(architectures=[Architecture.find("88f628x")])
+        build2 = BuildFactory(
+            version=build1.version,
+            architectures=[Architecture.find("cedarview")],
+        )
         db.session.commit()
 
-        # Overwrite build2's SPK on disk with a displayname that differs
-        # from what is in the DB (and from build1's SPK).
+        self.assertNotEqual(
+            build1.path,
+            build2.path,
+            "Precondition failed: builds must have different SPK paths",
+        )
+
         existing_displayname = build1.version.displaynames["enu"].displayname
         info = create_info(build2)
         info["displayname"] = existing_displayname + " SIBLING MODIFIED"
@@ -764,14 +774,22 @@ class BuildTestCase(BaseTestCase):
     def test_action_resync_info_rejects_inconsistent_sibling_build(self):
         # Resyncing a single build must fail if its sibling SPK has different
         # version-level metadata, to prevent last-write-wins corruption.
-        build1 = BuildFactory()
-        build2 = BuildFactory(version=build1.version)
+        # Pin to distinct architectures so Build.generate_filename produces
+        # different paths for each build — otherwise one SPK overwrites the other.
+        build1 = BuildFactory(architectures=[Architecture.find("88f628x")])
+        build2 = BuildFactory(
+            version=build1.version,
+            architectures=[Architecture.find("cedarview")],
+        )
         db.session.commit()
 
-        # Build build2's info independently and set a displayname that is
-        # guaranteed to differ from what build1's SPK contains on disk.
-        # We must override both the bare and the suffixed key because create_info
-        # emits both "displayname" and "displayname_enu".
+        # Verify the two builds have different paths on disk.
+        self.assertNotEqual(
+            build1.path,
+            build2.path,
+            "Precondition failed: builds must have different SPK paths",
+        )
+
         original_displayname = build1.version.displaynames["enu"].displayname
         modified_displayname = original_displayname + " SIBLING MODIFIED"
 
