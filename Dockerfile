@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY spkrepo ./spkrepo
 COPY migrations ./migrations
 COPY wsgi.py ./
+COPY celery_app.py ./
 
 HEALTHCHECK --interval=1m --timeout=5s \
   CMD curl -f http://localhost:8000/ || exit 1
