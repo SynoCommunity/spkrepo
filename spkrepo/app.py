@@ -8,7 +8,7 @@ from flask_admin import Admin
 
 from . import config as default_config
 from .cli import spkrepo as spkrepo_cli
-from .ext import babel, cache, db, debug_toolbar, mail, migrate, security
+from .ext import babel, cache, celery, db, debug_toolbar, mail, migrate, security
 from .filters import register_filters
 from .models import user_datastore
 from .views import (
@@ -20,6 +20,7 @@ from .views import (
     ScreenshotView,
     ServiceView,
     SpkrepoRegisterForm,
+    TaskStatusView,
     UserView,
     VersionView,
     api,
@@ -81,6 +82,9 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
         admin.add_view(PackageView())
         admin.add_view(VersionView())
         admin.add_view(BuildView())
+        admin.add_view(
+            TaskStatusView(name="Task Status", endpoint="tasks", url="/admin/tasks/")
+        )
         admin.init_app(app)
 
     # Commands
@@ -104,5 +108,16 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
 
     # Jinja2 filters
     register_filters(app)
+
+    # Celery
+    celery.config_from_object(app.config.get("CELERY", {}))
+
+    class FlaskTask(celery.Task):
+        def __call__(self, *args, **kwargs):
+            with app.app_context():
+                return self.run(*args, **kwargs)
+
+    celery.Task = FlaskTask
+    app.extensions["celery"] = celery
 
     return app

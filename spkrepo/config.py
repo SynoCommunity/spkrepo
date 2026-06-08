@@ -50,7 +50,22 @@ MIGRATE_DIRECTORY = os.path.abspath(
 )
 
 # Cache
-CACHE_TYPE = "null"
+CACHE_TYPE = "redis"
+CACHE_REDIS_HOST = "localhost"
+
+# Tasks
+CELERY = {
+    "broker_url": os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/1"),
+    "result_backend": os.environ.get(
+        "CELERY_RESULT_BACKEND", "redis://localhost:6379/1"
+    ),
+    "result_expires": 86400,  # clean up task results after 24 hours
+    "task_queues": {
+        "celery": {},  # default queue for anything else
+        "resync": {},  # resync tasks — isolated so they can't starve other work
+    },
+    "task_default_queue": "celery",
+}
 
 # Debug Toolbar
 DEBUG_TB_INTERCEPT_REDIRECTS = False

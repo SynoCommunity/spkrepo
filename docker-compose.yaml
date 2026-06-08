@@ -22,3 +22,7 @@ services:
       - .:/usr/src/app/
     depends_on:
       - db
+  redis:
+    image: redis
+    ports:
+      - 6379:6379

@@ -2,22 +2,34 @@
 import io
 import os
 import shutil
+import uuid
 from datetime import date, timedelta
 
-from flask import abort, current_app, flash, redirect, request, url_for
-from flask_admin import AdminIndexView, expose
+from celery.result import AsyncResult
+from flask import (
+    abort,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    request,
+    session,
+    url_for,
+)
+from flask_admin import AdminIndexView, BaseView, expose
 from flask_admin.actions import action
 from flask_admin.contrib.sqla import ModelView
 from flask_admin.contrib.sqla.form import get_form
 from flask_admin.contrib.sqla.tools import get_query_for_ids
 from flask_admin.form import ImageUploadField
 from flask_security import current_user
+from flask_wtf.csrf import generate_csrf
 from markupsafe import Markup
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import PasswordField
 from wtforms.validators import Regexp
 
-from ..ext import cache, db
+from ..ext import cache, celery, db
 from ..models import (
     Architecture,
     Build,
@@ -30,6 +42,7 @@ from ..models import (
     Version,
 )
 from ..utils import SPK, apply_info_from_spk, extract_version_metadata
+from .tasks import resync_build_file, resync_build_metadata
 
 # ---------------------------------------------------------------------------
 # Shared formatters
@@ -62,6 +75,42 @@ def _flash_action_results(successes, failures, skipped=None, item_label="item"):
         )
     for name, message in failures:
         flash(f"Failed to process {name}: {message}", "error")
+
+
+def _task_redis_key():
+    """Return a per-user Redis key for storing task IDs.
+
+    The key is stored in the session cookie as a short UUID — only 36 bytes,
+    well within the 4KB cookie limit regardless of how many tasks are queued.
+    The task ID list itself lives in Redis.
+    """
+
+    key = session.get("resync_task_key")
+    if not key:
+        key = f"resync_tasks:{uuid.uuid4()}"
+        session["resync_task_key"] = key
+    return key
+
+
+def _store_task_ids(new_ids):
+    """Append new task IDs to the user's Redis-backed task list."""
+    key = _task_redis_key()
+    existing = cache.get(key) or []
+    cache.set(key, existing + new_ids, timeout=86400)  # match result_expires
+
+
+def _get_task_ids():
+    """Return the current user's task ID list from Redis."""
+    key = _task_redis_key()
+    return cache.get(key) or []
+
+
+def _clear_task_ids():
+    """Remove the current user's task ID list from Redis."""
+
+    key = session.pop("resync_task_key", None)
+    if key:
+        cache.delete(key)
 
 
 # ---------------------------------------------------------------------------
@@ -264,18 +313,22 @@ class SignResyncMixin:
         "Reapply INFO metadata from selected builds?",
     )
     def action_resync_info(self, ids):
-        successes, failures = [], []
+        task_ids = []
         for label, build in self._iter_builds(ids):
-            try:
-                _resync_build_metadata(db.session, build)
-                db.session.commit()
-                successes.append(label)
-            except Exception as exc:
-                db.session.rollback()
-                failures.append((label, str(exc)))
-        if successes:
-            cache.delete("packages_versions")
-        _flash_action_results(successes, failures, item_label="build")
+            result = resync_build_metadata.delay(build.id, str(build))
+            task_ids.append(result.id)
+        if task_ids:
+            _store_task_ids(task_ids)
+            count = len(task_ids)
+            flash(
+                Markup(
+                    f"{count} resync task(s) queued. "
+                    f'<a href="/admin/tasks/">View status</a>',
+                ),
+                "info",
+            )
+        else:
+            flash("No builds found to resync.", "warning")
 
     @action(
         "resync_file",
@@ -283,18 +336,22 @@ class SignResyncMixin:
         "Recalculate md5 and size from selected build files?",
     )
     def action_resync_file(self, ids):
-        successes, failures = [], []
+        task_ids = []
         for label, build in self._iter_builds(ids):
-            try:
-                _resync_build_file(build)
-                db.session.commit()
-                successes.append(label)
-            except Exception as exc:
-                db.session.rollback()
-                failures.append((label, str(exc)))
-        if successes:
-            cache.delete("packages_versions")
-        _flash_action_results(successes, failures, item_label="build")
+            result = resync_build_file.delay(build.id, str(build))
+            task_ids.append(result.id)
+        if task_ids:
+            _store_task_ids(task_ids)
+            count = len(task_ids)
+            flash(
+                Markup(
+                    f"{count} file resync task(s) queued. "
+                    f'<a href="/admin/tasks/">View status</a>',
+                ),
+                "info",
+            )
+        else:
+            flash("No builds found to resync.", "warning")
 
 
 # ---------------------------------------------------------------------------
@@ -535,9 +592,7 @@ class PackageView(ModelView):
         return super().details_view()
 
     def _get_arch_breakdown(self):
-        from flask import request as flask_request
-
-        pkg_id = flask_request.args.get("id", type=int)
+        pkg_id = request.args.get("id", type=int)
         if not pkg_id:
             return None
         cutoff = date.today() - timedelta(days=90)
@@ -1021,3 +1076,88 @@ class IndexView(AdminIndexView):
             ),
             recent_versions=recent_versions,
         )
+
+
+# ---------------------------------------------------------------------------
+# Task status
+# ---------------------------------------------------------------------------
+
+
+class TaskStatusView(BaseView):
+    """Admin panel page showing the status of queued resync tasks."""
+
+    def is_accessible(self):
+        return current_user.is_authenticated and any(
+            current_user.has_role(r) for r in ("developer", "package_admin", "admin")
+        )
+
+    def inaccessible_callback(self, name, **kwargs):
+        return redirect(url_for("security.login"))
+
+    @expose("/")
+    def index(self):
+        task_ids = _get_task_ids()
+        tasks = []
+        pending_count = 0
+        for task_id in task_ids:
+            result = AsyncResult(task_id, app=celery)
+            state = result.state
+            info = result.info if result.ready() else None
+            if state in ("PENDING", "STARTED", "RETRY"):
+                pending_count += 1
+            tasks.append(
+                {
+                    "id": task_id,
+                    "state": state,
+                    "result": info,
+                }
+            )
+        return self.render(
+            "admin/task_status.html",
+            tasks=tasks,
+            pending_count=pending_count,
+            csrf_token=generate_csrf,
+        )
+
+    @expose("/status/")
+    def status_json(self):
+        """JSON endpoint polled by the page's auto-refresh."""
+        if not self.is_accessible():
+            return jsonify({"error": "forbidden"}), 403
+
+        task_ids = _get_task_ids()
+        tasks = []
+        pending_count = 0
+        for task_id in task_ids:
+            result = AsyncResult(task_id, app=celery)
+            state = result.state
+            info = result.info if result.ready() else None
+            label = (
+                (info or {}).get("label", task_id)
+                if isinstance(info, dict)
+                else task_id
+            )
+            error = (
+                (info or {}).get("error")
+                if isinstance(info, dict)
+                else (str(info) if info else None)
+            )
+            if state in ("PENDING", "STARTED", "RETRY"):
+                pending_count += 1
+            tasks.append(
+                {
+                    "id": task_id,
+                    "state": state,
+                    "label": label,
+                    "error": error,
+                }
+            )
+        return jsonify({"tasks": tasks, "pending_count": pending_count})
+
+    @expose("/clear/", methods=["POST"])
+    def clear(self):
+        """Clear the current user's task list from Redis."""
+        if not self.is_accessible():
+            abort(403)
+        _clear_task_ids()
+        return redirect(url_for("tasks.index"))
