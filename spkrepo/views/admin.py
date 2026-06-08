@@ -2,10 +2,20 @@
 import io
 import os
 import shutil
+import uuid
 from datetime import date, timedelta
 
 from celery.result import AsyncResult
-from flask import abort, current_app, flash, jsonify, redirect, request, url_for
+from flask import (
+    abort,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    request,
+    session,
+    url_for,
+)
 from flask_admin import AdminIndexView, BaseView, expose
 from flask_admin.actions import action
 from flask_admin.contrib.sqla import ModelView
@@ -65,6 +75,42 @@ def _flash_action_results(successes, failures, skipped=None, item_label="item"):
         )
     for name, message in failures:
         flash(f"Failed to process {name}: {message}", "error")
+
+
+def _task_redis_key():
+    """Return a per-user Redis key for storing task IDs.
+
+    The key is stored in the session cookie as a short UUID — only 36 bytes,
+    well within the 4KB cookie limit regardless of how many tasks are queued.
+    The task ID list itself lives in Redis.
+    """
+
+    key = session.get("resync_task_key")
+    if not key:
+        key = f"resync_tasks:{uuid.uuid4()}"
+        session["resync_task_key"] = key
+    return key
+
+
+def _store_task_ids(new_ids):
+    """Append new task IDs to the user's Redis-backed task list."""
+    key = _task_redis_key()
+    existing = cache.get(key) or []
+    cache.set(key, existing + new_ids, timeout=86400)  # match result_expires
+
+
+def _get_task_ids():
+    """Return the current user's task ID list from Redis."""
+    key = _task_redis_key()
+    return cache.get(key) or []
+
+
+def _clear_task_ids():
+    """Remove the current user's task ID list from Redis."""
+
+    key = session.pop("resync_task_key", None)
+    if key:
+        cache.delete(key)
 
 
 # ---------------------------------------------------------------------------
@@ -272,11 +318,7 @@ class SignResyncMixin:
             result = resync_build_metadata.delay(build.id, str(build))
             task_ids.append(result.id)
         if task_ids:
-            # Store in session so TaskStatusView can display them
-            from flask import session as flask_session
-
-            existing = flask_session.get("resync_task_ids", [])
-            flask_session["resync_task_ids"] = existing + task_ids
+            _store_task_ids(task_ids)
             count = len(task_ids)
             flash(
                 Markup(
@@ -299,10 +341,7 @@ class SignResyncMixin:
             result = resync_build_file.delay(build.id, str(build))
             task_ids.append(result.id)
         if task_ids:
-            from flask import session as flask_session
-
-            existing = flask_session.get("resync_task_ids", [])
-            flask_session["resync_task_ids"] = existing + task_ids
+            _store_task_ids(task_ids)
             count = len(task_ids)
             flash(
                 Markup(
@@ -553,9 +592,7 @@ class PackageView(ModelView):
         return super().details_view()
 
     def _get_arch_breakdown(self):
-        from flask import request as flask_request
-
-        pkg_id = flask_request.args.get("id", type=int)
+        pkg_id = request.args.get("id", type=int)
         if not pkg_id:
             return None
         cutoff = date.today() - timedelta(days=90)
@@ -1059,9 +1096,7 @@ class TaskStatusView(BaseView):
 
     @expose("/")
     def index(self):
-        from flask import session as flask_session
-
-        task_ids = flask_session.get("resync_task_ids", [])
+        task_ids = _get_task_ids()
         tasks = []
         pending_count = 0
         for task_id in task_ids:
@@ -1086,16 +1121,11 @@ class TaskStatusView(BaseView):
 
     @expose("/status/")
     def status_json(self):
-        """JSON endpoint polled by the page's auto-refresh.
-        Access is gated by is_accessible — unauthenticated or unauthorised
-        requests are rejected before this method is reached.
-        """
+        """JSON endpoint polled by the page's auto-refresh."""
         if not self.is_accessible():
             return jsonify({"error": "forbidden"}), 403
 
-        from flask import session as flask_session
-
-        task_ids = flask_session.get("resync_task_ids", [])
+        task_ids = _get_task_ids()
         tasks = []
         pending_count = 0
         for task_id in task_ids:
@@ -1126,10 +1156,8 @@ class TaskStatusView(BaseView):
 
     @expose("/clear/", methods=["POST"])
     def clear(self):
-        """Clear the current session's task list."""
+        """Clear the current user's task list from Redis."""
         if not self.is_accessible():
             abort(403)
-        from flask import session as flask_session
-
-        flask_session.pop("resync_task_ids", None)
+        _clear_task_ids()
         return redirect(url_for("tasks.index"))
