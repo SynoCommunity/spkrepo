@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from celery import Celery
 from flask_babel import Babel
 from flask_caching import Cache
 from flask_mail import Mail
@@ -10,6 +11,8 @@ from flask_sqlalchemy import SQLAlchemy
 babel = Babel()
 # Cache
 cache = Cache()
+# Celery
+celery = Celery()
 # Mail
 mail = Mail()
 # Migrate

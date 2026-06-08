@@ -4,8 +4,9 @@ import os
 import shutil
 from datetime import date, timedelta
 
-from flask import abort, current_app, flash, redirect, request, url_for
-from flask_admin import AdminIndexView, expose
+from celery.result import AsyncResult
+from flask import abort, current_app, flash, jsonify, redirect, request, url_for
+from flask_admin import AdminIndexView, BaseView, expose
 from flask_admin.actions import action
 from flask_admin.contrib.sqla import ModelView
 from flask_admin.contrib.sqla.form import get_form
@@ -17,7 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from wtforms import PasswordField
 from wtforms.validators import Regexp
 
-from ..ext import cache, db
+from ..ext import cache, celery, db
 from ..models import (
     Architecture,
     Build,
@@ -30,6 +31,7 @@ from ..models import (
     Version,
 )
 from ..utils import SPK, apply_info_from_spk, extract_version_metadata
+from .tasks import resync_build_file, resync_build_metadata
 
 # ---------------------------------------------------------------------------
 # Shared formatters
@@ -264,18 +266,26 @@ class SignResyncMixin:
         "Reapply INFO metadata from selected builds?",
     )
     def action_resync_info(self, ids):
-        successes, failures = [], []
+        task_ids = []
         for label, build in self._iter_builds(ids):
-            try:
-                _resync_build_metadata(db.session, build)
-                db.session.commit()
-                successes.append(label)
-            except Exception as exc:
-                db.session.rollback()
-                failures.append((label, str(exc)))
-        if successes:
-            cache.delete("packages_versions")
-        _flash_action_results(successes, failures, item_label="build")
+            result = resync_build_metadata.delay(build.id, str(build))
+            task_ids.append(result.id)
+        if task_ids:
+            # Store in session so TaskStatusView can display them
+            from flask import session as flask_session
+
+            existing = flask_session.get("resync_task_ids", [])
+            flask_session["resync_task_ids"] = existing + task_ids
+            count = len(task_ids)
+            flash(
+                Markup(
+                    f"{count} resync task(s) queued. "
+                    f'<a href="/admin/tasks/">View status</a>',
+                ),
+                "info",
+            )
+        else:
+            flash("No builds found to resync.", "warning")
 
     @action(
         "resync_file",
@@ -283,18 +293,25 @@ class SignResyncMixin:
         "Recalculate md5 and size from selected build files?",
     )
     def action_resync_file(self, ids):
-        successes, failures = [], []
+        task_ids = []
         for label, build in self._iter_builds(ids):
-            try:
-                _resync_build_file(build)
-                db.session.commit()
-                successes.append(label)
-            except Exception as exc:
-                db.session.rollback()
-                failures.append((label, str(exc)))
-        if successes:
-            cache.delete("packages_versions")
-        _flash_action_results(successes, failures, item_label="build")
+            result = resync_build_file.delay(build.id, str(build))
+            task_ids.append(result.id)
+        if task_ids:
+            from flask import session as flask_session
+
+            existing = flask_session.get("resync_task_ids", [])
+            flask_session["resync_task_ids"] = existing + task_ids
+            count = len(task_ids)
+            flash(
+                Markup(
+                    f"{count} file resync task(s) queued. "
+                    f'<a href="/admin/tasks/">View status</a>',
+                ),
+                "info",
+            )
+        else:
+            flash("No builds found to resync.", "warning")
 
 
 # ---------------------------------------------------------------------------
@@ -1021,3 +1038,84 @@ class IndexView(AdminIndexView):
             ),
             recent_versions=recent_versions,
         )
+
+
+# ---------------------------------------------------------------------------
+# Task status
+# ---------------------------------------------------------------------------
+
+
+class TaskStatusView(BaseView):
+    """Admin panel page showing the status of queued resync tasks."""
+
+    def is_accessible(self):
+        return current_user.is_authenticated and any(
+            current_user.has_role(r) for r in ("developer", "package_admin", "admin")
+        )
+
+    def inaccessible_callback(self, name, **kwargs):
+        return redirect(url_for("security.login"))
+
+    @expose("/")
+    def index(self):
+        from flask import session as flask_session
+
+        task_ids = flask_session.get("resync_task_ids", [])
+        tasks = []
+        pending_count = 0
+        for task_id in task_ids:
+            result = AsyncResult(task_id, app=celery)
+            state = result.state  # PENDING, STARTED, SUCCESS, FAILURE, RETRY
+            info = result.info if result.ready() else None
+            if state in ("PENDING", "STARTED", "RETRY"):
+                pending_count += 1
+            tasks.append(
+                {
+                    "id": task_id,
+                    "state": state,
+                    "result": info,
+                }
+            )
+        # Auto-clear completed tasks older than the current batch once all done
+        if task_ids and pending_count == 0:
+            flask_session["resync_task_ids"] = []
+
+        return self.render(
+            "admin/task_status.html",
+            tasks=tasks,
+            pending_count=pending_count,
+        )
+
+    @expose("/status/")
+    def status_json(self):
+        """JSON endpoint polled by the page's auto-refresh."""
+        from flask import session as flask_session
+
+        task_ids = flask_session.get("resync_task_ids", [])
+        tasks = []
+        pending_count = 0
+        for task_id in task_ids:
+            result = AsyncResult(task_id, app=celery)
+            state = result.state
+            info = result.info if result.ready() else None
+            label = (
+                (info or {}).get("label", task_id)
+                if isinstance(info, dict)
+                else task_id
+            )
+            error = (
+                (info or {}).get("error")
+                if isinstance(info, dict)
+                else (str(info) if info else None)
+            )
+            if state in ("PENDING", "STARTED", "RETRY"):
+                pending_count += 1
+            tasks.append(
+                {
+                    "id": task_id,
+                    "state": state,
+                    "label": label,
+                    "error": error,
+                }
+            )
+        return jsonify({"tasks": tasks, "pending_count": pending_count})

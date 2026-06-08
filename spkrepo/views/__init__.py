@@ -7,6 +7,7 @@ from .admin import (
     PackageView,
     ScreenshotView,
     ServiceView,
+    TaskStatusView,
     UserView,
     VersionView,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "ScreenshotView",
     "ServiceView",
     "UserView",
+    "TaskStatusView",
     "VersionView",
     "api",
     "SpkrepoRegisterForm",

@@ -1,0 +1,123 @@
+{% extends 'admin/master.html' %}
+{% block body %}
+<div class="container-fluid" style="margin-top: 20px;">
+  <div class="row">
+    <div class="col">
+      <div class="card border-info">
+        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center" style="font-size: 0.85em;">
+          <span>Resync Task Status</span>
+          <span id="refresh-status" style="font-style: italic;">
+            {% if pending_count > 0 %}polling for updates…{% else %}all tasks finished{% endif %}
+          </span>
+        </div>
+        {% if not tasks %}
+          <div class="card-body text-muted text-center" style="font-size: 0.9em;">
+            No tasks queued in this session.
+          </div>
+        {% else %}
+          <table class="table table-striped table-hover mb-0" id="task-table">
+            <thead>
+              <tr>
+                <th>Build</th>
+                <th style="width: 130px;">Status</th>
+                <th>Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for task in tasks %}
+              <tr id="row-{{ task.id }}">
+                <td>
+                  {% if task.result and task.result.label %}
+                    {{ task.result.label }}
+                  {% else %}
+                    <code>{{ task.id[:12] }}…</code>
+                  {% endif %}
+                </td>
+                <td>
+                  {% set state = task.state | lower %}
+                  {% if state == 'success' %}
+                    <i class="fa fa-check-circle text-success"></i>
+                  {% elif state == 'failure' %}
+                    <i class="fa fa-times-circle text-danger"></i>
+                  {% elif state in ('pending', 'started', 'retry') %}
+                    <i class="fa fa-circle-o-notch fa-spin" style="color: #f0ad4e;"></i>
+                  {% else %}
+                    <i class="fa fa-minus-circle text-muted"></i>
+                  {% endif %}
+                  <span style="font-size: 0.85em; margin-left: 4px;">{{ task.state }}</span>
+                </td>
+                <td style="font-size: 0.9em;">
+                  {% if task.state == 'FAILURE' and task.result %}
+                    <span class="text-danger">{{ task.result }}</span>
+                  {% elif task.result and task.result.get('error') %}
+                    <span class="text-danger">{{ task.result.error }}</span>
+                  {% elif task.state == 'SUCCESS' %}
+                    <span class="text-muted">Done</span>
+                  {% elif task.state in ('PENDING', 'STARTED', 'RETRY') %}
+                    <span class="text-muted">In progress…</span>
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var pendingCount = {{ pending_count }};
+  var pollInterval = 3000;
+  var statusEl = document.getElementById("refresh-status");
+
+  function iconForState(state) {
+    var s = state.toLowerCase();
+    if (s === "success") return '<i class="fa fa-check-circle text-success"></i>';
+    if (s === "failure") return '<i class="fa fa-times-circle text-danger"></i>';
+    if (s === "pending" || s === "started" || s === "retry")
+      return '<i class="fa fa-circle-o-notch fa-spin" style="color:#f0ad4e;"></i>';
+    return '<i class="fa fa-minus-circle text-muted"></i>';
+  }
+
+  function updateTable(tasks) {
+    tasks.forEach(function (t) {
+      var row = document.getElementById("row-" + t.id);
+      if (!row) return;
+      if (t.label && t.label !== t.id) row.cells[0].textContent = t.label;
+      row.cells[1].innerHTML = iconForState(t.state) +
+        '<span style="font-size:0.85em;margin-left:4px;">' + t.state + '</span>';
+      if (t.state === "SUCCESS") {
+        row.cells[2].innerHTML = '<span class="text-muted">Done</span>';
+      } else if (t.state === "FAILURE" || t.error) {
+        row.cells[2].innerHTML = '<span class="text-danger">' + (t.error || t.state) + '</span>';
+      } else {
+        row.cells[2].innerHTML = '<span class="text-muted">In progress…</span>';
+      }
+    });
+  }
+
+  function poll() {
+    fetch("{{ url_for('tasks.status_json') }}")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        updateTable(data.tasks);
+        pendingCount = data.pending_count;
+        if (pendingCount > 0) {
+          if (statusEl) statusEl.textContent = "last updated " + new Date().toLocaleTimeString();
+          setTimeout(poll, pollInterval);
+        } else {
+          if (statusEl) statusEl.textContent = "all tasks finished";
+        }
+      })
+      .catch(function () { setTimeout(poll, pollInterval * 2); });
+  }
+
+  if (pendingCount > 0) setTimeout(poll, pollInterval);
+})();
+</script>
+{% endblock %}

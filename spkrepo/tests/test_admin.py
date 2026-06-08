@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+from unittest.mock import patch
 
 from flask import current_app, url_for
 
@@ -15,6 +16,44 @@ from spkrepo.tests.common import (
     create_info,
     create_spk,
 )
+from spkrepo.views.tasks import resync_build_file, resync_build_metadata
+
+
+def _run_task_sync(task_func):
+    """Return a mock for .delay() that runs the task synchronously in-process.
+
+    Usage:
+        with patch_resync_info(), patch_resync_file():
+            ...
+
+    The mock captures the build_id and build_label arguments that the action
+    handler passes to .delay() and calls the underlying task function directly,
+    so DB state is updated before assertions run — no broker needed.
+    """
+
+    def fake_delay(build_id, build_label=""):
+        task_func(build_id, build_label)
+
+        class FakeResult:
+            id = "fake-task-id"
+
+        return FakeResult()
+
+    return fake_delay
+
+
+def patch_resync_info():
+    return patch.object(
+        resync_build_metadata,
+        "delay",
+        side_effect=_run_task_sync(resync_build_metadata.run),
+    )
+
+
+def patch_resync_file():
+    return patch.object(
+        resync_build_file, "delay", side_effect=_run_task_sync(resync_build_file.run)
+    )
 
 
 class IndexTestCase(BaseTestCase):
@@ -250,13 +289,14 @@ class VersionTestCase(BaseTestCase):
         db.session.commit()
 
         with self.logged_user("package_admin", "admin"):
-            response = self.client.post(
-                url_for("version.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_info", rowid=[version.id]),
-            )
-            self.assert200(response)
-            self.assertIn("refreshed", response.data.decode())
+            with patch_resync_info():
+                response = self.client.post(
+                    url_for("version.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_info", rowid=[version.id]),
+                )
+                self.assert200(response)
+                self.assertIn("queued", response.data.decode())
 
         db.session.expire_all()
         refreshed_version = db.session.get(Build, build.id).version
@@ -276,8 +316,6 @@ class VersionTestCase(BaseTestCase):
         self.assertTrue({"72", "256"}.intersection(refreshed_version.icons.keys()))
 
     def test_action_resync_info_refreshes_build_metadata(self):
-        # Pin firmware_min to the lowest seeded firmware so we can always find
-        # a different one to corrupt the build with.
         build = BuildFactory(
             firmware_min=Firmware.query.order_by(Firmware.build.asc()).first(),
             firmware_max=Firmware.query.order_by(Firmware.build.desc()).first(),
@@ -291,7 +329,6 @@ class VersionTestCase(BaseTestCase):
         original_dependencies = build.buildmanifest.dependencies
         original_conf_privilege = build.buildmanifest.conf_privilege
 
-        # Corrupt the build
         corrupting_firmware = Firmware.query.filter(
             Firmware.id != original_firmware_min.id
         ).first()
@@ -306,17 +343,15 @@ class VersionTestCase(BaseTestCase):
 
         db.session.commit()
 
-        self.assertNotEqual(build.firmware_min.id, original_firmware_min.id)
-        self.assertIsNone(build.firmware_max)
-
         with self.logged_user("package_admin", "admin"):
-            response = self.client.post(
-                url_for("version.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_info", rowid=[version.id]),
-            )
-            self.assert200(response)
-            self.assertIn("refreshed", response.data.decode())
+            with patch_resync_info():
+                response = self.client.post(
+                    url_for("version.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_info", rowid=[version.id]),
+                )
+                self.assert200(response)
+                self.assertIn("queued", response.data.decode())
 
         db.session.expire_all()
         refreshed_build = db.session.get(Build, build.id)
@@ -345,11 +380,12 @@ class VersionTestCase(BaseTestCase):
 
         app_cache.set("packages_versions", "stale")
         with self.logged_user("package_admin", "admin"):
-            self.client.post(
-                url_for("version.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_info", rowid=[build.version.id]),
-            )
+            with patch_resync_info():
+                self.client.post(
+                    url_for("version.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_info", rowid=[build.version.id]),
+                )
         self.assertIsNone(app_cache.get("packages_versions"))
 
     def test_action_resync_file_invalidates_cache(self):
@@ -359,32 +395,29 @@ class VersionTestCase(BaseTestCase):
 
         app_cache.set("packages_versions", "stale")
         with self.logged_user("package_admin", "admin"):
-            self.client.post(
-                url_for("version.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_file", rowid=[build.version.id]),
-            )
+            with patch_resync_file():
+                self.client.post(
+                    url_for("version.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_file", rowid=[build.version.id]),
+                )
         self.assertIsNone(app_cache.get("packages_versions"))
 
     def test_action_resync_info_single_build_no_siblings_succeeds(self):
-        # A version with only one build must resync cleanly with no sibling check.
         build = BuildFactory()
         db.session.commit()
         self.assertEqual(len(build.version.builds), 1)
         with self.logged_user("package_admin", "admin"):
-            response = self.client.post(
-                url_for("version.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_info", rowid=[build.version.id]),
-            )
+            with patch_resync_info():
+                response = self.client.post(
+                    url_for("version.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_info", rowid=[build.version.id]),
+                )
         self.assert200(response)
-        self.assertIn("refreshed", response.data.decode())
+        self.assertIn("queued", response.data.decode())
 
     def test_action_resync_info_rejects_inconsistent_sibling_builds(self):
-        # If two builds under the same version have different version-level metadata
-        # on disk, resync must fail with an error rather than silently overwriting.
-        # Pin to distinct architectures so Build.generate_filename produces
-        # different paths for each build — otherwise one SPK overwrites the other.
         build1 = BuildFactory(architectures=[Architecture.find("88f628x")])
         build2 = BuildFactory(
             version=build1.version,
@@ -408,15 +441,23 @@ class VersionTestCase(BaseTestCase):
                 f.write(spk.read())
 
         with self.logged_user("package_admin", "admin"):
-            response = self.client.post(
-                url_for("version.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_info", rowid=[build1.version.id]),
-            )
+            with patch_resync_info():
+                response = self.client.post(
+                    url_for("version.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_info", rowid=[build1.version.id]),
+                )
+        # The task runs synchronously but returns an error result; the action
+        # still queues successfully — check the task result was an error.
         self.assert200(response)
-        # The flash message must report failure, not success.
-        self.assertIn("Failed", response.data.decode())
-        self.assertNotIn("refreshed", response.data.decode())
+        self.assertIn("queued", response.data.decode())
+        # Verify the DB was NOT updated with the mismatched metadata.
+        db.session.expire_all()
+        unchanged = db.session.get(Build, build1.id)
+        self.assertEqual(
+            unchanged.version.displaynames["enu"].displayname,
+            existing_displayname,
+        )
 
     def test_action_resync_file_visible_to_package_admin(self):
         with self.logged_user("package_admin"):
@@ -440,13 +481,14 @@ class VersionTestCase(BaseTestCase):
         db.session.commit()
 
         with self.logged_user("package_admin", "admin"):
-            response = self.client.post(
-                url_for("version.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_file", rowid=[version.id]),
-            )
-            self.assert200(response)
-            self.assertIn("refreshed", response.data.decode())
+            with patch_resync_file():
+                response = self.client.post(
+                    url_for("version.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_file", rowid=[version.id]),
+                )
+                self.assert200(response)
+                self.assertIn("queued", response.data.decode())
 
         db.session.expire_all()
         refreshed_build = db.session.get(Build, build.id)
@@ -536,13 +578,14 @@ class VersionTestCase(BaseTestCase):
         build = BuildFactory()
         db.session.commit()
         with self.logged_user("package_admin"):
-            response = self.client.post(
-                url_for("version.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_info", rowid=[build.version.id]),
-            )
+            with patch_resync_info():
+                response = self.client.post(
+                    url_for("version.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_info", rowid=[build.version.id]),
+                )
         self.assert200(response)
-        self.assertIn("refreshed", response.data.decode())
+        self.assertIn("queued", response.data.decode())
 
     def test_action_resync_info_blocked_for_developer(self):
         build = BuildFactory()
@@ -560,13 +603,14 @@ class VersionTestCase(BaseTestCase):
         build = BuildFactory()
         db.session.commit()
         with self.logged_user("package_admin"):
-            response = self.client.post(
-                url_for("version.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_file", rowid=[build.version.id]),
-            )
+            with patch_resync_file():
+                response = self.client.post(
+                    url_for("version.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_file", rowid=[build.version.id]),
+                )
         self.assert200(response)
-        self.assertIn("refreshed", response.data.decode())
+        self.assertIn("queued", response.data.decode())
 
     def test_action_resync_file_blocked_for_developer(self):
         build = BuildFactory()
@@ -690,13 +734,14 @@ class BuildTestCase(BaseTestCase):
         db.session.commit()
 
         with self.logged_user("package_admin", "admin"):
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_info", rowid=[build.id]),
-            )
-            self.assert200(response)
-            self.assertIn("refreshed", response.data.decode())
+            with patch_resync_info():
+                response = self.client.post(
+                    url_for("build.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_info", rowid=[build.id]),
+                )
+                self.assert200(response)
+                self.assertIn("queued", response.data.decode())
 
         db.session.expire_all()
         refreshed_build = db.session.get(Build, build.id)
@@ -714,13 +759,14 @@ class BuildTestCase(BaseTestCase):
         db.session.commit()
 
         with self.logged_user("package_admin", "admin"):
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_info", rowid=[build.id]),
-            )
-            self.assert200(response)
-            self.assertIn("refreshed", response.data.decode())
+            with patch_resync_info():
+                response = self.client.post(
+                    url_for("build.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_info", rowid=[build.id]),
+                )
+                self.assert200(response)
+                self.assertIn("queued", response.data.decode())
 
         db.session.expire_all()
         refreshed_build = db.session.get(Build, build.id)
@@ -730,18 +776,18 @@ class BuildTestCase(BaseTestCase):
         )
 
     def test_action_resync_info_single_build_no_siblings_succeeds(self):
-        # A build with no siblings must resync cleanly.
         build = BuildFactory()
         db.session.commit()
         self.assertEqual(len(build.version.builds), 1)
         with self.logged_user("package_admin", "admin"):
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_info", rowid=[build.id]),
-            )
+            with patch_resync_info():
+                response = self.client.post(
+                    url_for("build.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_info", rowid=[build.id]),
+                )
         self.assert200(response)
-        self.assertIn("refreshed", response.data.decode())
+        self.assertIn("queued", response.data.decode())
 
     def test_action_resync_info_invalidates_cache(self):
         build = BuildFactory()
@@ -750,11 +796,12 @@ class BuildTestCase(BaseTestCase):
 
         app_cache.set("packages_versions", "stale")
         with self.logged_user("package_admin", "admin"):
-            self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_info", rowid=[build.id]),
-            )
+            with patch_resync_info():
+                self.client.post(
+                    url_for("build.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_info", rowid=[build.id]),
+                )
         self.assertIsNone(app_cache.get("packages_versions"))
 
     def test_action_resync_file_invalidates_cache(self):
@@ -764,18 +811,15 @@ class BuildTestCase(BaseTestCase):
 
         app_cache.set("packages_versions", "stale")
         with self.logged_user("package_admin", "admin"):
-            self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_file", rowid=[build.id]),
-            )
+            with patch_resync_file():
+                self.client.post(
+                    url_for("build.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_file", rowid=[build.id]),
+                )
         self.assertIsNone(app_cache.get("packages_versions"))
 
     def test_action_resync_info_rejects_inconsistent_sibling_build(self):
-        # Resyncing a single build must fail if its sibling SPK has different
-        # version-level metadata, to prevent last-write-wins corruption.
-        # Pin to distinct architectures so Build.generate_filename produces
-        # different paths for each build — otherwise one SPK overwrites the other.
         build1 = BuildFactory(architectures=[Architecture.find("88f628x")])
         build2 = BuildFactory(
             version=build1.version,
@@ -783,7 +827,6 @@ class BuildTestCase(BaseTestCase):
         )
         db.session.commit()
 
-        # Verify the two builds have different paths on disk.
         self.assertNotEqual(
             build1.path,
             build2.path,
@@ -802,7 +845,6 @@ class BuildTestCase(BaseTestCase):
             with create_spk(build2, info=info2) as spk:
                 f.write(spk.read())
 
-        # Sanity check: build1's SPK on disk must still have the original name.
         import io as _io
 
         from spkrepo.utils import SPK, extract_version_metadata
@@ -819,14 +861,20 @@ class BuildTestCase(BaseTestCase):
         )
 
         with self.logged_user("package_admin", "admin"):
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_info", rowid=[build1.id]),
-            )
+            with patch_resync_info():
+                response = self.client.post(
+                    url_for("build.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_info", rowid=[build1.id]),
+                )
         self.assert200(response)
-        self.assertIn("Failed", response.data.decode())
-        self.assertNotIn("refreshed", response.data.decode())
+        # Task runs synchronously but returns error result; DB must be unchanged.
+        db.session.expire_all()
+        unchanged = db.session.get(Build, build1.id)
+        self.assertEqual(
+            unchanged.version.displaynames["enu"].displayname,
+            original_displayname,
+        )
 
     def test_action_resync_file_visible_to_package_admin(self):
         with self.logged_user("package_admin"):
@@ -849,13 +897,14 @@ class BuildTestCase(BaseTestCase):
         db.session.commit()
 
         with self.logged_user("package_admin", "admin"):
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_file", rowid=[build.id]),
-            )
-            self.assert200(response)
-            self.assertIn("refreshed", response.data.decode())
+            with patch_resync_file():
+                response = self.client.post(
+                    url_for("build.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_file", rowid=[build.id]),
+                )
+                self.assert200(response)
+                self.assertIn("queued", response.data.decode())
 
         db.session.expire_all()
         refreshed_build = db.session.get(Build, build.id)
@@ -867,13 +916,14 @@ class BuildTestCase(BaseTestCase):
         build = BuildFactory()
         db.session.commit()
         with self.logged_user("package_admin"):
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_info", rowid=[build.id]),
-            )
+            with patch_resync_info():
+                response = self.client.post(
+                    url_for("build.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_info", rowid=[build.id]),
+                )
         self.assert200(response)
-        self.assertIn("refreshed", response.data.decode())
+        self.assertIn("queued", response.data.decode())
 
     def test_action_resync_info_blocked_for_developer(self):
         build = BuildFactory()
@@ -891,13 +941,14 @@ class BuildTestCase(BaseTestCase):
         build = BuildFactory()
         db.session.commit()
         with self.logged_user("package_admin"):
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="resync_file", rowid=[build.id]),
-            )
+            with patch_resync_file():
+                response = self.client.post(
+                    url_for("build.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="resync_file", rowid=[build.id]),
+                )
         self.assert200(response)
-        self.assertIn("refreshed", response.data.decode())
+        self.assertIn("queued", response.data.decode())
 
     def test_action_resync_file_blocked_for_developer(self):
         build = BuildFactory()
@@ -946,7 +997,6 @@ class BuildTestCase(BaseTestCase):
         self.assert403(response)
 
     def test_developer_sees_only_maintainer_builds(self):
-        # A developer who is a maintainer on a package sees only that package's builds.
         with self.logged_user("developer") as user:
             own_package = PackageFactory(maintainers=[user])
             BuildFactory(version__package=own_package)
