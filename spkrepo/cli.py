@@ -2,9 +2,11 @@ import os
 import shutil
 
 import click
+from flask import current_app
 from flask.cli import with_appcontext
 
 from .ext import db
+from .models import Package, Role, User
 
 
 def _create_user(username, email, password):
@@ -35,6 +37,7 @@ def create_user(username, email, password):
 @with_appcontext
 def populate_db():
     """Populate the database with some sample packages."""
+
     from spkrepo.models import Architecture, BuildManifest
     from spkrepo.tests.common import BuildFactory, PackageFactory, VersionFactory
 
@@ -184,10 +187,6 @@ def populate_db():
 @with_appcontext
 def depopulate_db():
     """Delete all packages from database and file system."""
-    from flask import current_app
-
-    from spkrepo.models import Package
-
     for package in Package.query.all():
         db.session.delete(package)
         shutil.rmtree(
@@ -206,8 +205,6 @@ def depopulate_db():
 @with_appcontext
 def create_admin(username, email, password):
     """Create a new super admin user."""
-    from spkrepo.models import Role, User
-
     click.echo("Creating admin user…")
     existing_admin = User.query.filter_by(email=email).first()
     if existing_admin:
@@ -240,8 +237,6 @@ def create_admin(username, email, password):
 @with_appcontext
 def clean():
     """Clean data path, removes all packages on filesystem."""
-    from flask import current_app
-
     # do not remove and recreate the path since it may be a docker volume
     for root, dirs, files in os.walk(
         os.path.join(current_app.config["DATA_PATH"]), topdown=False
@@ -266,7 +261,6 @@ def ingest_logs():
 
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
-    from flask import current_app
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     from .models import Architecture, Build, DownloadStat, Version
@@ -369,12 +363,10 @@ def ingest_logs():
                     parsed
                 )
 
-                # Skip records with missing arch or firmware
                 if arch_code is None or firmware_build is None:
                     skipped_no_arch += 1
                     continue
 
-                # Resolve build_id and package_id
                 cache_key = (package_name, version_number)
                 if cache_key not in build_cache:
                     build = (
@@ -397,7 +389,6 @@ def ingest_logs():
                     continue
                 build_id, package_id = cached
 
-                # Resolve architecture_id
                 if arch_code not in arch_cache:
                     arch = Architecture.find(arch_code, syno=True)
                     arch_cache[arch_code] = arch.id if arch else None
@@ -407,11 +398,9 @@ def ingest_logs():
                     skipped_no_arch_id += 1
                     continue
 
-                # Aggregate
                 agg_key = (package_id, architecture_id, firmware_build, record_date)
                 counts[agg_key] += 1
 
-                # Track build_id for analytics — set None if ambiguous
                 if agg_key not in build_ids:
                     build_ids[agg_key] = build_id
                 elif build_ids[agg_key] != build_id:

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from flask import current_app
 
-from spkrepo.ext import db
+from spkrepo.ext import cache, db
 from spkrepo.models import Build
 from spkrepo.tests.common import (
     Architecture,
@@ -125,20 +125,16 @@ class ResyncBuildMetadataTaskTestCase(BaseTestCase):
     def test_invalidates_cache_on_success(self):
         build = BuildFactory()
         db.session.commit()
-        from spkrepo.ext import cache as app_cache
-
-        app_cache.set("packages_versions", "stale")
+        cache.set("packages_versions", "stale")
         result = resync_build_metadata(build.id, str(build))
 
         self.assertEqual(result["status"], "ok")
-        self.assertIsNone(app_cache.get("packages_versions"))
+        self.assertIsNone(cache.get("packages_versions"))
 
     def test_cache_not_invalidated_on_error(self):
         build = BuildFactory()
         db.session.commit()
-        from spkrepo.ext import cache as app_cache
-
-        app_cache.set("packages_versions", "stale")
+        cache.set("packages_versions", "stale")
         with patch(
             "spkrepo.views.tasks.extract_version_metadata",
             side_effect=ValueError("bad data"),
@@ -146,7 +142,7 @@ class ResyncBuildMetadataTaskTestCase(BaseTestCase):
             resync_build_metadata(build.id, str(build))
 
         # Cache must be untouched — the commit never ran
-        self.assertEqual(app_cache.get("packages_versions"), "stale")
+        self.assertEqual(cache.get("packages_versions"), "stale")
 
     def test_each_sibling_spk_opened_exactly_once(self):
         """Verify O(n) sibling reads: 3 builds → 3 SPK opens, no duplicates."""
@@ -250,22 +246,18 @@ class ResyncBuildFileTaskTestCase(BaseTestCase):
     def test_invalidates_cache_on_success(self):
         build = BuildFactory()
         db.session.commit()
-        from spkrepo.ext import cache as app_cache
-
-        app_cache.set("packages_versions", "stale")
+        cache.set("packages_versions", "stale")
         result = resync_build_file(build.id, str(build))
 
         self.assertEqual(result["status"], "ok")
-        self.assertIsNone(app_cache.get("packages_versions"))
+        self.assertIsNone(cache.get("packages_versions"))
 
     def test_cache_not_invalidated_on_error(self):
         build = BuildFactory()
         db.session.commit()
-        from spkrepo.ext import cache as app_cache
-
-        app_cache.set("packages_versions", "stale")
+        cache.set("packages_versions", "stale")
         # Use ValueError so it is caught without triggering the retry path
         with patch.object(Build, "calculate_size", side_effect=ValueError("bad size")):
             resync_build_file(build.id, str(build))
 
-        self.assertEqual(app_cache.get("packages_versions"), "stale")
+        self.assertEqual(cache.get("packages_versions"), "stale")

@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
+import io
 import os
 from unittest.mock import patch
 
 from flask import current_app, url_for
 
-from spkrepo.ext import db
+from spkrepo.ext import cache, db
 from spkrepo.models import Build, Firmware, Package, Version
 from spkrepo.tests.common import (
     Architecture,
@@ -16,6 +17,7 @@ from spkrepo.tests.common import (
     create_info,
     create_spk,
 )
+from spkrepo.utils import SPK, extract_version_metadata
 from spkrepo.views.tasks import resync_build_file, resync_build_metadata
 
 
@@ -376,9 +378,7 @@ class VersionTestCase(BaseTestCase):
     def test_action_resync_info_invalidates_cache(self):
         build = BuildFactory()
         db.session.commit()
-        from spkrepo.ext import cache as app_cache
-
-        app_cache.set("packages_versions", "stale")
+        cache.set("packages_versions", "stale")
         with self.logged_user("package_admin", "admin"):
             with patch_resync_info():
                 self.client.post(
@@ -386,14 +386,12 @@ class VersionTestCase(BaseTestCase):
                     follow_redirects=True,
                     data=dict(action="resync_info", rowid=[build.version.id]),
                 )
-        self.assertIsNone(app_cache.get("packages_versions"))
+        self.assertIsNone(cache.get("packages_versions"))
 
     def test_action_resync_file_invalidates_cache(self):
         build = BuildFactory()
         db.session.commit()
-        from spkrepo.ext import cache as app_cache
-
-        app_cache.set("packages_versions", "stale")
+        cache.set("packages_versions", "stale")
         with self.logged_user("package_admin", "admin"):
             with patch_resync_file():
                 self.client.post(
@@ -401,7 +399,7 @@ class VersionTestCase(BaseTestCase):
                     follow_redirects=True,
                     data=dict(action="resync_file", rowid=[build.version.id]),
                 )
-        self.assertIsNone(app_cache.get("packages_versions"))
+        self.assertIsNone(cache.get("packages_versions"))
 
     def test_action_resync_info_single_build_no_siblings_succeeds(self):
         build = BuildFactory()
@@ -792,9 +790,7 @@ class BuildTestCase(BaseTestCase):
     def test_action_resync_info_invalidates_cache(self):
         build = BuildFactory()
         db.session.commit()
-        from spkrepo.ext import cache as app_cache
-
-        app_cache.set("packages_versions", "stale")
+        cache.set("packages_versions", "stale")
         with self.logged_user("package_admin", "admin"):
             with patch_resync_info():
                 self.client.post(
@@ -802,14 +798,12 @@ class BuildTestCase(BaseTestCase):
                     follow_redirects=True,
                     data=dict(action="resync_info", rowid=[build.id]),
                 )
-        self.assertIsNone(app_cache.get("packages_versions"))
+        self.assertIsNone(cache.get("packages_versions"))
 
     def test_action_resync_file_invalidates_cache(self):
         build = BuildFactory()
         db.session.commit()
-        from spkrepo.ext import cache as app_cache
-
-        app_cache.set("packages_versions", "stale")
+        cache.set("packages_versions", "stale")
         with self.logged_user("package_admin", "admin"):
             with patch_resync_file():
                 self.client.post(
@@ -817,7 +811,7 @@ class BuildTestCase(BaseTestCase):
                     follow_redirects=True,
                     data=dict(action="resync_file", rowid=[build.id]),
                 )
-        self.assertIsNone(app_cache.get("packages_versions"))
+        self.assertIsNone(cache.get("packages_versions"))
 
     def test_action_resync_info_rejects_inconsistent_sibling_build(self):
         build1 = BuildFactory(architectures=[Architecture.find("88f628x")])
@@ -845,14 +839,10 @@ class BuildTestCase(BaseTestCase):
             with create_spk(build2, info=info2) as spk:
                 f.write(spk.read())
 
-        import io as _io
-
-        from spkrepo.utils import SPK, extract_version_metadata
-
         spk1_path = os.path.join(current_app.config["DATA_PATH"], build1.path)
-        with _io.open(spk1_path, "rb") as f:
+        with io.open(spk1_path, "rb") as f:
             meta1 = extract_version_metadata(SPK(f))
-        with _io.open(spk2_path, "rb") as f:
+        with io.open(spk2_path, "rb") as f:
             meta2 = extract_version_metadata(SPK(f))
         self.assertNotEqual(
             meta1["displaynames"],
