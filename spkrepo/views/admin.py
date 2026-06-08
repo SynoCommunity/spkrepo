@@ -13,6 +13,7 @@ from flask_admin.contrib.sqla.form import get_form
 from flask_admin.contrib.sqla.tools import get_query_for_ids
 from flask_admin.form import ImageUploadField
 from flask_security import current_user
+from flask_wtf.csrf import generate_csrf
 from markupsafe import Markup
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import PasswordField
@@ -1065,7 +1066,7 @@ class TaskStatusView(BaseView):
         pending_count = 0
         for task_id in task_ids:
             result = AsyncResult(task_id, app=celery)
-            state = result.state  # PENDING, STARTED, SUCCESS, FAILURE, RETRY
+            state = result.state
             info = result.info if result.ready() else None
             if state in ("PENDING", "STARTED", "RETRY"):
                 pending_count += 1
@@ -1076,19 +1077,22 @@ class TaskStatusView(BaseView):
                     "result": info,
                 }
             )
-        # Auto-clear completed tasks older than the current batch once all done
-        if task_ids and pending_count == 0:
-            flask_session["resync_task_ids"] = []
-
         return self.render(
             "admin/task_status.html",
             tasks=tasks,
             pending_count=pending_count,
+            csrf_token=generate_csrf,
         )
 
     @expose("/status/")
     def status_json(self):
-        """JSON endpoint polled by the page's auto-refresh."""
+        """JSON endpoint polled by the page's auto-refresh.
+        Access is gated by is_accessible — unauthenticated or unauthorised
+        requests are rejected before this method is reached.
+        """
+        if not self.is_accessible():
+            return jsonify({"error": "forbidden"}), 403
+
         from flask import session as flask_session
 
         task_ids = flask_session.get("resync_task_ids", [])
@@ -1119,3 +1123,13 @@ class TaskStatusView(BaseView):
                 }
             )
         return jsonify({"tasks": tasks, "pending_count": pending_count})
+
+    @expose("/clear/", methods=["POST"])
+    def clear(self):
+        """Clear the current session's task list."""
+        if not self.is_accessible():
+            abort(403)
+        from flask import session as flask_session
+
+        flask_session.pop("resync_task_ids", None)
+        return redirect(url_for("tasks.index"))

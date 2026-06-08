@@ -6,9 +6,19 @@
       <div class="card border-info">
         <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center" style="font-size: 0.85em;">
           <span>Resync Task Status</span>
-          <span id="refresh-status" style="font-style: italic;">
-            {% if pending_count > 0 %}polling for updates…{% else %}all tasks finished{% endif %}
-          </span>
+          <div class="d-flex align-items-center">
+            <span id="refresh-status" style="font-style: italic; margin-right: 12px;">
+              {% if pending_count > 0 %}polling for updates…{% else %}all tasks finished{% endif %}
+            </span>
+            {% if tasks %}
+            <form method="post" action="{{ url_for('tasks.clear') }}" style="margin: 0;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-light" style="font-size: 0.8em; padding: 2px 8px;">
+                Clear
+              </button>
+            </form>
+            {% endif %}
+          </div>
         </div>
         {% if not tasks %}
           <div class="card-body text-muted text-center" style="font-size: 0.9em;">

@@ -9,25 +9,31 @@ from ..models import Build
 from ..utils import SPK, apply_info_from_spk, extract_version_metadata
 
 
-@celery.task(bind=True, max_retries=3, default_retry_delay=10)
+@celery.task(bind=True, max_retries=3, default_retry_delay=10, queue="resync")
 def resync_build_metadata(self, build_id, build_label):
-    """Re-read the SPK file for a build and reapply its metadata to the DB."""
+    """Re-read the SPK file for a build and reapply its metadata to the DB.
+
+    Sibling SPK files are read once each and compared against the target
+    build's metadata, avoiding the O(n²) I/O of the original synchronous
+    implementation.
+    """
     build = db.session.get(Build, build_id)
     if not build or not build.path:
         return {"status": "skipped", "build_id": build_id, "label": build_label}
 
     try:
-        file_path = os.path.join(current_app.config["DATA_PATH"], build.path)
+        data_path = current_app.config["DATA_PATH"]
+        file_path = os.path.join(data_path, build.path)
+
         with io.open(file_path, "rb") as stream:
             spk = SPK(stream)
             incoming_meta = extract_version_metadata(spk)
 
+            # Read each sibling once and compare — O(n) instead of O(n²)
             for sibling in build.version.builds:
                 if sibling.id == build.id or not sibling.path:
                     continue
-                sibling_path = os.path.join(
-                    current_app.config["DATA_PATH"], sibling.path
-                )
+                sibling_path = os.path.join(data_path, sibling.path)
                 with io.open(sibling_path, "rb") as s2:
                     sibling_meta = extract_version_metadata(SPK(s2))
                 if sibling_meta != incoming_meta:
@@ -44,8 +50,8 @@ def resync_build_metadata(self, build_id, build_label):
 
         return {"status": "ok", "build_id": build_id, "label": build_label}
 
-    except ValueError as exc:
-        # Data errors (mismatch, bad path, etc.) — don't retry
+    except (ValueError, FileNotFoundError) as exc:
+        # Data errors (mismatch, missing file, etc.) — don't retry
         db.session.rollback()
         return {
             "status": "error",
@@ -67,7 +73,7 @@ def resync_build_metadata(self, build_id, build_label):
             }
 
 
-@celery.task(bind=True, max_retries=3, default_retry_delay=10)
+@celery.task(bind=True, max_retries=3, default_retry_delay=10, queue="resync")
 def resync_build_file(self, build_id, build_label):
     """Recalculate md5 and size for a build from its file on disk."""
     build = db.session.get(Build, build_id)
