@@ -42,6 +42,7 @@ from ..models import (
     Version,
 )
 from ..utils import SPK, apply_info_from_spk, extract_version_metadata
+from .nas import clear_catalog_cache
 from .tasks import resync_build_file, resync_build_metadata
 
 # ---------------------------------------------------------------------------
@@ -382,9 +383,11 @@ class UserView(ModelView):
 
     def after_model_change(self, form, model, is_created):
         cache.delete("packages_versions")
+        clear_catalog_cache()
 
     def after_model_delete(self, model):
         cache.delete("packages_versions")
+        clear_catalog_cache()
 
     @action("activate", "Activate", "Are you sure you want to activate selected users?")
     def action_activate(self, ids):
@@ -579,9 +582,11 @@ class PackageView(ModelView):
 
     def after_model_change(self, form, model, is_created):
         cache.delete("packages_versions")
+        clear_catalog_cache()
 
     def after_model_delete(self, model):
         cache.delete("packages_versions")
+        clear_catalog_cache()
 
     can_view_details = True
     details_template = "admin/package_detail.html"
@@ -814,6 +819,7 @@ class VersionView(SignResyncMixin, ModelView):
                     build.active = True
             db.session.commit()
             cache.delete("packages_versions")
+            clear_catalog_cache()
             flash(
                 "Builds on version were successfully activated."
                 if len(versions) == 1
@@ -842,6 +848,7 @@ class VersionView(SignResyncMixin, ModelView):
                     build.active = False
             db.session.commit()
             cache.delete("packages_versions")
+            clear_catalog_cache()
             flash(
                 "Builds on version were successfully deactivated."
                 if len(versions) == 1
@@ -972,9 +979,11 @@ class BuildView(SignResyncMixin, ModelView):
 
     def after_model_change(self, form, model, is_created):
         cache.delete("packages_versions")
+        clear_catalog_cache()
 
     def after_model_delete(self, model):
         cache.delete("packages_versions")
+        clear_catalog_cache()
 
     @action(
         "activate", "Activate", "Are you sure you want to activate selected builds?"
@@ -986,6 +995,7 @@ class BuildView(SignResyncMixin, ModelView):
                 build.active = True
             db.session.commit()
             cache.delete("packages_versions")
+            clear_catalog_cache()
             flash(
                 "Build was successfully activated."
                 if len(builds) == 1
@@ -1008,6 +1018,7 @@ class BuildView(SignResyncMixin, ModelView):
                 build.active = False
             db.session.commit()
             cache.delete("packages_versions")
+            clear_catalog_cache()
             flash(
                 "Build was successfully deactivated."
                 if len(builds) == 1
