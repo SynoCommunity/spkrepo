@@ -48,7 +48,7 @@ class PackagesTestCase(BaseTestCase):
         self.assertEqual(
             inserted_build.version.upstream_version, build.version.upstream_version
         )
-        self.assertEqual(inserted_build.version.changelog, build.version.changelog)
+        self.assertEqual(inserted_build.changelog, build.changelog)
         self.assertEqual(inserted_build.version.report_url, build.version.report_url)
         self.assertEqual(inserted_build.version.distributor, build.version.distributor)
         self.assertEqual(
@@ -75,11 +75,11 @@ class PackagesTestCase(BaseTestCase):
         self.assertDictEqual(
             {
                 language: description.description
-                for language, description in inserted_build.version.descriptions.items()
+                for language, description in inserted_build.descriptions.items()
             },
             {
                 language: description.description
-                for language, description in build.version.descriptions.items()
+                for language, description in build.descriptions.items()
             },
         )
         self.assertEqual(
@@ -665,13 +665,15 @@ class PackagesTestCase(BaseTestCase):
         self.assert422(response)
         self.assertIn("displaynames", response.data.decode())
 
-    def test_post_existing_version_mismatched_changelog_rejected(self):
-        # A second build with a different changelog must be rejected with 422.
+    def test_post_existing_version_different_changelog_allowed(self):
+        # A second build with a different changelog must be accepted since
+        # changelog is now per-build.
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
         db.session.commit()
 
         build = BuildFactory.build(
-            architectures=[Architecture.find("88f628x")],
+            version__upstream_version="1.0.0",
+            architectures=[Architecture.find("88f6281", syno=True)],
         )
         with create_spk(build) as spk:
             self.assert201(
@@ -682,23 +684,61 @@ class PackagesTestCase(BaseTestCase):
                 )
             )
 
-        persisted_version = Build.query.one().version
-        existing_changelog = persisted_version.changelog or ""
+        persisted_build = Build.query.one()
+        existing_changelog = persisted_build.changelog or ""
 
         new_build = BuildFactory.build(
-            version=persisted_version,
-            architectures=[Architecture.find("cedarview")],
+            version=build.version,
+            architectures=[Architecture.find("cedarview", syno=True)],
         )
         info = create_info(new_build)
         info["changelog"] = existing_changelog + " MODIFIED"
         with create_spk(new_build, info=info) as spk:
-            response = self.client.post(
-                url_for("api.packages"),
-                headers=authorization_header(user),
-                data=spk.read(),
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
             )
-        self.assert422(response)
-        self.assertIn("changelog", response.data.decode())
+
+    def test_post_existing_version_different_description_allowed(self):
+        # A second build with a different description must be accepted since
+        # descriptions are now per-build.
+        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
+        db.session.commit()
+
+        build = BuildFactory.build(
+            version__upstream_version="1.0.0",
+            architectures=[Architecture.find("88f6281", syno=True)],
+        )
+        with create_spk(build) as spk:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            )
+
+        persisted_build = Build.query.one()
+        existing_description = persisted_build.descriptions["enu"].description
+
+        new_build = BuildFactory.build(
+            version=build.version,
+            architectures=[Architecture.find("cedarview", syno=True)],
+        )
+        info = create_info(new_build)
+        info["description"] = existing_description + " MODIFIED"
+        info["description_enu"] = existing_description + " MODIFIED"
+        with create_spk(new_build, info=info) as spk:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            )
 
     def test_post_existing_version_metadata_mismatch_does_not_persist(self):
         # A rejected upload must not partially modify the DB.

@@ -314,11 +314,11 @@ class DisplayName(db.Model):
         return f"<{self.__class__.__name__} {self.language.name}>"
 
 
-class Description(db.Model):
-    __tablename__ = "description"
+class BuildDescription(db.Model):
+    __tablename__ = "build_description"
 
     # Columns
-    version_id = db.Column(db.Integer, db.ForeignKey("version.id"), nullable=False)
+    build_id = db.Column(db.Integer, db.ForeignKey("build.id"), nullable=False)
     language_id = db.Column(db.Integer, db.ForeignKey("language.id"), nullable=False)
     description = db.Column(db.UnicodeText, nullable=False)
 
@@ -326,7 +326,7 @@ class Description(db.Model):
     language = db.relationship("Language")
 
     # Constraints
-    __table_args__ = (db.PrimaryKeyConstraint(version_id, language_id),)
+    __table_args__ = (db.PrimaryKeyConstraint(build_id, language_id),)
 
     def __str__(self):
         return self.description
@@ -408,6 +408,7 @@ class Build(db.Model):
     firmware_max_id = db.Column(db.Integer, db.ForeignKey("firmware.id"), index=True)
     publisher_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), index=True)
     checksum = db.Column(db.Unicode(32))
+    changelog = db.Column(db.UnicodeText)
     path = db.Column(db.Unicode(2048))
     md5 = db.Column(db.Unicode(32))
     size = db.Column(db.Integer)
@@ -447,6 +448,11 @@ class Build(db.Model):
         back_populates="build",
         cascade="all, delete-orphan",
         uselist=False,
+    )
+    descriptions = db.relationship(
+        "BuildDescription",
+        cascade="all, delete-orphan",
+        collection_class=attribute_mapped_collection("language.code"),
     )
 
     @classmethod
@@ -539,7 +545,6 @@ class Version(db.Model):
     )
     version = db.Column(db.Integer, nullable=False, index=True)
     upstream_version = db.Column(db.Unicode(20), nullable=False)
-    changelog = db.Column(db.UnicodeText)
     report_url = db.Column(db.Unicode(255))
     distributor = db.Column(db.Unicode(50))
     distributor_url = db.Column(db.Unicode(255))
@@ -558,11 +563,6 @@ class Version(db.Model):
     )
     displaynames = db.relationship(
         "DisplayName",
-        cascade="all, delete-orphan",
-        collection_class=attribute_mapped_collection("language.code"),
-    )
-    descriptions = db.relationship(
-        "Description",
         cascade="all, delete-orphan",
         collection_class=attribute_mapped_collection("language.code"),
     )

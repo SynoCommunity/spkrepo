@@ -18,8 +18,8 @@ from .exceptions import SPKParseError, SPKSignError
 from .ext import db
 from .models import (
     Architecture,
+    BuildDescription,
     BuildManifest,
-    Description,
     DisplayName,
     Firmware,
     Icon,
@@ -460,19 +460,10 @@ def extract_version_metadata(spk):
     if "displayname" in info:
         displaynames["enu"] = info["displayname"]
 
-    # Same normalisation for descriptions.
-    descriptions = {}
-    for k, v in info.items():
-        if k.startswith("description_"):
-            descriptions[k.split("_", 1)[1]] = v
-    if "description" in info:
-        descriptions["enu"] = info["description"]
-
     return {
         "upstream_version": (
             version_match.group("upstream_version") if version_match else None
         ),
-        "changelog": info.get("changelog"),
         "report_url": info.get("report_url"),
         "distributor": info.get("distributor"),
         "distributor_url": info.get("distributor_url"),
@@ -488,7 +479,6 @@ def extract_version_metadata(spk):
             else set()
         ),
         "displaynames": displaynames,
-        "descriptions": descriptions,
     }
 
 
@@ -508,7 +498,6 @@ def assert_version_metadata_matches_db(version, spk):
 
     simple_fields = (
         "upstream_version",
-        "changelog",
         "report_url",
         "distributor",
         "distributor_url",
@@ -540,13 +529,6 @@ def assert_version_metadata_matches_db(version, spk):
         mismatches.append(
             f"displaynames: SPK has {incoming['displaynames']}, "
             f"DB has {existing_displaynames}"
-        )
-
-    existing_descriptions = {k: v.description for k, v in version.descriptions.items()}
-    if incoming["descriptions"] != existing_descriptions:
-        mismatches.append(
-            f"descriptions: SPK has {incoming['descriptions']}, "
-            f"DB has {existing_descriptions}"
         )
 
     if mismatches:
@@ -602,7 +584,7 @@ def apply_info_from_spk(session, build, spk, md5_hash):
 
         version = build.version
         version.upstream_version = version_match.group("upstream_version")
-        version.changelog = info.get("changelog")
+        build.changelog = info.get("changelog")
         version.report_url = info.get("report_url")
         version.distributor = info.get("distributor")
         version.distributor_url = info.get("distributor_url")
@@ -642,13 +624,13 @@ def apply_info_from_spk(session, build, spk, md5_hash):
                     language=language, displayname=value
                 )
 
-        version.descriptions.clear()
+        build.descriptions.clear()
         default_description = info.get("description")
         if default_description:
             language = Language.find("enu")
             if language is None:
                 raise ValueError("Language 'enu' is not defined")
-            version.descriptions[language.code] = Description(
+            build.descriptions[language.code] = BuildDescription(
                 language=language, description=default_description
             )
         for key, value in info.items():
@@ -659,7 +641,7 @@ def apply_info_from_spk(session, build, spk, md5_hash):
                     raise ValueError(
                         f"Unknown INFO description language: {language_code}"
                     )
-                version.descriptions[language.code] = Description(
+                build.descriptions[language.code] = BuildDescription(
                     language=language, description=value
                 )
 

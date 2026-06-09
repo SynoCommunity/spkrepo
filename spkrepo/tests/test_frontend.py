@@ -79,7 +79,7 @@ class PackageTestCase(BaseTestCase):
             response_data,
         )
         self.assertIn(
-            build.version.descriptions["enu"].description,
+            build.descriptions["enu"].description,
             response_data,
         )
         self.assertNotIn("beta", response_data)
@@ -104,7 +104,7 @@ class PackageTestCase(BaseTestCase):
             response_data,
         )
         self.assertIn(
-            build.version.descriptions["enu"].description,
+            build.descriptions["enu"].description,
             response_data,
         )
         self.assertNotIn("beta", response_data)
@@ -128,7 +128,7 @@ class PackageTestCase(BaseTestCase):
             response_data,
         )
         self.assertIn(
-            build.version.descriptions["enu"].description,
+            build.descriptions["enu"].description,
             response_data,
         )
         self.assertIn("beta", response_data)
@@ -152,7 +152,7 @@ class PackageTestCase(BaseTestCase):
             response_data,
         )
         self.assertIn(
-            build.version.descriptions["enu"].description,
+            build.descriptions["enu"].description,
             response_data,
         )
         self.assertIn("beta", response_data)

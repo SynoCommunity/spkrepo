@@ -28,8 +28,8 @@ from spkrepo.ext import db
 from spkrepo.models import (
     Architecture,
     Build,
+    BuildDescription,
     BuildManifest,
-    Description,
     DisplayName,
     DownloadStat,
     Firmware,
@@ -126,10 +126,10 @@ class DisplayNameFactory(SQLAlchemyModelFactory):
     displayname = factory.LazyAttribute(lambda x: " ".join(fake.words(nb=2)).title())
 
 
-class DescriptionFactory(SQLAlchemyModelFactory):
+class BuildDescriptionFactory(SQLAlchemyModelFactory):
     class Meta:
         sqlalchemy_session = db.session
-        model = Description
+        model = BuildDescription
 
     language = factory.LazyAttribute(lambda x: Language.find("enu"))
     description = factory.LazyAttribute(lambda x: " ".join(fake.sentences(nb=5)))
@@ -176,7 +176,6 @@ class VersionFactory(SQLAlchemyModelFactory):
             f"{fake.random_int(0, 5)}.{fake.random_int(0, 10)}.{fake.random_int(0, 15)}"
         )
     )
-    changelog = factory.LazyAttribute(lambda x: fake.sentence())
     report_url = factory.LazyAttribute(lambda x: fake.url())
     distributor = factory.LazyAttribute(lambda x: fake.name())
     distributor_url = factory.LazyAttribute(lambda x: fake.url())
@@ -197,14 +196,6 @@ class VersionFactory(SQLAlchemyModelFactory):
                 displayname = self.package.name.replace("_", " ").title()
                 self.displaynames["enu"] = DisplayNameFactory.simple_generate(
                     create, language=Language.find("enu"), displayname=displayname
-                )
-
-    @factory.post_generation
-    def add_description(self, create, extracted, **kwargs):
-        if extracted is None or extracted:
-            if "enu" not in self.descriptions:
-                self.descriptions["enu"] = DescriptionFactory.simple_generate(
-                    create, language=Language.find("enu")
                 )
 
     @factory.post_generation
@@ -241,6 +232,7 @@ class BuildFactory(SQLAlchemyModelFactory):
     version = factory.SubFactory(VersionFactory)
     firmware_min = factory.LazyAttribute(lambda x: random.choice(Firmware.query.all()))
     firmware_max = None
+    changelog = factory.LazyAttribute(lambda x: fake.sentence())
     architectures = factory.LazyAttribute(
         lambda x: [
             random.choice(
@@ -283,6 +275,14 @@ class BuildFactory(SQLAlchemyModelFactory):
 
         manifest = BuildManifest(**manifest_kwargs)
         self.buildmanifest = manifest
+
+    @factory.post_generation
+    def add_description(self, create, extracted, **kwargs):
+        if extracted is None or extracted:
+            if "enu" not in self.descriptions:
+                self.descriptions["enu"] = BuildDescriptionFactory.simple_generate(
+                    create, language=Language.find("enu")
+                )
 
     @factory.post_generation
     def create_spk(self, create, extracted, **kwargs):
@@ -427,13 +427,13 @@ def create_info(build):
             Architecture.to_syno.get(a.code, a.code) for a in build.architectures
         ),
         "displayname": build.version.displaynames["enu"].displayname,
-        "description": build.version.descriptions["enu"].description,
+        "description": build.descriptions["enu"].description,
         "firmware": build.firmware_min.firmware_string,
     }
     if build.firmware_max:
         info["os_max_ver"] = build.firmware_max.firmware_string
-    if build.version.changelog:
-        info["changelog"] = build.version.changelog
+    if build.changelog:
+        info["changelog"] = build.changelog
     if build.version.report_url:
         info["report_url"] = build.version.report_url
     if build.version.distributor:
@@ -457,7 +457,7 @@ def create_info(build):
         info["startable"] = "yes" if build.version.startable else "no"
     for language, displayname in build.version.displaynames.items():
         info[f"displayname_{language}"] = displayname.displayname
-    for language, description in build.version.descriptions.items():
+    for language, description in build.descriptions.items():
         info[f"description_{language}"] = description.description
     if build.buildmanifest and any(
         getattr(build.buildmanifest, attr) is not None

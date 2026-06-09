@@ -272,7 +272,7 @@ class VersionTestCase(BaseTestCase):
 
         version = build.version
         original_display = version.displaynames["enu"].displayname
-        original_description = version.descriptions["enu"].description
+        original_description = build.descriptions["enu"].description
         original_services = sorted(
             service.code for service in version.service_dependencies
         )
@@ -280,7 +280,7 @@ class VersionTestCase(BaseTestCase):
         original_license = version.license
 
         version.displaynames["enu"].displayname = "Changed"
-        version.descriptions["enu"].description = "Changed"
+        build.descriptions["enu"].description = "Changed"
         version.service_dependencies = []
         version.upstream_version = "0.0.0"
         version.license = None
@@ -301,13 +301,14 @@ class VersionTestCase(BaseTestCase):
                 self.assertIn("queued", response.data.decode())
 
         db.session.expire_all()
-        refreshed_version = db.session.get(Build, build.id).version
+        refreshed_build = db.session.get(Build, build.id)
+        refreshed_version = refreshed_build.version
 
         self.assertEqual(
             refreshed_version.displaynames["enu"].displayname, original_display
         )
         self.assertEqual(
-            refreshed_version.descriptions["enu"].description, original_description
+            refreshed_build.descriptions["enu"].description, original_description
         )
         self.assertEqual(
             sorted(service.code for service in refreshed_version.service_dependencies),

@@ -57,12 +57,10 @@ class SPKParseTestCase(BaseTestCase):
             {Architecture.from_syno.get(a, a) for a in spk.info["arch"].split()},
             {a.code for a in build.architectures},
         )
-        self.assertEqual(build.version.changelog, spk.info["changelog"])
+        self.assertEqual(build.changelog, spk.info["changelog"])
+        self.assertEqual(build.descriptions["enu"].description, spk.info["description"])
         self.assertEqual(
-            build.version.descriptions["enu"].description, spk.info["description"]
-        )
-        self.assertEqual(
-            build.version.descriptions["enu"].description, spk.info["description_enu"]
+            build.descriptions["enu"].description, spk.info["description_enu"]
         )
         self.assertEqual(
             build.version.displaynames["enu"].displayname, spk.info["displayname"]
@@ -403,19 +401,6 @@ class ExtractVersionMetadataTestCase(BaseTestCase):
             build.version.displaynames["enu"].displayname,
         )
 
-    def test_descriptions_keyed_by_language_code(self):
-        # INFO key "description" must map to "enu", not the raw key name.
-        build = BuildFactory.build()
-        with create_spk(build) as f:
-            spk = SPK(f)
-        meta = extract_version_metadata(spk)
-        self.assertIn("enu", meta["descriptions"])
-        self.assertNotIn("description", meta["descriptions"])
-        self.assertEqual(
-            meta["descriptions"]["enu"],
-            build.version.descriptions["enu"].description,
-        )
-
     def test_startable_defaults_true(self):
         build = BuildFactory.build(version__startable=None)
         with create_spk(build) as f:
@@ -492,19 +477,6 @@ class AssertVersionMetadataMatchesDBTestCase(BaseTestCase):
             assert_version_metadata_matches_db(build.version, spk)
         self.assertIn("displaynames", str(cm.exception))
 
-    def test_mismatched_description_raises(self):
-        build = BuildFactory()
-        db.session.commit()
-        existing = build.version.descriptions["enu"].description
-        info = create_info(build)
-        info["description"] = existing + " MODIFIED"
-        info["description_enu"] = existing + " MODIFIED"
-        with create_spk(build, info=info) as f:
-            spk = SPK(f)
-        with self.assertRaises(ValueError) as cm:
-            assert_version_metadata_matches_db(build.version, spk)
-        self.assertIn("descriptions", str(cm.exception))
-
     def test_mismatched_upstream_version_raises(self):
         build = BuildFactory(version__upstream_version="1.0.0")
         db.session.commit()
@@ -515,18 +487,6 @@ class AssertVersionMetadataMatchesDBTestCase(BaseTestCase):
         with self.assertRaises(ValueError) as cm:
             assert_version_metadata_matches_db(build.version, spk)
         self.assertIn("upstream_version", str(cm.exception))
-
-    def test_mismatched_changelog_raises(self):
-        build = BuildFactory()
-        db.session.commit()
-        existing = build.version.changelog or ""
-        info = create_info(build)
-        info["changelog"] = existing + " MODIFIED"
-        with create_spk(build, info=info) as f:
-            spk = SPK(f)
-        with self.assertRaises(ValueError) as cm:
-            assert_version_metadata_matches_db(build.version, spk)
-        self.assertIn("changelog", str(cm.exception))
 
     def test_mismatched_service_dependencies_raises(self):
         build = BuildFactory(version__service_dependencies=[])
@@ -544,18 +504,17 @@ class AssertVersionMetadataMatchesDBTestCase(BaseTestCase):
         build = BuildFactory()
         db.session.commit()
         existing_displayname = build.version.displaynames["enu"].displayname
-        existing_changelog = build.version.changelog or ""
         info = create_info(build)
         info["displayname"] = existing_displayname + " MODIFIED"
         info["displayname_enu"] = existing_displayname + " MODIFIED"
-        info["changelog"] = existing_changelog + " MODIFIED"
+        info["version"] = f"9.9.9-{build.version.version}"
         with create_spk(build, info=info) as f:
             spk = SPK(f)
         with self.assertRaises(ValueError) as cm:
             assert_version_metadata_matches_db(build.version, spk)
         error = str(cm.exception)
         self.assertIn("displaynames", error)
-        self.assertIn("changelog", error)
+        self.assertIn("upstream_version", error)
 
 
 class PopulateDBTestCase(BaseTestCase):

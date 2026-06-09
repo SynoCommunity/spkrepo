@@ -9,7 +9,14 @@ from wtforms import StringField, SubmitField, ValidationError
 from wtforms.validators import InputRequired, Length
 
 from ..ext import cache, db
-from ..models import Build, Description, DisplayName, Package, Version, user_datastore
+from ..models import (
+    Build,
+    BuildDescription,
+    DisplayName,
+    Package,
+    Version,
+    user_datastore,
+)
 
 frontend = Blueprint("frontend", __name__)
 
@@ -70,7 +77,9 @@ def packages():
                 db.joinedload(Version.package),
                 db.joinedload(Version.icons),
                 db.joinedload(Version.displaynames).joinedload(DisplayName.language),
-                db.joinedload(Version.descriptions).joinedload(Description.language),
+                db.joinedload(Version.builds)
+                .joinedload(Build.descriptions)
+                .joinedload(BuildDescription.language),
             )
             .join(
                 latest_version,
@@ -93,7 +102,9 @@ def package(name):
         .options(
             db.joinedload(Package.versions).joinedload(Version.icons),
             db.joinedload(Package.versions).joinedload(Version.displaynames),
-            db.joinedload(Package.versions).joinedload(Version.descriptions),
+            db.joinedload(Package.versions)
+            .joinedload(Version.builds)
+            .joinedload(Build.descriptions),
         )
         .first()
     )
