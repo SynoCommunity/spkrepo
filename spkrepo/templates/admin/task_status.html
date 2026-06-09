@@ -1,17 +1,24 @@
 {% extends 'admin/master.html' %}
 {% block body %}
+{% set error_count = tasks | selectattr('result') | selectattr('result.error') | list | length %}
 <div class="container-fluid" style="margin-top: 20px;">
   <div class="row">
     <div class="col">
       <div class="card border-info">
         <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center" style="font-size: 0.85em;">
           <span>Resync Task Status</span>
-          <div class="d-flex align-items-center">
+          <div class="d-flex align-items-center" id="header-controls">
             <span id="refresh-status" style="font-style: italic; margin-right: 12px;">
-              {% if pending_count > 0 %}polling for updates…{% else %}all tasks finished{% endif %}
+              {% if pending_count > 0 %}
+                polling for updates…
+              {% elif error_count > 0 %}
+                completed with {{ error_count }} error(s)
+              {% else %}
+                all tasks finished
+              {% endif %}
             </span>
-            {% if tasks %}
-            <form method="post" action="{{ url_for('tasks.clear') }}" style="margin: 0;">
+            {% if tasks and pending_count == 0 %}
+            <form id="clear-form" method="post" action="{{ url_for('tasks.clear') }}" style="margin: 0;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn btn-sm btn-outline-light" style="font-size: 0.8em; padding: 2px 8px;">
                 Clear
@@ -35,6 +42,7 @@
             </thead>
             <tbody>
               {% for task in tasks %}
+              {% set has_error = task.result and task.result.get('error') %}
               <tr id="row-{{ task.id }}">
                 <td>
                   {% if task.result and task.result.label %}
@@ -44,23 +52,25 @@
                   {% endif %}
                 </td>
                 <td>
-                  {% set state = task.state | lower %}
-                  {% if state == 'success' %}
-                    <i class="fa fa-check-circle text-success"></i>
-                  {% elif state == 'failure' %}
+                  {% if has_error or task.state == 'FAILURE' %}
                     <i class="fa fa-times-circle text-danger"></i>
-                  {% elif state in ('pending', 'started', 'retry') %}
+                    <span style="font-size: 0.85em; margin-left: 4px;">ERROR</span>
+                  {% elif task.state == 'SUCCESS' %}
+                    <i class="fa fa-check-circle text-success"></i>
+                    <span style="font-size: 0.85em; margin-left: 4px;">SUCCESS</span>
+                  {% elif task.state in ('PENDING', 'STARTED', 'RETRY') %}
                     <i class="fa fa-circle-o-notch fa-spin" style="color: #f0ad4e;"></i>
+                    <span style="font-size: 0.85em; margin-left: 4px;">{{ task.state }}</span>
                   {% else %}
                     <i class="fa fa-minus-circle text-muted"></i>
+                    <span style="font-size: 0.85em; margin-left: 4px;">{{ task.state }}</span>
                   {% endif %}
-                  <span style="font-size: 0.85em; margin-left: 4px;">{{ task.state }}</span>
                 </td>
                 <td style="font-size: 0.9em;">
-                  {% if task.state == 'FAILURE' and task.result %}
-                    <span class="text-danger">{{ task.result }}</span>
-                  {% elif task.result and task.result.get('error') %}
+                  {% if has_error %}
                     <span class="text-danger">{{ task.result.error }}</span>
+                  {% elif task.state == 'FAILURE' and task.result %}
+                    <span class="text-danger">{{ task.result }}</span>
                   {% elif task.state == 'SUCCESS' %}
                     <span class="text-muted">Done</span>
                   {% elif task.state in ('PENDING', 'STARTED', 'RETRY') %}
@@ -85,49 +95,88 @@
   var pollInterval = 3000;
   var statusEl = document.getElementById("refresh-status");
 
-  function iconForState(state) {
-    var s = state.toLowerCase();
-    if (s === "success") return '<i class="fa fa-check-circle text-success"></i>';
-    if (s === "failure") return '<i class="fa fa-times-circle text-danger"></i>';
-    if (s === "pending" || s === "started" || s === "retry")
+  function iconForState(state, hasError) {
+    if (hasError || state === "FAILURE") {
+      return '<i class="fa fa-times-circle text-danger"></i>';
+    }
+    if (state === "SUCCESS") {
+      return '<i class="fa fa-check-circle text-success"></i>';
+    }
+    if (state === "PENDING" || state === "STARTED" || state === "RETRY") {
       return '<i class="fa fa-circle-o-notch fa-spin" style="color:#f0ad4e;"></i>';
+    }
     return '<i class="fa fa-minus-circle text-muted"></i>';
   }
 
+  function labelForState(state, hasError) {
+    if (hasError || state === "FAILURE") return "ERROR";
+    return state;
+  }
+
   function updateTable(tasks) {
+    var errorCount = 0;
     tasks.forEach(function (t) {
       var row = document.getElementById("row-" + t.id);
       if (!row) return;
+      var hasError = !!t.error;
+      if (hasError) errorCount++;
       if (t.label && t.label !== t.id) row.cells[0].textContent = t.label;
-      row.cells[1].innerHTML = iconForState(t.state) +
-        '<span style="font-size:0.85em;margin-left:4px;">' + t.state + '</span>';
-      if (t.state === "SUCCESS") {
+      row.cells[1].innerHTML = iconForState(t.state, hasError) +
+        '<span style="font-size:0.85em;margin-left:4px;">' + labelForState(t.state, hasError) + '</span>';
+      if (hasError) {
+        row.cells[2].innerHTML = '<span class="text-danger">' + t.error + '</span>';
+      } else if (t.state === "SUCCESS") {
         row.cells[2].innerHTML = '<span class="text-muted">Done</span>';
-      } else if (t.state === "FAILURE" || t.error) {
+      } else if (t.state === "FAILURE") {
         row.cells[2].innerHTML = '<span class="text-danger">' + (t.error || t.state) + '</span>';
       } else {
         row.cells[2].innerHTML = '<span class="text-muted">In progress…</span>';
       }
     });
+    return errorCount;
+  }
+
+  function finalize(errorCount) {
+    if (statusEl) {
+      statusEl.textContent = errorCount > 0
+        ? "completed with " + errorCount + " error(s)"
+        : "all tasks finished";
+    }
+    // Show clear button if not already present
+    if (!document.getElementById("clear-form")) {
+      var controls = document.getElementById("header-controls");
+      if (controls) {
+        var form = document.createElement("form");
+        form.id = "clear-form";
+        form.method = "post";
+        form.action = "{{ url_for('tasks.clear') }}";
+        form.style.margin = "0";
+        form.innerHTML = '<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">' +
+          '<button type="submit" class="btn btn-sm btn-outline-light" style="font-size:0.8em;padding:2px 8px;">Clear</button>';
+        controls.appendChild(form);
+      }
+    }
   }
 
   function poll() {
     fetch("{{ url_for('tasks.status_json') }}")
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        updateTable(data.tasks);
+        var errorCount = updateTable(data.tasks);
         pendingCount = data.pending_count;
+        if (statusEl) statusEl.textContent = "last updated " + new Date().toLocaleTimeString();
         if (pendingCount > 0) {
-          if (statusEl) statusEl.textContent = "last updated " + new Date().toLocaleTimeString();
           setTimeout(poll, pollInterval);
         } else {
-          if (statusEl) statusEl.textContent = "all tasks finished";
+          finalize(errorCount);
         }
       })
       .catch(function () { setTimeout(poll, pollInterval * 2); });
   }
 
-  if (pendingCount > 0) setTimeout(poll, pollInterval);
+  if (pendingCount > 0) {
+    setTimeout(poll, pollInterval);
+  }
 })();
 </script>
 {% endblock %}
