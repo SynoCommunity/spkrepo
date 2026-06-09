@@ -583,150 +583,157 @@ def apply_info_from_spk(session, build, spk, md5_hash):
     :param md5_hash: pre-calculated MD5 hex string of the SPK file
     :raises ValueError: on any validation failure (package mismatch, bad version, etc.)
     """
-    info = spk.info
-    package = build.version.package
+    with session.no_autoflush:
+        info = spk.info
+        package = build.version.package
 
-    if info.get("package") != package.name:
-        raise ValueError("INFO package does not match build package")
+        if info.get("package") != package.name:
+            raise ValueError("INFO package does not match build package")
 
-    version_match = version_re.match(info.get("version", ""))
-    if not version_match:
-        raise ValueError("Invalid INFO version value")
+        version_match = version_re.match(info.get("version", ""))
+        if not version_match:
+            raise ValueError("Invalid INFO version value")
 
-    version_number = int(version_match.group("version"))
-    if version_number != build.version.version:
-        raise ValueError("INFO version does not match build version")
+        version_number = int(version_match.group("version"))
+        if version_number != build.version.version:
+            raise ValueError("INFO version does not match build version")
 
-    # -- Version-level fields ------------------------------------------------
+        # -- Version-level fields ------------------------------------------------
 
-    version = build.version
-    version.upstream_version = version_match.group("upstream_version")
-    version.changelog = info.get("changelog")
-    version.report_url = info.get("report_url")
-    version.distributor = info.get("distributor")
-    version.distributor_url = info.get("distributor_url")
-    version.maintainer = info.get("maintainer")
-    version.maintainer_url = info.get("maintainer_url")
-    version.install_wizard = "install" in spk.wizards
-    version.upgrade_wizard = "upgrade" in spk.wizards
+        version = build.version
+        version.upstream_version = version_match.group("upstream_version")
+        version.changelog = info.get("changelog")
+        version.report_url = info.get("report_url")
+        version.distributor = info.get("distributor")
+        version.distributor_url = info.get("distributor_url")
+        version.maintainer = info.get("maintainer")
+        version.maintainer_url = info.get("maintainer_url")
+        version.install_wizard = "install" in spk.wizards
+        version.upgrade_wizard = "upgrade" in spk.wizards
 
-    startable = True  # default per Synology docs
-    if info.get("startable") is False or info.get("ctl_stop") is False:
-        startable = False
-    version.startable = startable
+        startable = True  # default per Synology docs
+        if info.get("startable") is False or info.get("ctl_stop") is False:
+            startable = False
+        version.startable = startable
 
-    version.license = spk.license
-    version.service_dependencies = resolve_services(info.get("install_dep_services"))
-
-    version.displaynames.clear()
-    default_display = info.get("displayname")
-    if default_display:
-        language = Language.find("enu")
-        if language is None:
-            raise ValueError("Language 'enu' is not defined")
-        version.displaynames[language.code] = DisplayName(
-            language=language, displayname=default_display
+        version.license = spk.license
+        version.service_dependencies = resolve_services(
+            info.get("install_dep_services")
         )
-    for key, value in info.items():
-        if key.startswith("displayname_"):
-            language_code = key.split("_", 1)[1]
-            language = Language.find(language_code)
+
+        version.displaynames.clear()
+        default_display = info.get("displayname")
+        if default_display:
+            language = Language.find("enu")
             if language is None:
-                raise ValueError(f"Unknown INFO displayname language: {language_code}")
+                raise ValueError("Language 'enu' is not defined")
             version.displaynames[language.code] = DisplayName(
-                language=language, displayname=value
+                language=language, displayname=default_display
             )
+        for key, value in info.items():
+            if key.startswith("displayname_"):
+                language_code = key.split("_", 1)[1]
+                language = Language.find(language_code)
+                if language is None:
+                    raise ValueError(
+                        f"Unknown INFO displayname language: {language_code}"
+                    )
+                version.displaynames[language.code] = DisplayName(
+                    language=language, displayname=value
+                )
 
-    version.descriptions.clear()
-    default_description = info.get("description")
-    if default_description:
-        language = Language.find("enu")
-        if language is None:
-            raise ValueError("Language 'enu' is not defined")
-        version.descriptions[language.code] = Description(
-            language=language, description=default_description
-        )
-    for key, value in info.items():
-        if key.startswith("description_"):
-            language_code = key.split("_", 1)[1]
-            language = Language.find(language_code)
+        version.descriptions.clear()
+        default_description = info.get("description")
+        if default_description:
+            language = Language.find("enu")
             if language is None:
-                raise ValueError(f"Unknown INFO description language: {language_code}")
+                raise ValueError("Language 'enu' is not defined")
             version.descriptions[language.code] = Description(
-                language=language, description=value
+                language=language, description=default_description
             )
-
-    # Icon files are written to disk here. If anything raises after this point
-    # the caller's session rollback will undo the DB changes but the files will
-    # remain on disk — see docstring note above.
-    existing_icons = dict(version.icons)
-    new_sizes = set(spk.icons.keys()) if spk.icons else set()
-    written_icon_paths = []
-    for stale_size in set(existing_icons) - new_sizes:
-        del version.icons[stale_size]
-
-    if spk.icons:
-        version_path = os.path.join(
-            current_app.config["DATA_PATH"], package.name, str(version.version)
-        )
-        os.makedirs(version_path, exist_ok=True)
-        try:
-            for size, icon_stream in spk.icons.items():
-                icon_stream.seek(0)
-                icon_path = os.path.join(
-                    package.name, str(version.version), f"icon_{size}.png"
+        for key, value in info.items():
+            if key.startswith("description_"):
+                language_code = key.split("_", 1)[1]
+                language = Language.find(language_code)
+                if language is None:
+                    raise ValueError(
+                        f"Unknown INFO description language: {language_code}"
+                    )
+                version.descriptions[language.code] = Description(
+                    language=language, description=value
                 )
-                icon = version.icons.get(size)
-                if icon is None:
-                    icon = Icon(path=icon_path, size=size)
-                    version.icons[size] = icon
-                else:
-                    icon.path = icon_path
-                icon.save(icon_stream)
-                written_icon_paths.append(
-                    os.path.join(current_app.config["DATA_PATH"], icon_path)
-                )
-        except Exception:
-            # Clean up any icon files written in this call before re-raising,
-            # so a failed resync does not leave orphaned files on disk.
-            for path in written_icon_paths:
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
-            raise
 
-    # -- Build-level fields --------------------------------------------------
+        # Icon files are written to disk here. If anything raises after this point
+        # the caller's session rollback will undo the DB changes but the files will
+        # remain on disk — see docstring note above.
+        existing_icons = dict(version.icons)
+        new_sizes = set(spk.icons.keys()) if spk.icons else set()
+        written_icon_paths = []
+        for stale_size in set(existing_icons) - new_sizes:
+            del version.icons[stale_size]
 
-    build.architectures = resolve_architectures(session, info.get("arch"))
-    build.firmware_min = resolve_firmware(
-        session, info.get("firmware") or info.get("os_min_ver")
-    )
+        if spk.icons:
+            version_path = os.path.join(
+                current_app.config["DATA_PATH"], package.name, str(version.version)
+            )
+            os.makedirs(version_path, exist_ok=True)
+            try:
+                for size, icon_stream in spk.icons.items():
+                    icon_stream.seek(0)
+                    icon_path = os.path.join(
+                        package.name, str(version.version), f"icon_{size}.png"
+                    )
+                    icon = version.icons.get(size)
+                    if icon is None:
+                        icon = Icon(path=icon_path, size=size)
+                        version.icons[size] = icon
+                    else:
+                        icon.path = icon_path
+                    icon.save(icon_stream)
+                    written_icon_paths.append(
+                        os.path.join(current_app.config["DATA_PATH"], icon_path)
+                    )
+            except Exception:
+                # Clean up any icon files written in this call before re-raising,
+                # so a failed resync does not leave orphaned files on disk.
+                for path in written_icon_paths:
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+                raise
 
-    firmware_max_value = info.get("os_max_ver")
-    firmware_max = resolve_firmware(session, firmware_max_value, allow_none=True)
-    if firmware_max and firmware_max.build < build.firmware_min.build:
-        raise ValueError(
-            "Maximum firmware must be greater than or equal to minimum firmware"
+        # -- Build-level fields --------------------------------------------------
+
+        build.architectures = resolve_architectures(session, info.get("arch"))
+        build.firmware_min = resolve_firmware(
+            session, info.get("firmware") or info.get("os_min_ver")
         )
-    build.firmware_max = firmware_max
 
-    build.checksum = info.get("checksum")
-    build.md5 = md5_hash
+        firmware_max_value = info.get("os_max_ver")
+        firmware_max = resolve_firmware(session, firmware_max_value, allow_none=True)
+        if firmware_max and firmware_max.build < build.firmware_min.build:
+            raise ValueError(
+                "Maximum firmware must be greater than or equal to minimum firmware"
+            )
+        build.firmware_max = firmware_max
 
-    manifest = build.buildmanifest
-    if manifest is None:
-        manifest = BuildManifest()
-        build.buildmanifest = manifest
+        build.checksum = info.get("checksum")
+        build.md5 = md5_hash
 
-    manifest.dependencies = info.get("install_dep_packages")
-    manifest.conf_dependencies = spk.conf_dependencies
-    manifest.conflicts = info.get("install_conflict_packages")
-    manifest.conf_conflicts = spk.conf_conflicts
-    manifest.conf_privilege = spk.conf_privilege
-    manifest.conf_resource = spk.conf_resource
+        manifest = build.buildmanifest
+        if manifest is None:
+            manifest = BuildManifest()
+            build.buildmanifest = manifest
 
-    session.flush()
+        manifest.dependencies = info.get("install_dep_packages")
+        manifest.conf_dependencies = spk.conf_dependencies
+        manifest.conflicts = info.get("install_conflict_packages")
+        manifest.conf_conflicts = spk.conf_conflicts
+        manifest.conf_privilege = spk.conf_privilege
+        manifest.conf_resource = spk.conf_resource
+
+        session.flush()
 
 
 def populate_db():

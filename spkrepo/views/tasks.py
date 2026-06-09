@@ -7,6 +7,7 @@ from flask import current_app
 from ..ext import cache, celery, db
 from ..models import Build
 from ..utils import SPK, apply_info_from_spk, extract_version_metadata
+from .nas import clear_catalog_cache
 
 
 @celery.task(bind=True, max_retries=3, default_retry_delay=10, queue="resync")
@@ -47,6 +48,7 @@ def resync_build_metadata(self, build_id, build_label):
             apply_info_from_spk(db.session, build, spk, md5)
             db.session.commit()
             cache.delete("packages_versions")
+            clear_catalog_cache()
 
         return {"status": "ok", "build_id": build_id, "label": build_label}
 
@@ -85,6 +87,7 @@ def resync_build_file(self, build_id, build_label):
         build.size = build.calculate_size()
         db.session.commit()
         cache.delete("packages_versions")
+        clear_catalog_cache()
         return {"status": "ok", "build_id": build_id, "label": build_label}
 
     except (ValueError, FileNotFoundError) as exc:

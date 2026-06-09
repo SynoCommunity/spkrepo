@@ -232,6 +232,16 @@ def build_package_entry(b, language, arch, build):
     return entry
 
 
+def clear_catalog_cache():
+    """Invalidate all memoized NAS catalog cache entries.
+
+    Called by admin actions and background tasks whenever build metadata
+    or activation state changes, so Synology devices see fresh data
+    without waiting for the memoize timeout to expire.
+    """
+    cache.delete_memoized(get_catalog)
+
+
 @nas.route("/", methods=["POST", "GET"])
 def catalog():
     if (
