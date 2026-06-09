@@ -15,8 +15,8 @@ from ..exceptions import SPKParseError, SPKSignError
 from ..ext import db
 from ..models import (
     Build,
+    BuildDescription,
     BuildManifest,
-    Description,
     DisplayName,
     Icon,
     Language,
@@ -209,7 +209,6 @@ class Packages(Resource):
                 package=package,
                 upstream_version=match.group("upstream_version"),
                 version=int(match.group("version")),
-                changelog=spk.info.get("changelog"),
                 report_url=spk.info.get("report_url"),
                 distributor=spk.info.get("distributor"),
                 distributor_url=spk.info.get("distributor_url"),
@@ -234,17 +233,6 @@ class Packages(Resource):
                         abort(422, message="Unknown INFO displayname language")
                     version.displaynames[language.code] = DisplayName(
                         language=language, displayname=value
-                    )
-                elif key == "description":
-                    version.descriptions["enu"] = Description(
-                        description=value, language=Language.find("enu")
-                    )
-                elif key.startswith("description_"):
-                    language = Language.find(key.split("_", 1)[1])
-                    if not language:
-                        abort(422, message="Unknown INFO description language")
-                    version.descriptions[language.code] = Description(
-                        language=language, description=value
                     )
 
             # Icon
@@ -295,7 +283,21 @@ class Packages(Resource):
             publisher=current_user,
             path=os.path.join(package.name, str(version.version), build_filename),
             checksum=spk.info.get("checksum"),
+            changelog=spk.info.get("changelog"),
         )
+
+        for key, value in spk.info.items():
+            if key == "description":
+                build.descriptions["enu"] = BuildDescription(
+                    description=value, language=Language.find("enu")
+                )
+            elif key.startswith("description_"):
+                language = Language.find(key.split("_", 1)[1])
+                if not language:
+                    abort(422, message="Unknown INFO description language")
+                build.descriptions[language.code] = BuildDescription(
+                    language=language, description=value
+                )
 
         build.buildmanifest = BuildManifest(
             dependencies=spk.info.get("install_dep_packages"),

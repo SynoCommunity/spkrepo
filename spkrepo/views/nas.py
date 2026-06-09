@@ -16,7 +16,7 @@ from ..ext import cache, db
 from ..models import (
     Architecture,
     Build,
-    Description,
+    BuildDescription,
     DisplayName,
     Firmware,
     Language,
@@ -127,7 +127,7 @@ def get_catalog(arch, build, major, language, beta):
             db.joinedload(Build.version)
             .joinedload(Version.displaynames)
             .joinedload(DisplayName.language),
-            db.joinedload(Build.version, Version.descriptions, Description.language),
+            db.joinedload(Build.descriptions).joinedload(BuildDescription.language),
             db.joinedload(Build.version, Version.package, Package.screenshots),
             db.joinedload(Build.buildmanifest),
         )
@@ -179,9 +179,7 @@ def build_package_entry(b, language, arch, build):
         "dname": b.version.displaynames.get(
             language, b.version.displaynames["enu"]
         ).displayname,
-        "desc": b.version.descriptions.get(
-            language, b.version.descriptions["enu"]
-        ).description,
+        "desc": b.descriptions.get(language, b.descriptions["enu"]).description,
         "link": url_for(
             ".data",
             path=b.path,
@@ -218,7 +216,7 @@ def build_package_entry(b, language, arch, build):
         entry["report_url"] = b.version.report_url
         entry["beta"] = True
 
-    _set_if_truthy(entry, "changelog", b.version.changelog)
+    _set_if_truthy(entry, "changelog", b.changelog)
     _set_if_truthy(entry, "distributor", b.version.distributor)
     _set_if_truthy(entry, "distributor_url", b.version.distributor_url)
     _set_if_truthy(entry, "maintainer", b.version.maintainer)

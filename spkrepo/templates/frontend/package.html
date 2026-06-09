@@ -10,7 +10,7 @@
       <h1>{{ package.versions[-1].displaynames['enu'].displayname }}
         <small class="text-muted">v{{ package.versions[-1].version_string }}</small>
       </h1>
-      <p>{{ package.versions[-1].descriptions['enu'].description }}</p>
+      <p>{{ package.versions[-1].builds[0].descriptions['enu'].description }}</p>
       <div class="package-screenshots">
         {% for screenshot in package.screenshots %}
         <img class="package-screenshot" src="{{ url_for('nas.data', path=screenshot.path) }}"/>&nbsp;
@@ -19,7 +19,7 @@
       {% for version in package.versions|reverse %}
       <dl>
         <dt>Version {{ version.version_string | safe }}{% if version.report_url %} <span class="badge badge-danger">beta</span>{% endif %}</dt>
-        <dd>{{ version.changelog | safe }}</dd>
+        <dd>{{ version.builds[0].changelog | safe }}</dd>
         <dt>Date</dt>
         <dd>{{ version.insert_date.replace(microsecond=0) }}</dd>
         <dt>Architectures</dt>

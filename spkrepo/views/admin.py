@@ -947,6 +947,7 @@ class BuildView(SignResyncMixin, ModelView):
         "size": lambda v, c, m, p: (
             f"{m.size / 1024 / 1024:.1f} MB" if m.size else None
         ),
+        "active": _bool_formatter,
     }
     column_default_sort = (Build.insert_date, True)
 

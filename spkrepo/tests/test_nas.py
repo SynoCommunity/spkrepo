@@ -12,6 +12,7 @@ from spkrepo.tests.common import (
     BuildFactory,
     DownloadStatFactory,
     PackageFactory,
+    VersionFactory,
 )
 
 
@@ -28,7 +29,7 @@ class CatalogTestCase(BaseTestCase):
         )
         self.assertEqual(
             entry["desc"],
-            build.version.descriptions[data.get("language", "enu")].description,
+            build.descriptions[data.get("language", "enu")].description,
         )
         self.assertGreaterEqual(len(entry["thumbnail"]), 1)
         self.assertEqual(
@@ -102,8 +103,8 @@ class CatalogTestCase(BaseTestCase):
             self.assertNotIn("beta", entry)
 
         # changelog
-        if build.version.changelog:
-            self.assertEqual(entry["changelog"], build.version.changelog)
+        if build.changelog:
+            self.assertEqual(entry["changelog"], build.changelog)
         else:
             self.assertNotIn("changelog", entry)
 
@@ -297,7 +298,7 @@ class CatalogTestCase(BaseTestCase):
         build = BuildFactory(
             active=True,
             version__report_url=None,
-            version__changelog=None,
+            changelog=None,
             version__distributor=None,
             version__distributor_url=None,
             version__maintainer=None,
@@ -625,3 +626,56 @@ class CatalogTestCase(BaseTestCase):
         self.assertEqual(entry["report_url"], build.version.report_url)
         self.assertIn("beta", entry)
         self.assertTrue(entry["beta"])
+
+    def test_catalog_returns_per_build_fields(self):
+        version = VersionFactory(report_url=None)
+        db.session.commit()
+
+        build_a = BuildFactory.create(
+            version=version,
+            active=True,
+            changelog="changelog_A",
+            architectures=[Architecture.find("88f6281", syno=True)],
+            firmware_min=Firmware.find(1594),
+            buildmanifest={"dependencies": "dep_A", "conflicts": "con_A"},
+        )
+        build_a.descriptions["enu"].description = "Desc A"
+
+        build_b = BuildFactory.create(
+            version=version,
+            active=True,
+            changelog="changelog_B",
+            architectures=[Architecture.find("cedarview", syno=True)],
+            firmware_min=Firmware.find(23739),
+            buildmanifest={"dependencies": "dep_B", "conflicts": "con_B"},
+        )
+        build_b.descriptions["enu"].description = "Desc B"
+        db.session.commit()
+
+        # Query matching build_a
+        data_a = dict(arch="88f6281", build="1594", language="enu")
+        response_a = self.client.post(url_for("nas.catalog"), data=data_a)
+        self.assert200(response_a)
+        catalog_a = json.loads(response_a.data.decode())
+        packages_a = catalog_a["packages"] if isinstance(catalog_a, dict) else catalog_a
+        self.assertEqual(len(packages_a), 1)
+        self.assertEqual(packages_a[0]["changelog"], "changelog_A")
+        self.assertEqual(packages_a[0]["desc"], "Desc A")
+        self.assertEqual(packages_a[0]["deppkgs"], "dep_A")
+        self.assertEqual(packages_a[0]["conflictpkgs"], "con_A")
+
+        # Query matching build_b
+        data_b = dict(arch="cedarview", build="23739", language="enu")
+        response_b = self.client.post(url_for("nas.catalog"), data=data_b)
+        self.assert200(response_b)
+        catalog_b = json.loads(response_b.data.decode())
+        packages_b = catalog_b["packages"] if isinstance(catalog_b, dict) else catalog_b
+        self.assertEqual(len(packages_b), 1)
+        self.assertEqual(packages_b[0]["changelog"], "changelog_B")
+        self.assertEqual(packages_b[0]["desc"], "Desc B")
+        self.assertEqual(packages_b[0]["deppkgs"], "dep_B")
+        self.assertEqual(packages_b[0]["conflictpkgs"], "con_B")
+
+        # Build-level auto-generated fields (md5, link) should differ per build
+        self.assertNotEqual(packages_a[0]["md5"], packages_b[0]["md5"])
+        self.assertNotEqual(packages_a[0]["link"], packages_b[0]["link"])
