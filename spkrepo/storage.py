@@ -13,13 +13,15 @@ logger = logging.getLogger(__name__)
 
 def storage_configured():
     """Return True if the packages Object Storage config keys are populated."""
-    return all([
-        current_app.config["OBJECT_STORAGE_PACKAGES_ENDPOINT"],
-        current_app.config["OBJECT_STORAGE_PACKAGES_BUCKET"],
-        current_app.config["OBJECT_STORAGE_PACKAGES_ACCESS_KEY"],
-        current_app.config["OBJECT_STORAGE_PACKAGES_SECRET_KEY"],
-        current_app.config["OBJECT_STORAGE_PACKAGES_REGION"],
-    ])
+    return all(
+        [
+            current_app.config["OBJECT_STORAGE_PACKAGES_ENDPOINT"],
+            current_app.config["OBJECT_STORAGE_PACKAGES_BUCKET"],
+            current_app.config["OBJECT_STORAGE_PACKAGES_ACCESS_KEY"],
+            current_app.config["OBJECT_STORAGE_PACKAGES_SECRET_KEY"],
+            current_app.config["OBJECT_STORAGE_PACKAGES_REGION"],
+        ]
+    )
 
 
 def _client():

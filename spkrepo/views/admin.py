@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import io
+import json
 import os
 import shutil
 import uuid
@@ -29,6 +30,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from wtforms import PasswordField
 from wtforms.validators import Regexp
 
+from .. import storage as storage_service
 from ..ext import cache, celery, db
 from ..models import (
     Architecture,
@@ -41,9 +43,19 @@ from ..models import (
     User,
     Version,
 )
-from ..utils import SPK, apply_info_from_spk, extract_version_metadata
+from ..utils import (
+    SPK,
+    apply_info_from_spk,
+    apply_sidecar_to_db,
+    extract_version_metadata,
+)
 from .nas import clear_catalog_cache
-from .tasks import resync_build_file, resync_build_metadata
+from .tasks import (
+    rehome_from_storage,
+    resync_build_file,
+    resync_build_metadata,
+    upload_to_storage,
+)
 
 # ---------------------------------------------------------------------------
 # Shared formatters
@@ -57,6 +69,14 @@ def _bool_formatter(v, c, m, p):
     if value:
         return Markup('<i class="fa fa-check-circle text-success"></i>')
     return Markup('<i class="fa fa-times-circle text-danger"></i>')
+
+
+def _storage_formatter(v, c, m, p):
+    if m.storage == "remote":
+        return Markup('<i class="fa fa-cloud text-info"></i>')
+    if m.storage == "local":
+        return Markup('<i class="fa fa-hdd-o text-muted"></i>')
+    return Markup('<i class="fa fa-question-circle text-warning"></i>')
 
 
 def _flash_action_results(successes, failures, skipped=None, item_label="item"):
@@ -93,15 +113,17 @@ def _task_redis_key():
     return key
 
 
-def _store_task_ids(new_ids):
-    """Append new task IDs to the user's Redis-backed task list."""
+def _store_task_tasks(new_tasks):
+    """Append task info dicts to the user's Redis-backed task list.
+    Each dict: {"id": str, "type": str, "label": str}
+    """
     key = _task_redis_key()
     existing = cache.get(key) or []
-    cache.set(key, existing + new_ids, timeout=86400)  # match result_expires
+    cache.set(key, existing + new_tasks, timeout=86400)
 
 
 def _get_task_ids():
-    """Return the current user's task ID list from Redis."""
+    """Return the current user's task list from Redis."""
     key = _task_redis_key()
     return cache.get(key) or []
 
@@ -114,30 +136,67 @@ def _clear_task_ids():
         cache.delete(key)
 
 
+def _detect_and_fix_signed(build):
+    """If the local SPK has a signature but build.signed is False, fix it.
+    Returns True if the column was updated."""
+    if build.signed:
+        return False
+    if not build.path:
+        return False
+    spk_path = os.path.join(current_app.config["DATA_PATH"], build.path)
+    if not os.path.exists(spk_path):
+        return False
+    try:
+        with io.open(spk_path, "rb") as f:
+            spk = SPK(f)
+        if spk.signature is not None:
+            build.signed = True
+            return True
+    except Exception:
+        pass
+    return False
+
+
 # ---------------------------------------------------------------------------
 # SPK helpers
 # ---------------------------------------------------------------------------
 
 
 def _resync_build_file(build):
-    """Recalculate md5 and size from the build file on disk."""
+    """Recalculate md5 and size from the build file or sidecar."""
     if not build.path:
         raise ValueError("Build has no file path")
-    build.md5 = build.calculate_md5()
-    build.size = build.calculate_size()
+    sidecar_path = os.path.join(current_app.config["DATA_PATH"], build.path + ".json")
+    if os.path.exists(sidecar_path):
+        with io.open(sidecar_path, "r", encoding="utf-8") as f:
+            sidecar = json.load(f)
+        build.md5 = sidecar["calculated"]["md5"]
+        build.size = sidecar["calculated"]["size"]
+    else:
+        build.md5 = build.calculate_md5()
+        build.size = build.calculate_size()
 
 
 def _resync_build_metadata(session, build):
-    """Re-read the SPK file for a build, check it is consistent with all sibling
-    builds under the same version, then apply the metadata to the database.
+    """Re-read build metadata from SPK file or sidecar and apply to DB.
 
-    Raises ValueError if the build's SPK metadata conflicts with any sibling SPK,
-    preventing last-write-wins corruption of shared version-level fields.
+    When the file is in Object Storage (sidecar exists), reads metadata
+    from the sidecar. When local, parses the SPK archive and checks
+    consistency against siblings first.
     """
     if not build.path:
         raise ValueError("Build has no file path")
 
-    file_path = os.path.join(current_app.config["DATA_PATH"], build.path)
+    data_path = current_app.config["DATA_PATH"]
+    sidecar_path = os.path.join(data_path, build.path + ".json")
+
+    if os.path.exists(sidecar_path):
+        with io.open(sidecar_path, "r", encoding="utf-8") as f:
+            sidecar = json.load(f)
+        apply_sidecar_to_db(session, build, sidecar)
+        return
+
+    file_path = os.path.join(data_path, build.path)
     with io.open(file_path, "rb") as stream:
         spk = SPK(stream)
         incoming_meta = extract_version_metadata(spk)
@@ -145,15 +204,15 @@ def _resync_build_metadata(session, build):
         for sibling in build.version.builds:
             if sibling.id == build.id or not sibling.path:
                 continue
-            sibling_path = os.path.join(current_app.config["DATA_PATH"], sibling.path)
+            sibling_path = os.path.join(data_path, sibling.path)
             with io.open(sibling_path, "rb") as s2:
                 sibling_meta = extract_version_metadata(SPK(s2))
             if sibling_meta != incoming_meta:
                 raise ValueError(
-                    f"Version-level metadata mismatch between "
+                    "Version-level metadata mismatch between "
                     f"{os.path.basename(build.path)} and "
                     f"{os.path.basename(sibling.path)} — resync aborted. "
-                    f"Inspect the SPK files to resolve the inconsistency."
+                    "Inspect the SPK files to resolve the inconsistency."
                 )
 
         md5 = spk.calculate_md5()
@@ -192,14 +251,24 @@ class SignResyncMixin:
     def can_resync_file(self):
         return current_user.has_role("admin") or current_user.has_role("package_admin")
 
+    @property
+    def can_upload(self):
+        return current_user.has_role("admin") or current_user.has_role("package_admin")
+
+    @property
+    def can_rehome(self):
+        return current_user.has_role("admin") or current_user.has_role("package_admin")
+
     # -- Permission guards --------------------------------------------------
 
     def is_action_allowed(self, name):
         checks = {
-            "sign": self.can_sign,
-            "unsign": self.can_unsign,
-            "resync_info": self.can_resync_info,
-            "resync_file": self.can_resync_file,
+            "07_sign": self.can_sign,
+            "08_unsign": self.can_unsign,
+            "05_resync_info": self.can_resync_info,
+            "06_resync_file": self.can_resync_file,
+            "03_upload": self.can_upload,
+            "04_rehome": self.can_rehome,
         }
         if name in checks and not checks[name]:
             return False
@@ -208,10 +277,12 @@ class SignResyncMixin:
     def handle_action(self, return_view=None):
         action_name = request.form.get("action")
         checks = {
-            "sign": self.can_sign,
-            "unsign": self.can_unsign,
-            "resync_info": self.can_resync_info,
-            "resync_file": self.can_resync_file,
+            "07_sign": self.can_sign,
+            "08_unsign": self.can_unsign,
+            "05_resync_info": self.can_resync_info,
+            "06_resync_file": self.can_resync_file,
+            "03_upload": self.can_upload,
+            "04_rehome": self.can_rehome,
         }
         if action_name in checks and not checks[action_name]:
             abort(403)
@@ -228,17 +299,25 @@ class SignResyncMixin:
 
     # -- Shared actions -----------------------------------------------------
 
-    @action("sign", "Sign", "Are you sure you want to sign selected builds?")
-    def action_sign(self, ids):
+    @action("07_sign", "Sign", "Are you sure you want to sign selected builds?")
+    def action_07_sign(self, ids):
         try:
-            already_signed, success, failed = [], [], []
+            not_local, already_signed, recovered, success, failed = ([], [], [], [], [])
             for label, build in self._iter_builds(ids):
+                if build.storage != "local":
+                    not_local.append(label)
+                    continue
                 with io.open(
                     os.path.join(current_app.config["DATA_PATH"], build.path), "rb+"
                 ) as f:
                     spk = SPK(f)
                     if spk.signature is not None:
-                        already_signed.append(label)
+                        if not build.signed:
+                            build.signed = True
+                            db.session.commit()
+                            recovered.append(label)
+                        else:
+                            already_signed.append(label)
                         continue
                     try:
                         spk.sign(
@@ -253,6 +332,17 @@ class SignResyncMixin:
                         current_app.logger.exception("Failed to sign build %s", label)
                         db.session.rollback()
                         failed.append(label)
+            if not_local:
+                flash(
+                    "Build(s) in Object Storage must be re-homed before signing: "
+                    + ", ".join(not_local),
+                    "warning",
+                )
+            if recovered:
+                flash(
+                    "Signature status corrected for: " + ", ".join(recovered),
+                    "info",
+                )
             _flash_action_results(
                 success,
                 [(f, "") for f in failed],
@@ -263,11 +353,20 @@ class SignResyncMixin:
             current_app.logger.exception("Failed to sign builds")
             flash("Failed to sign builds. Please check the logs.", "error")
 
-    @action("unsign", "Unsign", "Are you sure you want to unsign selected builds?")
-    def action_unsign(self, ids):
+    @action("08_unsign", "Unsign", "Are you sure you want to unsign selected builds?")
+    def action_08_unsign(self, ids):
         try:
-            not_signed, active_skipped, success, failed = [], [], [], []
+            not_local, not_signed, active_skipped, success, failed = (
+                [],
+                [],
+                [],
+                [],
+                [],
+            )
             for label, build in self._iter_builds(ids):
+                if build.storage != "local":
+                    not_local.append(label)
+                    continue
                 if build.active:
                     active_skipped.append(label)
                     continue
@@ -288,12 +387,18 @@ class SignResyncMixin:
                         current_app.logger.exception("Failed to unsign build %s", label)
                         db.session.rollback()
                         failed.append(label)
+            if not_local:
+                flash(
+                    "Build(s) in Object Storage must be re-homed before unsigning: "
+                    + ", ".join(not_local),
+                    "warning",
+                )
             if active_skipped:
                 count = len(active_skipped)
                 flash(
                     (
                         f"Build {active_skipped[0]} must be deactivated before "
-                        f"unsigning."
+                        "unsigning."
                         if count == 1
                         else f"Skipped {count} active builds — deactivate before "
                         f"unsigning: {', '.join(active_skipped)}"
@@ -311,18 +416,80 @@ class SignResyncMixin:
             flash("Failed to unsign builds. Please check the logs.", "error")
 
     @action(
-        "resync_info",
+        "03_upload",
+        "Upload",
+        "Upload selected builds to Object Storage?",
+    )
+    def action_03_upload(self, ids):
+        tasks = []
+        for label, build in self._iter_builds(ids):
+            if build.storage != "local":
+                continue
+            if not build.active:
+                continue
+            if not build.signed and not _detect_and_fix_signed(build):
+                continue
+            result = upload_to_storage.delay(build.id, str(build))
+            tasks.append({"id": result.id, "type": "upload", "label": label})
+        if tasks:
+            _store_task_tasks(tasks)
+            count = len(tasks)
+            flash(
+                Markup(
+                    f"{count} upload task(s) queued. "
+                    f'<a href="/admin/tasks/">View status</a>',
+                ),
+                "info",
+            )
+        else:
+            flash(
+                "No builds found to upload (must be local, active, and signed).",
+                "warning",
+            )
+
+    @action(
+        "04_rehome",
+        "Re-home",
+        "Download selected builds from Object Storage for local editing?",
+    )
+    def action_04_rehome(self, ids):
+        tasks = []
+        for label, build in self._iter_builds(ids):
+            if build.active:
+                continue
+            if build.storage != "remote":
+                continue
+            result = rehome_from_storage.delay(build.id, str(build))
+            tasks.append({"id": result.id, "type": "rehome", "label": label})
+        if tasks:
+            _store_task_tasks(tasks)
+            count = len(tasks)
+            flash(
+                Markup(
+                    f"{count} re-home task(s) queued. "
+                    f'<a href="/admin/tasks/">View status</a>',
+                ),
+                "info",
+            )
+        else:
+            flash(
+                "No builds found to re-home (must be inactive and in Object Storage).",
+                "warning",
+            )
+
+    @action(
+        "05_resync_info",
         "Resync Info",
         "Reapply INFO metadata from selected builds?",
     )
-    def action_resync_info(self, ids):
-        task_ids = []
+    def action_05_resync_info(self, ids):
+        tasks = []
         for label, build in self._iter_builds(ids):
             result = resync_build_metadata.delay(build.id, str(build))
-            task_ids.append(result.id)
-        if task_ids:
-            _store_task_ids(task_ids)
-            count = len(task_ids)
+            tasks.append({"id": result.id, "type": "resync_info", "label": label})
+        if tasks:
+            _store_task_tasks(tasks)
+            count = len(tasks)
             flash(
                 Markup(
                     f"{count} resync task(s) queued. "
@@ -334,18 +501,18 @@ class SignResyncMixin:
             flash("No builds found to resync.", "warning")
 
     @action(
-        "resync_file",
+        "06_resync_file",
         "Resync File",
         "Recalculate md5 and size from selected build files?",
     )
-    def action_resync_file(self, ids):
-        task_ids = []
+    def action_06_resync_file(self, ids):
+        tasks = []
         for label, build in self._iter_builds(ids):
             result = resync_build_file.delay(build.id, str(build))
-            task_ids.append(result.id)
-        if task_ids:
-            _store_task_ids(task_ids)
-            count = len(task_ids)
+            tasks.append({"id": result.id, "type": "resync_file", "label": label})
+        if tasks:
+            _store_task_tasks(tasks)
+            count = len(tasks)
             flash(
                 Markup(
                     f"{count} file resync task(s) queued. "
@@ -391,8 +558,10 @@ class UserView(ModelView):
         cache.delete("packages_versions")
         clear_catalog_cache()
 
-    @action("activate", "Activate", "Are you sure you want to activate selected users?")
-    def action_activate(self, ids):
+    @action(
+        "01_activate", "Activate", "Are you sure you want to activate selected users?"
+    )
+    def action_01_activate(self, ids):
         try:
             users = get_query_for_ids(self.get_query(), self.model, ids).all()
             for user in users:
@@ -409,11 +578,11 @@ class UserView(ModelView):
             flash("Failed to activate users. Please check the logs.", "error")
 
     @action(
-        "deactivate",
+        "02_deactivate",
         "Deactivate",
         "Are you sure you want to deactivate selected users?",
     )
-    def action_deactivate(self, ids):
+    def action_02_deactivate(self, ids):
         try:
             users = get_query_for_ids(self.get_query(), self.model, ids).all()
             for user in users:
@@ -709,6 +878,15 @@ class VersionView(SignResyncMixin, ModelView):
                 yield label, build
 
     def on_model_delete(self, model):
+        for build in model.builds:
+            if build.storage == "remote":
+                storage_service.delete(build.path)
+                storage_service.purge_cdn("/" + build.path)
+            sidecar = os.path.join(
+                current_app.config["DATA_PATH"], build.path + ".json"
+            )
+            if os.path.exists(sidecar):
+                os.remove(sidecar)
         version_path = os.path.join(
             current_app.config["DATA_PATH"], model.package.name, str(model.version)
         )
@@ -730,6 +908,7 @@ class VersionView(SignResyncMixin, ModelView):
         "beta",
         "startable",
         "all_builds_active",
+        "all_builds_uploaded",
         "total_size",
         "insert_date",
     )
@@ -738,6 +917,7 @@ class VersionView(SignResyncMixin, ModelView):
         "version_string": "Version",
         "dependencies": "Dependencies",
         "all_builds_active": "All Active",
+        "all_builds_uploaded": "All Uploaded",
         "install_wizard": "Install Wizard",
         "upgrade_wizard": "Upgrade Wizard",
         "total_size": "Total Size",
@@ -751,6 +931,7 @@ class VersionView(SignResyncMixin, ModelView):
         "beta",
         "startable",
         "all_builds_active",
+        "all_builds_uploaded",
     )
     column_sortable_list = (
         ("package", "package.name"),
@@ -759,6 +940,7 @@ class VersionView(SignResyncMixin, ModelView):
         ("beta", "beta"),
         ("insert_date", "insert_date"),
         ("all_builds_active", "all_builds_active"),
+        ("all_builds_uploaded", "all_builds_uploaded"),
         ("startable", "startable"),
         ("total_size", "total_size"),
     )
@@ -767,6 +949,7 @@ class VersionView(SignResyncMixin, ModelView):
             m.insert_date.strftime("%Y-%m-%d") if m.insert_date else None
         ),
         "all_builds_active": _bool_formatter,
+        "all_builds_uploaded": _bool_formatter,
         "startable": _bool_formatter,
         "beta": _bool_formatter,
         "total_size": lambda v, c, m, p: (
@@ -777,6 +960,7 @@ class VersionView(SignResyncMixin, ModelView):
         "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
         "install_wizard": _bool_formatter,
         "upgrade_wizard": _bool_formatter,
+        "all_builds_uploaded": _bool_formatter,
         "startable": _bool_formatter,
         "license": _truncate_formatter,
         "download_count": lambda v, c, m, p: (
@@ -809,27 +993,50 @@ class VersionView(SignResyncMixin, ModelView):
         return q
 
     @action(
-        "activate",
+        "01_activate",
         "Activate",
         "Are you sure you want to activate selected versions' builds?",
     )
-    def action_activate(self, ids):
+    def action_01_activate(self, ids):
         try:
             versions = get_query_for_ids(self.get_query(), self.model, ids).all()
+            upload_tasks = []
+            storage_ok = storage_service.storage_configured()
             for version in versions:
                 for build in version.builds:
+                    if not build.signed and not _detect_and_fix_signed(build):
+                        continue
                     build.active = True
+                    if build.storage == "local" and storage_ok:
+                        result = upload_to_storage.delay(build.id, str(build))
+                        upload_tasks.append(
+                            {"id": result.id, "type": "upload", "label": str(build)}
+                        )
             db.session.commit()
             cache.delete("packages_versions")
             clear_catalog_cache()
-            flash(
-                "Builds on version were successfully activated."
-                if len(versions) == 1
-                else (
-                    f"Builds have been successfully activated for "
-                    f"{len(versions)} versions."
+            if upload_tasks:
+                _store_task_tasks(upload_tasks)
+            if upload_tasks:
+                flash(
+                    Markup(
+                        "Builds were activated and queued for upload. "
+                        '<a href="/admin/tasks/">View status</a>'
+                    ),
+                    "info",
                 )
-            )
+            else:
+                flash(
+                    (
+                        "Builds on version were successfully activated."
+                        if len(versions) == 1
+                        else (
+                            "Builds have been successfully activated for "
+                            f"{len(versions)} versions."
+                        )
+                    ),
+                    "success",
+                )
         except SQLAlchemyError:
             db.session.rollback()
             current_app.logger.exception("Failed to activate versions' builds")
@@ -838,11 +1045,11 @@ class VersionView(SignResyncMixin, ModelView):
             )
 
     @action(
-        "deactivate",
+        "02_deactivate",
         "Deactivate",
         "Are you sure you want to deactivate selected versions' builds?",
     )
-    def action_deactivate(self, ids):
+    def action_02_deactivate(self, ids):
         try:
             versions = get_query_for_ids(self.get_query(), self.model, ids).all()
             for version in versions:
@@ -855,7 +1062,7 @@ class VersionView(SignResyncMixin, ModelView):
                 "Builds on version were successfully deactivated."
                 if len(versions) == 1
                 else (
-                    f"Builds have been successfully deactivated for "
+                    "Builds have been successfully deactivated for "
                     f"{len(versions)} versions."
                 )
             )
@@ -904,6 +1111,7 @@ class BuildView(SignResyncMixin, ModelView):
         "firmware_min",
         "publisher",
         "insert_date",
+        "storage",
         "active",
     )
     column_labels = {
@@ -925,6 +1133,8 @@ class BuildView(SignResyncMixin, ModelView):
         "architectures.code",
         "firmware_min.version",
         "publisher.username",
+        "storage",
+        "signed",
         "active",
     )
     column_sortable_list = (
@@ -933,6 +1143,8 @@ class BuildView(SignResyncMixin, ModelView):
         ("firmware_min", "firmware_min.build"),
         ("publisher", "publisher.username"),
         ("insert_date", "insert_date"),
+        ("storage", "storage"),
+        ("signed", "signed"),
         ("active", "active"),
     )
     column_formatters = {
@@ -942,6 +1154,8 @@ class BuildView(SignResyncMixin, ModelView):
         "size": lambda v, c, m, p: (
             f"{m.size / 1024 / 1024:.1f} MB" if m.size else None
         ),
+        "storage": _storage_formatter,
+        "signed": _bool_formatter,
         "active": _bool_formatter,
     }
     column_formatters_detail = {
@@ -949,6 +1163,8 @@ class BuildView(SignResyncMixin, ModelView):
         "size": lambda v, c, m, p: (
             f"{m.size / 1024 / 1024:.1f} MB" if m.size else None
         ),
+        "storage": _storage_formatter,
+        "signed": _bool_formatter,
         "active": _bool_formatter,
     }
     column_default_sort = (Build.insert_date, True)
@@ -976,6 +1192,12 @@ class BuildView(SignResyncMixin, ModelView):
         return q
 
     def on_model_delete(self, model):
+        if model.storage == "remote":
+            storage_service.delete(model.path)
+            storage_service.purge_cdn("/" + model.path)
+        sidecar = os.path.join(current_app.config["DATA_PATH"], model.path + ".json")
+        if os.path.exists(sidecar):
+            os.remove(sidecar)
         build_path = os.path.join(current_app.config["DATA_PATH"], model.path)
         if os.path.exists(build_path):
             os.remove(build_path)
@@ -989,32 +1211,69 @@ class BuildView(SignResyncMixin, ModelView):
         clear_catalog_cache()
 
     @action(
-        "activate", "Activate", "Are you sure you want to activate selected builds?"
+        "01_activate", "Activate", "Are you sure you want to activate selected builds?"
     )
-    def action_activate(self, ids):
+    def action_01_activate(self, ids):
         try:
             builds = get_query_for_ids(self.get_query(), self.model, ids).all()
+            not_signed = []
+            activated = []
+            upload_tasks = []
+            storage_ok = storage_service.storage_configured()
             for build in builds:
+                if not build.signed and not _detect_and_fix_signed(build):
+                    not_signed.append(str(build))
+                    continue
                 build.active = True
+                activated.append(build)
+                if build.storage == "local" and storage_ok:
+                    result = upload_to_storage.delay(build.id, str(build))
+                    upload_tasks.append(
+                        {"id": result.id, "type": "upload", "label": str(build)}
+                    )
             db.session.commit()
             cache.delete("packages_versions")
             clear_catalog_cache()
-            flash(
-                "Build was successfully activated."
-                if len(builds) == 1
-                else f"{len(builds)} builds were successfully activated."
-            )
+            if upload_tasks:
+                _store_task_tasks(upload_tasks)
+            if not_signed:
+                flash(
+                    "Build(s) have no signature and cannot be activated: "
+                    + ", ".join(not_signed),
+                    "warning",
+                )
+            if activated:
+                if upload_tasks:
+                    a = len(activated)
+                    msg = (
+                        "Build was successfully activated and queued for upload."
+                        if a == 1
+                        else (
+                            f"{a} builds were successfully activated "
+                            "and queued for upload."
+                        )
+                    )
+                    flash(
+                        Markup(msg + ' <a href="/admin/tasks/">View status</a>'), "info"
+                    )
+                else:
+                    msg = (
+                        "Build was successfully activated."
+                        if len(activated) == 1
+                        else f"{len(activated)} builds were successfully activated."
+                    )
+                    flash(msg, "success")
         except SQLAlchemyError:
             db.session.rollback()
             current_app.logger.exception("Failed to activate builds")
             flash("Failed to activate builds. Please check the logs.", "error")
 
     @action(
-        "deactivate",
+        "02_deactivate",
         "Deactivate",
         "Are you sure you want to deactivate selected builds?",
     )
-    def action_deactivate(self, ids):
+    def action_02_deactivate(self, ids):
         try:
             builds = get_query_for_ids(self.get_query(), self.model, ids).all()
             for build in builds:
@@ -1110,10 +1369,15 @@ class TaskStatusView(BaseView):
 
     @expose("/")
     def index(self):
-        task_ids = _get_task_ids()
+        task_list = _get_task_ids()
         tasks = []
         pending_count = 0
-        for task_id in task_ids:
+        for entry in task_list:
+            task_id = entry["id"] if isinstance(entry, dict) else entry
+            task_type = entry.get("type", "") if isinstance(entry, dict) else ""
+            task_label = (
+                entry.get("label", task_id) if isinstance(entry, dict) else task_id
+            )
             result = AsyncResult(task_id, app=celery)
             state = result.state
             info = result.info if result.ready() else None
@@ -1122,6 +1386,8 @@ class TaskStatusView(BaseView):
             tasks.append(
                 {
                     "id": task_id,
+                    "type": task_type,
+                    "label": task_label,
                     "state": state,
                     "result": info,
                 }
@@ -1139,17 +1405,22 @@ class TaskStatusView(BaseView):
         if not self.is_accessible():
             return jsonify({"error": "forbidden"}), 403
 
-        task_ids = _get_task_ids()
+        task_list = _get_task_ids()
         tasks = []
         pending_count = 0
-        for task_id in task_ids:
+        for entry in task_list:
+            task_id = entry["id"] if isinstance(entry, dict) else entry
+            task_type = entry.get("type", "") if isinstance(entry, dict) else ""
+            task_label = (
+                entry.get("label", task_id) if isinstance(entry, dict) else task_id
+            )
             result = AsyncResult(task_id, app=celery)
             state = result.state
             info = result.info if result.ready() else None
             label = (
-                (info or {}).get("label", task_id)
+                (info or {}).get("label", task_label)
                 if isinstance(info, dict)
-                else task_id
+                else task_label
             )
             error = (
                 (info or {}).get("error")
@@ -1161,6 +1432,7 @@ class TaskStatusView(BaseView):
             tasks.append(
                 {
                     "id": task_id,
+                    "type": task_type,
                     "state": state,
                     "label": label,
                     "error": error,

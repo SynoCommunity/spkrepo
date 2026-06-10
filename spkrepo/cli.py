@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 
@@ -188,7 +189,7 @@ def populate_db():
 def depopulate_db():
     """Delete all packages from database and file system."""
     if db.session.query(Build).filter(Build.storage != "local").first():
-        click.echo("Refusing: builds exist in Object Storage. Run only on local-only databases.")
+        click.echo("Refusing: builds in Object Storage. Use local-only DB.")
         return
     for package in Package.query.all():
         db.session.delete(package)
@@ -241,7 +242,7 @@ def create_admin(username, email, password):
 def clean():
     """Clean data path, removes all packages on filesystem."""
     if db.session.query(Build).filter(Build.storage != "local").first():
-        click.echo("Refusing: builds exist in Object Storage. Run only on local-only databases.")
+        click.echo("Refusing: builds in Object Storage. Use local-only DB.")
         return
     # do not remove and recreate the path since it may be a docker volume
     for root, dirs, files in os.walk(
@@ -254,14 +255,12 @@ def clean():
     click.echo("Done")
 
 
-
 @spkrepo.command("ingest_logs")
 @with_appcontext
 def ingest_logs():
     """Ingest download stats from Object Storage log files."""
     import gzip
     import json
-    import logging
     import re
     from collections import defaultdict
     from datetime import date, datetime
@@ -319,7 +318,7 @@ def ingest_logs():
         endpoint_url=current_app.config["OBJECT_STORAGE_LOGS_ENDPOINT"],
         aws_access_key_id=current_app.config["OBJECT_STORAGE_LOGS_ACCESS_KEY"],
         aws_secret_access_key=current_app.config["OBJECT_STORAGE_LOGS_SECRET_KEY"],
-        region_name=current_app.config.get("OBJECT_STORAGE_LOGS_REGION", "us-east"),
+        region_name=current_app.config["OBJECT_STORAGE_LOGS_REGION"],
     )
 
     try:

@@ -413,7 +413,7 @@ class Build(db.Model):
     md5 = db.Column(db.Unicode(32))
     size = db.Column(db.Integer)
     storage = db.Column(
-        db.Enum("local", "object_storage", name="storage_location"),
+        db.Enum("local", "remote", name="storage_location"),
         default="local",
         nullable=False,
     )
@@ -498,11 +498,11 @@ class Build(db.Model):
 
     @property
     def storage_location(self):
-        """Returns 'object_storage', 'local', or 'missing' based on filesystem."""
+        """Returns 'remote', 'local', or 'missing' based on filesystem."""
         sidecar = os.path.join(current_app.config["DATA_PATH"], self.path + ".json")
         local = os.path.join(current_app.config["DATA_PATH"], self.path)
         if os.path.exists(sidecar):
-            return "object_storage"
+            return "remote"
         if os.path.exists(local):
             return "local"
         return "missing"
@@ -615,6 +615,16 @@ class Version(db.Model):
     def all_builds_active(cls):
         return ~db.exists().where(
             db.and_(Build.version_id == cls.id, Build.active.is_(False))
+        )
+
+    @hybrid_property
+    def all_builds_uploaded(self):
+        return all(b.storage == "remote" for b in self.builds)
+
+    @all_builds_uploaded.expression
+    def all_builds_uploaded(cls):
+        return ~db.exists().where(
+            db.and_(Build.version_id == cls.id, Build.storage != "remote")
         )
 
     @property

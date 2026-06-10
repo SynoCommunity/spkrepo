@@ -113,7 +113,7 @@ class UserTestCase(BaseTestCase):
             response = self.client.post(
                 url_for("user.action_view"),
                 follow_redirects=True,
-                data=dict(action="activate", rowid=[user.id]),
+                data=dict(action="01_activate", rowid=[user.id]),
             )
             self.assert200(response)
             self.assertIn(
@@ -132,7 +132,7 @@ class UserTestCase(BaseTestCase):
             response = self.client.post(
                 url_for("user.action_view"),
                 follow_redirects=True,
-                data=dict(action="activate", rowid=[user1.id, user2.id]),
+                data=dict(action="01_activate", rowid=[user1.id, user2.id]),
             )
             self.assert200(response)
             self.assertIn(
@@ -150,7 +150,7 @@ class UserTestCase(BaseTestCase):
             response = self.client.post(
                 url_for("user.action_view"),
                 follow_redirects=True,
-                data=dict(action="deactivate", rowid=[user.id]),
+                data=dict(action="02_deactivate", rowid=[user.id]),
             )
             self.assert200(response)
             self.assertIn(
@@ -169,7 +169,7 @@ class UserTestCase(BaseTestCase):
             response = self.client.post(
                 url_for("user.action_view"),
                 follow_redirects=True,
-                data=dict(action="deactivate", rowid=[user1.id, user2.id]),
+                data=dict(action="02_deactivate", rowid=[user1.id, user2.id]),
             )
             self.assert200(response)
             self.assertIn(
@@ -295,7 +295,7 @@ class VersionTestCase(BaseTestCase):
                 response = self.client.post(
                     url_for("version.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_info", rowid=[version.id]),
+                    data=dict(action="05_resync_info", rowid=[version.id]),
                 )
                 self.assert200(response)
                 self.assertIn("queued", response.data.decode())
@@ -351,7 +351,7 @@ class VersionTestCase(BaseTestCase):
                 response = self.client.post(
                     url_for("version.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_info", rowid=[version.id]),
+                    data=dict(action="05_resync_info", rowid=[version.id]),
                 )
                 self.assert200(response)
                 self.assertIn("queued", response.data.decode())
@@ -385,7 +385,7 @@ class VersionTestCase(BaseTestCase):
                 self.client.post(
                     url_for("version.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_info", rowid=[build.version.id]),
+                    data=dict(action="05_resync_info", rowid=[build.version.id]),
                 )
         self.assertIsNone(cache.get("packages_versions"))
 
@@ -398,7 +398,7 @@ class VersionTestCase(BaseTestCase):
                 self.client.post(
                     url_for("version.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_file", rowid=[build.version.id]),
+                    data=dict(action="06_resync_file", rowid=[build.version.id]),
                 )
         self.assertIsNone(cache.get("packages_versions"))
 
@@ -411,7 +411,7 @@ class VersionTestCase(BaseTestCase):
                 response = self.client.post(
                     url_for("version.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_info", rowid=[build.version.id]),
+                    data=dict(action="05_resync_info", rowid=[build.version.id]),
                 )
         self.assert200(response)
         self.assertIn("queued", response.data.decode())
@@ -444,7 +444,7 @@ class VersionTestCase(BaseTestCase):
                 response = self.client.post(
                     url_for("version.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_info", rowid=[build1.version.id]),
+                    data=dict(action="05_resync_info", rowid=[build1.version.id]),
                 )
         # The task runs synchronously but returns an error result; the action
         # still queues successfully — check the task result was an error.
@@ -484,7 +484,7 @@ class VersionTestCase(BaseTestCase):
                 response = self.client.post(
                     url_for("version.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_file", rowid=[version.id]),
+                    data=dict(action="06_resync_file", rowid=[version.id]),
                 )
                 self.assert200(response)
                 self.assertIn("queued", response.data.decode())
@@ -496,38 +496,38 @@ class VersionTestCase(BaseTestCase):
         self.assertGreater(refreshed_build.size, 0)
 
     def test_action_activate_one(self):
-        build = BuildFactory(active=False)
+        build = BuildFactory(active=False, signed=True)
         db.session.commit()
         with self.logged_user("package_admin"):
             response = self.client.post(
                 url_for("version.action_view"),
                 follow_redirects=True,
-                data=dict(action="activate", rowid=[build.version.id]),
+                data=dict(action="01_activate", rowid=[build.version.id]),
             )
             self.assert200(response)
             self.assertIn(
-                "Builds on version were successfully activated.",
+                "activated",
                 response.data.decode(),
             )
         db.session.expire_all()
         self.assertTrue(db.session.get(Build, build.id).active)
 
     def test_action_activate_multi(self):
-        build1 = BuildFactory(active=False)
-        build2 = BuildFactory(active=False)
+        build1 = BuildFactory(active=False, signed=True)
+        build2 = BuildFactory(active=False, signed=True)
         db.session.commit()
         with self.logged_user("package_admin"):
             response = self.client.post(
                 url_for("version.action_view"),
                 follow_redirects=True,
                 data=dict(
-                    action="activate",
+                    action="01_activate",
                     rowid=[build1.version.id, build2.version.id],
                 ),
             )
             self.assert200(response)
             self.assertIn(
-                "Builds have been successfully activated for 2 versions.",
+                "activated",
                 response.data.decode(),
             )
         db.session.expire_all()
@@ -541,7 +541,7 @@ class VersionTestCase(BaseTestCase):
             response = self.client.post(
                 url_for("version.action_view"),
                 follow_redirects=True,
-                data=dict(action="deactivate", rowid=[build.version.id]),
+                data=dict(action="02_deactivate", rowid=[build.version.id]),
             )
             self.assert200(response)
             self.assertIn(
@@ -560,7 +560,7 @@ class VersionTestCase(BaseTestCase):
                 url_for("version.action_view"),
                 follow_redirects=True,
                 data=dict(
-                    action="deactivate",
+                    action="02_deactivate",
                     rowid=[build1.version.id, build2.version.id],
                 ),
             )
@@ -581,7 +581,7 @@ class VersionTestCase(BaseTestCase):
                 response = self.client.post(
                     url_for("version.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_info", rowid=[build.version.id]),
+                    data=dict(action="05_resync_info", rowid=[build.version.id]),
                 )
         self.assert200(response)
         self.assertIn("queued", response.data.decode())
@@ -594,7 +594,7 @@ class VersionTestCase(BaseTestCase):
             db.session.commit()
             response = self.client.post(
                 url_for("version.action_view"),
-                data=dict(action="resync_info", rowid=[build.version.id]),
+                data=dict(action="05_resync_info", rowid=[build.version.id]),
             )
         self.assert403(response)
 
@@ -606,7 +606,7 @@ class VersionTestCase(BaseTestCase):
                 response = self.client.post(
                     url_for("version.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_file", rowid=[build.version.id]),
+                    data=dict(action="06_resync_file", rowid=[build.version.id]),
                 )
         self.assert200(response)
         self.assertIn("queued", response.data.decode())
@@ -619,7 +619,7 @@ class VersionTestCase(BaseTestCase):
             db.session.commit()
             response = self.client.post(
                 url_for("version.action_view"),
-                data=dict(action="resync_file", rowid=[build.version.id]),
+                data=dict(action="06_resync_file", rowid=[build.version.id]),
             )
         self.assert403(response)
 
@@ -646,33 +646,33 @@ class BuildTestCase(BaseTestCase):
 
     def test_action_activate_one(self):
         with self.logged_user("package_admin"):
-            build = BuildFactory(active=False)
+            build = BuildFactory(active=False, signed=True)
             db.session.commit()
             response = self.client.post(
                 url_for("build.action_view"),
                 follow_redirects=True,
-                data=dict(action="activate", rowid=[build.id]),
+                data=dict(action="01_activate", rowid=[build.id]),
             )
             self.assert200(response)
             self.assertIn(
-                "Build was successfully activated.",
+                "activated",
                 response.data.decode(),
             )
             self.assertTrue(build.active)
 
     def test_action_activate_multi(self):
         with self.logged_user("package_admin"):
-            build1 = BuildFactory(active=False)
-            build2 = BuildFactory(active=False)
+            build1 = BuildFactory(active=False, signed=True)
+            build2 = BuildFactory(active=False, signed=True)
             db.session.commit()
             response = self.client.post(
                 url_for("build.action_view"),
                 follow_redirects=True,
-                data=dict(action="activate", rowid=[build1.id, build2.id]),
+                data=dict(action="01_activate", rowid=[build1.id, build2.id]),
             )
             self.assert200(response)
             self.assertIn(
-                "2 builds were successfully activated.",
+                "activated",
                 response.data.decode(),
             )
             self.assertTrue(build1.active)
@@ -685,7 +685,7 @@ class BuildTestCase(BaseTestCase):
             response = self.client.post(
                 url_for("build.action_view"),
                 follow_redirects=True,
-                data=dict(action="deactivate", rowid=[build.id]),
+                data=dict(action="02_deactivate", rowid=[build.id]),
             )
             self.assert200(response)
             self.assertIn(
@@ -702,7 +702,7 @@ class BuildTestCase(BaseTestCase):
             response = self.client.post(
                 url_for("build.action_view"),
                 follow_redirects=True,
-                data=dict(action="deactivate", rowid=[build1.id, build2.id]),
+                data=dict(action="02_deactivate", rowid=[build1.id, build2.id]),
             )
             self.assert200(response)
             self.assertIn(
@@ -737,7 +737,7 @@ class BuildTestCase(BaseTestCase):
                 response = self.client.post(
                     url_for("build.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_info", rowid=[build.id]),
+                    data=dict(action="05_resync_info", rowid=[build.id]),
                 )
                 self.assert200(response)
                 self.assertIn("queued", response.data.decode())
@@ -762,7 +762,7 @@ class BuildTestCase(BaseTestCase):
                 response = self.client.post(
                     url_for("build.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_info", rowid=[build.id]),
+                    data=dict(action="05_resync_info", rowid=[build.id]),
                 )
                 self.assert200(response)
                 self.assertIn("queued", response.data.decode())
@@ -783,7 +783,7 @@ class BuildTestCase(BaseTestCase):
                 response = self.client.post(
                     url_for("build.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_info", rowid=[build.id]),
+                    data=dict(action="05_resync_info", rowid=[build.id]),
                 )
         self.assert200(response)
         self.assertIn("queued", response.data.decode())
@@ -797,7 +797,7 @@ class BuildTestCase(BaseTestCase):
                 self.client.post(
                     url_for("build.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_info", rowid=[build.id]),
+                    data=dict(action="05_resync_info", rowid=[build.id]),
                 )
         self.assertIsNone(cache.get("packages_versions"))
 
@@ -810,7 +810,7 @@ class BuildTestCase(BaseTestCase):
                 self.client.post(
                     url_for("build.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_file", rowid=[build.id]),
+                    data=dict(action="06_resync_file", rowid=[build.id]),
                 )
         self.assertIsNone(cache.get("packages_versions"))
 
@@ -856,7 +856,7 @@ class BuildTestCase(BaseTestCase):
                 response = self.client.post(
                     url_for("build.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_info", rowid=[build1.id]),
+                    data=dict(action="05_resync_info", rowid=[build1.id]),
                 )
         self.assert200(response)
         # Task runs synchronously but returns error result; DB must be unchanged.
@@ -892,7 +892,7 @@ class BuildTestCase(BaseTestCase):
                 response = self.client.post(
                     url_for("build.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_file", rowid=[build.id]),
+                    data=dict(action="06_resync_file", rowid=[build.id]),
                 )
                 self.assert200(response)
                 self.assertIn("queued", response.data.decode())
@@ -911,7 +911,7 @@ class BuildTestCase(BaseTestCase):
                 response = self.client.post(
                     url_for("build.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_info", rowid=[build.id]),
+                    data=dict(action="05_resync_info", rowid=[build.id]),
                 )
         self.assert200(response)
         self.assertIn("queued", response.data.decode())
@@ -924,7 +924,7 @@ class BuildTestCase(BaseTestCase):
             db.session.commit()
             response = self.client.post(
                 url_for("build.action_view"),
-                data=dict(action="resync_info", rowid=[build.id]),
+                data=dict(action="05_resync_info", rowid=[build.id]),
             )
         self.assert403(response)
 
@@ -936,7 +936,7 @@ class BuildTestCase(BaseTestCase):
                 response = self.client.post(
                     url_for("build.action_view"),
                     follow_redirects=True,
-                    data=dict(action="resync_file", rowid=[build.id]),
+                    data=dict(action="06_resync_file", rowid=[build.id]),
                 )
         self.assert200(response)
         self.assertIn("queued", response.data.decode())
@@ -949,7 +949,7 @@ class BuildTestCase(BaseTestCase):
             db.session.commit()
             response = self.client.post(
                 url_for("build.action_view"),
-                data=dict(action="resync_file", rowid=[build.id]),
+                data=dict(action="06_resync_file", rowid=[build.id]),
             )
         self.assert403(response)
 
@@ -960,7 +960,7 @@ class BuildTestCase(BaseTestCase):
             response = self.client.post(
                 url_for("build.action_view"),
                 follow_redirects=True,
-                data=dict(action="unsign", rowid=[build.id]),
+                data=dict(action="08_unsign", rowid=[build.id]),
             )
         self.assert200(response)
         self.assertIn("must be deactivated before unsigning", response.data.decode())
@@ -973,7 +973,7 @@ class BuildTestCase(BaseTestCase):
         with self.logged_user("package_admin"):
             response = self.client.post(
                 url_for("build.action_view"),
-                data=dict(action="sign", rowid=[build.id]),
+                data=dict(action="07_sign", rowid=[build.id]),
             )
         self.assert403(response)
 
@@ -983,7 +983,7 @@ class BuildTestCase(BaseTestCase):
         with self.logged_user("package_admin"):
             response = self.client.post(
                 url_for("build.action_view"),
-                data=dict(action="unsign", rowid=[build.id]),
+                data=dict(action="08_unsign", rowid=[build.id]),
             )
         self.assert403(response)
 

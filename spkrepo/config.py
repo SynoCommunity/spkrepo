@@ -73,7 +73,7 @@ CELERY = {
     "result_expires": 86400,  # clean up task results after 24 hours
     "task_queues": {
         "celery": {},  # default queue for anything else
-        "resync": {},  # resync tasks — isolated so they can't starve other work
+        "ops": {},  # admin-triggered background operations (upload, rehome, resync)
     },
     "task_default_queue": "celery",
 }

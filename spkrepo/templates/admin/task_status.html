@@ -36,6 +36,7 @@
             <thead>
               <tr>
                 <th>Build</th>
+                <th style="width: 60px;">Action</th>
                 <th style="width: 130px;">Status</th>
                 <th>Detail</th>
               </tr>
@@ -45,10 +46,23 @@
               {% set has_error = task.result and task.result.get('error') %}
               <tr id="row-{{ task.id }}">
                 <td>
-                  {% if task.result and task.result.label %}
+                  {% if task.label %}
+                    {{ task.label }}
+                  {% elif task.result and task.result.label %}
                     {{ task.result.label }}
                   {% else %}
                     <code>{{ task.id[:12] }}…</code>
+                  {% endif %}
+                </td>
+                <td style="text-align: center;">
+                  {% if task.type == "upload" %}
+                    <i class="fa fa-cloud-upload" title="Upload"></i>
+                  {% elif task.type == "rehome" %}
+                    <i class="fa fa-download" title="Re-home"></i>
+                  {% elif task.type == "resync_info" %}
+                    <i class="fa fa-refresh" title="Resync Info"></i>
+                  {% elif task.type == "resync_file" %}
+                    <i class="fa fa-file" title="Resync File"></i>
                   {% endif %}
                 </td>
                 <td>
@@ -121,16 +135,22 @@
       var hasError = !!t.error;
       if (hasError) errorCount++;
       if (t.label && t.label !== t.id) row.cells[0].textContent = t.label;
-      row.cells[1].innerHTML = iconForState(t.state, hasError) +
+      var actionIcon = "";
+      if (t.type === "upload") actionIcon = '<i class="fa fa-cloud-upload" title="Upload"></i>';
+      else if (t.type === "rehome") actionIcon = '<i class="fa fa-download" title="Re-home"></i>';
+      else if (t.type === "resync_info") actionIcon = '<i class="fa fa-refresh" title="Resync Info"></i>';
+      else if (t.type === "resync_file") actionIcon = '<i class="fa fa-file" title="Resync File"></i>';
+      row.cells[1].innerHTML = actionIcon;
+      row.cells[2].innerHTML = iconForState(t.state, hasError) +
         '<span style="font-size:0.85em;margin-left:4px;">' + labelForState(t.state, hasError) + '</span>';
       if (hasError) {
-        row.cells[2].innerHTML = '<span class="text-danger">' + t.error + '</span>';
+        row.cells[3].innerHTML = '<span class="text-danger">' + t.error + '</span>';
       } else if (t.state === "SUCCESS") {
-        row.cells[2].innerHTML = '<span class="text-muted">Done</span>';
+        row.cells[3].innerHTML = '<span class="text-muted">Done</span>';
       } else if (t.state === "FAILURE") {
-        row.cells[2].innerHTML = '<span class="text-danger">' + (t.error || t.state) + '</span>';
+        row.cells[3].innerHTML = '<span class="text-danger">' + (t.error || t.state) + '</span>';
       } else {
-        row.cells[2].innerHTML = '<span class="text-muted">In progress…</span>';
+        row.cells[3].innerHTML = '<span class="text-muted">In progress…</span>';
       }
     });
     return errorCount;
