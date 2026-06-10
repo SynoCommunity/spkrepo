@@ -702,6 +702,7 @@ def apply_info_from_spk(session, build, spk, md5_hash):
 
         build.checksum = info.get("checksum")
         build.md5 = md5_hash
+        build.signed = spk.signature is not None
 
         manifest = build.buildmanifest
         if manifest is None:

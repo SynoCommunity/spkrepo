@@ -6,7 +6,7 @@ from flask import current_app
 from flask.cli import with_appcontext
 
 from .ext import db
-from .models import Package, Role, User
+from .models import Build, Package, Role, User
 
 
 def _create_user(username, email, password):
@@ -187,6 +187,9 @@ def populate_db():
 @with_appcontext
 def depopulate_db():
     """Delete all packages from database and file system."""
+    if db.session.query(Build).filter(Build.storage != "local").first():
+        click.echo("Refusing: builds exist in Object Storage. Run only on local-only databases.")
+        return
     for package in Package.query.all():
         db.session.delete(package)
         shutil.rmtree(
@@ -237,6 +240,9 @@ def create_admin(username, email, password):
 @with_appcontext
 def clean():
     """Clean data path, removes all packages on filesystem."""
+    if db.session.query(Build).filter(Build.storage != "local").first():
+        click.echo("Refusing: builds exist in Object Storage. Run only on local-only databases.")
+        return
     # do not remove and recreate the path since it may be a docker volume
     for root, dirs, files in os.walk(
         os.path.join(current_app.config["DATA_PATH"]), topdown=False
@@ -246,6 +252,7 @@ def clean():
         for name in dirs:
             os.rmdir(os.path.join(root, name))
     click.echo("Done")
+
 
 
 @spkrepo.command("ingest_logs")

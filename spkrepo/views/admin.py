@@ -246,6 +246,7 @@ class SignResyncMixin:
                             current_app.config["GNUPG_PATH"],
                         )
                         _resync_build_file(build)
+                        build.signed = True
                         db.session.commit()
                         success.append(label)
                     except Exception:
@@ -280,6 +281,7 @@ class SignResyncMixin:
                     try:
                         spk.unsign()
                         _resync_build_file(build)
+                        build.signed = False
                         db.session.commit()
                         success.append(label)
                     except Exception:
