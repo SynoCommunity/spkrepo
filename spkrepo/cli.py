@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 
@@ -6,7 +7,7 @@ from flask import current_app
 from flask.cli import with_appcontext
 
 from .ext import db
-from .models import Package, Role, User
+from .models import Build, Package, Role, User
 
 
 def _create_user(username, email, password):
@@ -187,6 +188,9 @@ def populate_db():
 @with_appcontext
 def depopulate_db():
     """Delete all packages from database and file system."""
+    if db.session.query(Build).filter(Build.storage != "local").first():
+        click.echo("Refusing: builds in Object Storage. Use local-only DB.")
+        return
     for package in Package.query.all():
         db.session.delete(package)
         shutil.rmtree(
@@ -237,6 +241,9 @@ def create_admin(username, email, password):
 @with_appcontext
 def clean():
     """Clean data path, removes all packages on filesystem."""
+    if db.session.query(Build).filter(Build.storage != "local").first():
+        click.echo("Refusing: builds in Object Storage. Use local-only DB.")
+        return
     # do not remove and recreate the path since it may be a docker volume
     for root, dirs, files in os.walk(
         os.path.join(current_app.config["DATA_PATH"]), topdown=False
@@ -254,7 +261,6 @@ def ingest_logs():
     """Ingest download stats from Object Storage log files."""
     import gzip
     import json
-    import logging
     import re
     from collections import defaultdict
     from datetime import date, datetime
@@ -304,15 +310,15 @@ def ingest_logs():
             record_date = date.today()
         return package_name, version_number, arch_code, firmware_build, record_date
 
-    bucket = current_app.config["OBJECT_STORAGE_BUCKET"]
-    prefix = current_app.config.get("OBJECT_STORAGE_PREFIX", "logs/")
+    bucket = current_app.config["OBJECT_STORAGE_LOGS_BUCKET"]
+    prefix = current_app.config.get("OBJECT_STORAGE_LOGS_PREFIX", "logs/")
 
     s3 = boto3.client(
         "s3",
-        endpoint_url=current_app.config["OBJECT_STORAGE_ENDPOINT"],
-        aws_access_key_id=current_app.config["OBJECT_STORAGE_ACCESS_KEY"],
-        aws_secret_access_key=current_app.config["OBJECT_STORAGE_SECRET_KEY"],
-        region_name=current_app.config.get("OBJECT_STORAGE_REGION", "us-east"),
+        endpoint_url=current_app.config["OBJECT_STORAGE_LOGS_ENDPOINT"],
+        aws_access_key_id=current_app.config["OBJECT_STORAGE_LOGS_ACCESS_KEY"],
+        aws_secret_access_key=current_app.config["OBJECT_STORAGE_LOGS_SECRET_KEY"],
+        region_name=current_app.config["OBJECT_STORAGE_LOGS_REGION"],
     )
 
     try:

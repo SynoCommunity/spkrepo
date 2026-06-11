@@ -220,20 +220,21 @@ class Packages(Resource):
                 license=spk.license,
             )
 
-            for key, value in spk.info.items():
-                if key == "install_dep_services":
-                    version.service_dependencies = services
-                elif key == "displayname":
-                    version.displaynames["enu"] = DisplayName(
-                        language=Language.find("enu"), displayname=value
-                    )
-                elif key.startswith("displayname_"):
-                    language = Language.find(key.split("_", 1)[1])
-                    if not language:
-                        abort(422, message="Unknown INFO displayname language")
-                    version.displaynames[language.code] = DisplayName(
-                        language=language, displayname=value
-                    )
+            with db.session.no_autoflush:
+                for key, value in spk.info.items():
+                    if key == "install_dep_services":
+                        version.service_dependencies = services
+                    elif key == "displayname":
+                        version.displaynames["enu"] = DisplayName(
+                            language=Language.find("enu"), displayname=value
+                        )
+                    elif key.startswith("displayname_"):
+                        language = Language.find(key.split("_", 1)[1])
+                        if not language:
+                            abort(422, message="Unknown INFO displayname language")
+                        version.displaynames[language.code] = DisplayName(
+                            language=language, displayname=value
+                        )
 
             # Icon
             for size, icon in spk.icons.items():
@@ -286,18 +287,19 @@ class Packages(Resource):
             changelog=spk.info.get("changelog"),
         )
 
-        for key, value in spk.info.items():
-            if key == "description":
-                build.descriptions["enu"] = BuildDescription(
-                    description=value, language=Language.find("enu")
-                )
-            elif key.startswith("description_"):
-                language = Language.find(key.split("_", 1)[1])
-                if not language:
-                    abort(422, message="Unknown INFO description language")
-                build.descriptions[language.code] = BuildDescription(
-                    language=language, description=value
-                )
+        with db.session.no_autoflush:
+            for key, value in spk.info.items():
+                if key == "description":
+                    build.descriptions["enu"] = BuildDescription(
+                        description=value, language=Language.find("enu")
+                    )
+                elif key.startswith("description_"):
+                    language = Language.find(key.split("_", 1)[1])
+                    if not language:
+                        abort(422, message="Unknown INFO description language")
+                    build.descriptions[language.code] = BuildDescription(
+                        language=language, description=value
+                    )
 
         build.buildmanifest = BuildManifest(
             dependencies=spk.info.get("install_dep_packages"),

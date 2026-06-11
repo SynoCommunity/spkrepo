@@ -16,13 +16,24 @@ GNUPG_TIMESTAMP_URL = "http://timestamp.synology.com/timestamp.php"
 GNUPG_PATH = None
 GNUPG_FINGERPRINT = "gnupg-fingerprint"
 
-# Object Storage (S3-compatible)
-OBJECT_STORAGE_ENDPOINT = "https://us-east.object.fastlystorage.app"
-OBJECT_STORAGE_REGION = "us-east"
-OBJECT_STORAGE_BUCKET = "your-log-bucket"
-OBJECT_STORAGE_PREFIX = "logs/"
-OBJECT_STORAGE_ACCESS_KEY = "your-read-key"
-OBJECT_STORAGE_SECRET_KEY = "your-read-secret"
+# Object Storage — Logs (S3-compatible)
+OBJECT_STORAGE_LOGS_ENDPOINT = "https://us-east.object.fastlystorage.app"
+OBJECT_STORAGE_LOGS_REGION = "us-east"
+OBJECT_STORAGE_LOGS_BUCKET = "your-log-bucket"
+OBJECT_STORAGE_LOGS_PREFIX = "logs/"
+OBJECT_STORAGE_LOGS_ACCESS_KEY = "your-read-key"
+OBJECT_STORAGE_LOGS_SECRET_KEY = "your-read-secret"
+
+# Object Storage — Packages (S3-compatible, separate bucket)
+OBJECT_STORAGE_PACKAGES_ENDPOINT = None
+OBJECT_STORAGE_PACKAGES_REGION = None
+OBJECT_STORAGE_PACKAGES_BUCKET = None
+OBJECT_STORAGE_PACKAGES_ACCESS_KEY = None
+OBJECT_STORAGE_PACKAGES_SECRET_KEY = None
+
+# CDN
+CDN_PURGE_TOKEN = None
+PACKAGES_CDN_HOST = None
 
 # Security
 SECURITY_CONFIRMABLE = True
@@ -62,7 +73,7 @@ CELERY = {
     "result_expires": 86400,  # clean up task results after 24 hours
     "task_queues": {
         "celery": {},  # default queue for anything else
-        "resync": {},  # resync tasks — isolated so they can't starve other work
+        "ops": {},  # admin-triggered background operations (upload, rehome, resync)
     },
     "task_default_queue": "celery",
 }

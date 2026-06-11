@@ -412,6 +412,12 @@ class Build(db.Model):
     path = db.Column(db.Unicode(2048))
     md5 = db.Column(db.Unicode(32))
     size = db.Column(db.Integer)
+    storage = db.Column(
+        db.Enum("local", "remote", name="storage_location"),
+        default="local",
+        nullable=False,
+    )
+    signed = db.Column(db.Boolean(), default=False, nullable=False)
     insert_date = db.Column(db.DateTime, default=_utcnow, nullable=False)
     active = db.Column(db.Boolean(), default=False, nullable=False)
 
@@ -489,6 +495,17 @@ class Build(db.Model):
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found at path: {file_path}")
         return os.path.getsize(file_path)
+
+    @property
+    def storage_location(self):
+        """Returns 'remote', 'local', or 'missing' based on filesystem."""
+        sidecar = os.path.join(current_app.config["DATA_PATH"], self.path + ".json")
+        local = os.path.join(current_app.config["DATA_PATH"], self.path)
+        if os.path.exists(sidecar):
+            return "remote"
+        if os.path.exists(local):
+            return "local"
+        return "missing"
 
     def _before_insert(self):
         self._insert_path = os.path.join(current_app.config["DATA_PATH"], self.path)
@@ -598,6 +615,16 @@ class Version(db.Model):
     def all_builds_active(cls):
         return ~db.exists().where(
             db.and_(Build.version_id == cls.id, Build.active.is_(False))
+        )
+
+    @hybrid_property
+    def all_builds_uploaded(self):
+        return all(b.storage == "remote" for b in self.builds)
+
+    @all_builds_uploaded.expression
+    def all_builds_uploaded(cls):
+        return ~db.exists().where(
+            db.and_(Build.version_id == cls.id, Build.storage != "remote")
         )
 
     @property

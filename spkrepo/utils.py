@@ -702,6 +702,7 @@ def apply_info_from_spk(session, build, spk, md5_hash):
 
         build.checksum = info.get("checksum")
         build.md5 = md5_hash
+        build.signed = spk.signature is not None
 
         manifest = build.buildmanifest
         if manifest is None:
@@ -716,6 +717,34 @@ def apply_info_from_spk(session, build, spk, md5_hash):
         manifest.conf_resource = spk.conf_resource
 
         session.flush()
+
+
+def apply_sidecar_to_db(session, build, sidecar):
+    """Apply sidecar metadata to a build and its version without the SPK archive."""
+    info = sidecar["info"]
+    derived = sidecar["derived"]
+    calculated = sidecar["calculated"]
+
+    version = build.version
+    version.upstream_version = info.get("version", "").rsplit("-", 1)[0]
+    version.report_url = info.get("report_url")
+    version.distributor = info.get("distributor")
+    version.distributor_url = info.get("distributor_url")
+    version.maintainer = info.get("maintainer")
+    version.maintainer_url = info.get("maintainer_url")
+    version.install_wizard = derived["install_wizard"]
+    version.upgrade_wizard = derived["upgrade_wizard"]
+    version.startable = derived["startable"]
+    version.license = derived.get("license")
+
+    build.changelog = info.get("changelog")
+    build.checksum = info.get("checksum")
+    build.md5 = calculated["md5"]
+    build.size = calculated["size"]
+    build.signed = True
+    build.storage = "remote"
+
+    session.flush()
 
 
 def populate_db():
