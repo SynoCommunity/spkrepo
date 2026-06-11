@@ -316,6 +316,9 @@ def rehome_from_storage(self, build_id, build_label):
     if os.path.exists(sidecar_path):
         os.remove(sidecar_path)
 
+    storage.delete(build.path)
+    storage.purge_cdn("/" + build.path)
+
     build.storage = "local"
     db.session.commit()
     cache.delete("packages_versions")
