@@ -1134,7 +1134,6 @@ class BuildView(SignResyncMixin, ModelView):
         "firmware_min.version",
         "publisher.username",
         "storage",
-        "signed",
         "active",
     )
     column_sortable_list = (
@@ -1144,7 +1143,6 @@ class BuildView(SignResyncMixin, ModelView):
         ("publisher", "publisher.username"),
         ("insert_date", "insert_date"),
         ("storage", "storage"),
-        ("signed", "signed"),
         ("active", "active"),
     )
     column_formatters = {
@@ -1155,7 +1153,6 @@ class BuildView(SignResyncMixin, ModelView):
             f"{m.size / 1024 / 1024:.1f} MB" if m.size else None
         ),
         "storage": _storage_formatter,
-        "signed": _bool_formatter,
         "active": _bool_formatter,
     }
     column_formatters_detail = {
@@ -1218,7 +1215,6 @@ class BuildView(SignResyncMixin, ModelView):
             builds = get_query_for_ids(self.get_query(), self.model, ids).all()
             not_signed = []
             activated = []
-            upload_tasks = []
             storage_ok = storage_service.storage_configured()
             for build in builds:
                 if not build.signed and not _detect_and_fix_signed(build):
@@ -1226,14 +1222,18 @@ class BuildView(SignResyncMixin, ModelView):
                     continue
                 build.active = True
                 activated.append(build)
-                if build.storage == "local" and storage_ok:
-                    result = upload_to_storage.delay(build.id, str(build))
-                    upload_tasks.append(
-                        {"id": result.id, "type": "upload", "label": str(build)}
-                    )
             db.session.commit()
             cache.delete("packages_versions")
             clear_catalog_cache()
+
+            upload_tasks = []
+            if storage_ok:
+                for build in activated:
+                    if build.storage == "local":
+                        result = upload_to_storage.delay(build.id, str(build))
+                        upload_tasks.append(
+                            {"id": result.id, "type": "upload", "label": str(build)}
+                        )
             if upload_tasks:
                 _store_task_tasks(upload_tasks)
             if not_signed:
