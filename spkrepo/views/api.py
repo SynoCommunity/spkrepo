@@ -319,6 +319,8 @@ class Packages(Resource):
                 )
             except SPKSignError as e:
                 abort(500, message="Failed to sign package", details=str(e))
+        if spk.signature is not None:
+            build.signed = True
 
         # save files
         try:
