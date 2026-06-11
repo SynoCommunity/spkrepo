@@ -1134,7 +1134,6 @@ class BuildView(SignResyncMixin, ModelView):
         "firmware_min.version",
         "publisher.username",
         "storage",
-        "signed",
         "active",
     )
     column_sortable_list = (
@@ -1144,7 +1143,6 @@ class BuildView(SignResyncMixin, ModelView):
         ("publisher", "publisher.username"),
         ("insert_date", "insert_date"),
         ("storage", "storage"),
-        ("signed", "signed"),
         ("active", "active"),
     )
     column_formatters = {
@@ -1155,7 +1153,6 @@ class BuildView(SignResyncMixin, ModelView):
             f"{m.size / 1024 / 1024:.1f} MB" if m.size else None
         ),
         "storage": _storage_formatter,
-        "signed": _bool_formatter,
         "active": _bool_formatter,
     }
     column_formatters_detail = {
