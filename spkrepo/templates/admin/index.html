@@ -16,10 +16,10 @@
   </div>
 
   {# Stat tiles #}
-  {% set col_width = 'col-md-3 col-sm-6' if unconfirmed_user_count is not none else 'col-md-4 col-sm-6' %}
+  {% set tile_cols = 'col-md-3 col-sm-6' if unconfirmed_user_count is none else 'col-md col-sm-6' %}
   <div class="row mb-2">
 
-    <div class="{{ col_width }} mb-3">
+    <div class="{{ tile_cols }} mb-3">
       <div class="card border-info h-100">
         <div class="card-header bg-secondary text-white" style="font-size: 0.85em;">Packages</div>
         <div class="card-body bg-light d-flex align-items-center justify-content-center">
@@ -28,7 +28,7 @@
       </div>
     </div>
 
-    <div class="{{ col_width }} mb-3">
+    <div class="{{ tile_cols }} mb-3">
       <div class="card border-info h-100">
         <div class="card-header bg-secondary text-white" style="font-size: 0.85em;">Builds</div>
         <div class="card-body bg-light d-flex align-items-center justify-content-center">
@@ -37,7 +37,7 @@
       </div>
     </div>
 
-    <div class="{{ col_width }} mb-3">
+    <div class="{{ tile_cols }} mb-3">
       <div class="card {% if inactive_build_count > 0 %}border-warning{% else %}border-info{% endif %} h-100">
         <div class="card-header bg-secondary text-white" style="font-size: 0.85em;">Inactive Builds</div>
         <div class="card-body bg-light d-flex align-items-center justify-content-center">
@@ -46,8 +46,17 @@
       </div>
     </div>
 
+    <div class="{{ tile_cols }} mb-3">
+      <div class="card border-info h-100">
+        <div class="card-header bg-secondary text-white" style="font-size: 0.85em;">Downloads (90d)</div>
+        <div class="card-body bg-light d-flex align-items-center justify-content-center">
+          <span style="font-size: 2em;">{{ "{:,}".format(recent_downloads) }}</span>
+        </div>
+      </div>
+    </div>
+
     {% if unconfirmed_user_count is not none %}
-    <div class="{{ col_width }} mb-3">
+    <div class="{{ tile_cols }} mb-3">
       <div class="card {% if unconfirmed_user_count > 0 %}border-warning{% else %}border-info{% endif %} h-100">
         <div class="card-header bg-secondary text-white" style="font-size: 0.85em;">Unconfirmed Users</div>
         <div class="card-body bg-light d-flex align-items-center justify-content-center">
