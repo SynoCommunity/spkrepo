@@ -42,6 +42,7 @@ from ..models import (
     Service,
     User,
     Version,
+    _days_ago,
 )
 from ..utils import (
     SPK,
@@ -613,6 +614,25 @@ class ArchitectureView(ModelView):
 
     form_excluded_columns = "builds"
 
+    column_list = ("code", "download_count", "recent_download_count")
+    column_labels = {
+        "download_count": "Downloads",
+        "recent_download_count": "Downloads (90d)",
+    }
+    column_sortable_list = (
+        ("code", "code"),
+        ("download_count", "download_count"),
+        ("recent_download_count", "recent_download_count"),
+    )
+    column_formatters = {
+        "download_count": lambda v, c, m, p: (
+            f"{m.download_count:,}" if m.download_count else "0"
+        ),
+        "recent_download_count": lambda v, c, m, p: (
+            f"{m.recent_download_count:,}" if m.recent_download_count else "0"
+        ),
+    }
+
 
 class FirmwareView(ModelView):
     """View for :class:`~spkrepo.models.Firmware`"""
@@ -625,6 +645,33 @@ class FirmwareView(ModelView):
 
     can_edit = False
     can_delete = False
+
+    column_list = (
+        "version",
+        "build",
+        "type",
+        "download_count",
+        "recent_download_count",
+    )
+    column_labels = {
+        "download_count": "Downloads",
+        "recent_download_count": "Downloads (90d)",
+    }
+    column_sortable_list = (
+        ("version", "version"),
+        ("build", "build"),
+        ("type", "type"),
+        ("download_count", "download_count"),
+        ("recent_download_count", "recent_download_count"),
+    )
+    column_formatters = {
+        "download_count": lambda v, c, m, p: (
+            f"{m.download_count:,}" if m.download_count else "0"
+        ),
+        "recent_download_count": lambda v, c, m, p: (
+            f"{m.recent_download_count:,}" if m.recent_download_count else "0"
+        ),
+    }
 
     form_columns = ("version", "build", "type")
     form_args = {
@@ -765,6 +812,7 @@ class PackageView(ModelView):
     @expose("/details/")
     def details_view(self):
         self._template_args["arch_breakdown"] = self._get_arch_breakdown()
+        self._template_args["firmware_breakdown"] = self._get_firmware_breakdown()
         return super().details_view()
 
     def _get_arch_breakdown(self):
@@ -792,6 +840,36 @@ class PackageView(ModelView):
             return None
         grand_total = sum(total for _, total in rows)
         return [(code, total, total / grand_total * 100) for code, total in rows]
+
+    def _get_firmware_breakdown(self):
+        pkg_id = request.args.get("id", type=int)
+        if not pkg_id:
+            return None
+        cutoff = date.today() - timedelta(days=90)
+        rows = db.session.execute(
+            db.select(
+                Firmware.version,
+                Firmware.build,
+                db.func.sum(DownloadStat.count).label("total"),
+            )
+            .join(Firmware, Firmware.build == DownloadStat.firmware_build)
+            .where(
+                db.and_(
+                    DownloadStat.package_id == pkg_id,
+                    DownloadStat.date >= cutoff,
+                )
+            )
+            .group_by(Firmware.version, Firmware.build)
+            .order_by(db.desc("total"))
+            .limit(3)
+        ).all()
+        if not rows:
+            return None
+        grand_total = sum(total for _, _, total in rows)
+        return [
+            (f"{ver}-{build}", total, total / grand_total * 100)
+            for ver, build, total in rows
+        ]
 
     column_list = (
         "name",
@@ -830,10 +908,11 @@ class PackageView(ModelView):
     }
     column_labels = {
         "download_count": "Downloads",
-        "recent_download_count": "Recent Downloads",
+        "recent_download_count": "Downloads (90d)",
         "last_download_date": "Last Download",
         "author.username": "Author",
         "arch_breakdown": "Top Architectures (90d)",
+        "firmware_breakdown": "Top Firmwares (90d)",
     }
     column_filters = ("name", "author.username")
     column_details_list = (
@@ -845,6 +924,7 @@ class PackageView(ModelView):
         "recent_download_count",
         "last_download_date",
         "arch_breakdown",
+        "firmware_breakdown",
     )
 
     form_columns = ("name", "author", "maintainers")
@@ -922,7 +1002,7 @@ class VersionView(SignResyncMixin, ModelView):
         "upgrade_wizard": "Upgrade Wizard",
         "total_size": "Total Size",
         "download_count": "Downloads",
-        "recent_download_count": "Recent Downloads (90d)",
+        "recent_download_count": "Downloads (90d)",
     }
     column_filters = (
         "package.name",
@@ -1337,6 +1417,25 @@ class IndexView(AdminIndexView):
                 .all()
             )
 
+        if is_privileged:
+            recent_downloads = db.session.execute(
+                db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0)).where(
+                    DownloadStat.date >= _days_ago(90)
+                )
+            ).scalar()
+        else:
+            recent_downloads = db.session.execute(
+                db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+                .join(Package, Package.id == DownloadStat.package_id)
+                .join(Package.maintainers)
+                .where(
+                    db.and_(
+                        User.id == current_user.id,
+                        DownloadStat.date >= _days_ago(90),
+                    )
+                )
+            ).scalar()
+
         return self.render(
             "admin/index.html",
             package_count=package_count,
@@ -1348,6 +1447,7 @@ class IndexView(AdminIndexView):
                 else None
             ),
             recent_versions=recent_versions,
+            recent_downloads=recent_downloads,
         )
 
 

@@ -530,6 +530,63 @@ class Build(db.Model):
         return f"<{self.__class__.__name__} {self.path}>"
 
 
+Architecture.download_count = db.column_property(
+    db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+    .join(Build, Build.id == DownloadStat.build_id)
+    .join(build_architecture, build_architecture.c.build_id == Build.id)
+    .where(build_architecture.c.architecture_id == Architecture.id)
+    .correlate(Architecture)
+    .scalar_subquery(),
+    deferred=True,
+)
+
+Architecture.recent_download_count = db.column_property(
+    db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+    .join(Build, Build.id == DownloadStat.build_id)
+    .join(build_architecture, build_architecture.c.build_id == Build.id)
+    .where(
+        db.and_(
+            build_architecture.c.architecture_id == Architecture.id,
+            DownloadStat.date >= _days_ago(90),
+        )
+    )
+    .correlate(Architecture)
+    .scalar_subquery(),
+    deferred=True,
+)
+
+Firmware.download_count = db.column_property(
+    db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+    .join(Build, Build.id == DownloadStat.build_id)
+    .where(
+        db.or_(
+            Build.firmware_min_id == Firmware.id,
+            Build.firmware_max_id == Firmware.id,
+        )
+    )
+    .correlate(Firmware)
+    .scalar_subquery(),
+    deferred=True,
+)
+
+Firmware.recent_download_count = db.column_property(
+    db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+    .join(Build, Build.id == DownloadStat.build_id)
+    .where(
+        db.and_(
+            db.or_(
+                Build.firmware_min_id == Firmware.id,
+                Build.firmware_max_id == Firmware.id,
+            ),
+            DownloadStat.date >= _days_ago(90),
+        )
+    )
+    .correlate(Firmware)
+    .scalar_subquery(),
+    deferred=True,
+)
+
+
 class BuildManifest(db.Model):
     __tablename__ = "buildmanifest"
 
