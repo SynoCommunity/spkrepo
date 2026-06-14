@@ -54,9 +54,19 @@ def resync_build_metadata(self, build_id, build_label):
             for sibling in build.version.builds:
                 if sibling.id == build.id or not sibling.path:
                     continue
-                sibling_path = os.path.join(data_path, sibling.path)
-                with io.open(sibling_path, "rb") as s2:
-                    sibling_meta = extract_version_metadata(SPK(s2))
+                sibling_spk_path = os.path.join(data_path, sibling.path)
+                sibling_sidecar_path = sibling_spk_path + ".json"
+                if os.path.exists(sibling_sidecar_path):
+                    with io.open(sibling_sidecar_path, "r", encoding="utf-8") as s2:
+                        sc = json.load(s2)
+                    sibling_meta = extract_version_metadata(
+                        type("_", (), {"info": sc["info"]})()
+                    )
+                elif os.path.exists(sibling_spk_path):
+                    with io.open(sibling_spk_path, "rb") as s2:
+                        sibling_meta = extract_version_metadata(SPK(s2))
+                else:
+                    continue
                 if sibling_meta != incoming_meta:
                     raise ValueError(
                         "Version-level metadata mismatch between "
@@ -177,13 +187,15 @@ def upload_to_storage(self, build_id, build_label):
         }
 
     if os.path.exists(sidecar_path):
-        return {
-            "status": "skipped",
-            "type": "upload",
-            "build_id": build_id,
-            "label": build_label,
-            "error": "Already uploaded (sidecar exists)",
-        }
+        if build.storage == "remote":
+            return {
+                "status": "skipped",
+                "type": "upload",
+                "build_id": build_id,
+                "label": build_label,
+                "error": "Already uploaded (sidecar exists)",
+            }
+        os.remove(sidecar_path)
 
     try:
         info = {}
@@ -260,6 +272,8 @@ def upload_to_storage(self, build_id, build_label):
                 "error": "Upload to Object Storage failed",
             }
 
+        build.md5 = sidecar["calculated"]["md5"]
+        build.size = sidecar["calculated"]["size"]
         build.storage = "remote"
         db.session.commit()
     except Exception as exc:
@@ -303,29 +317,43 @@ def rehome_from_storage(self, build_id, build_label):
     data_path = current_app.config["DATA_PATH"]
     local_path = os.path.join(data_path, build.path)
 
-    if not storage.download(build.path, local_path):
+    try:
+        if not storage.download(build.path, local_path):
+            return {
+                "status": "error",
+                "type": "rehome",
+                "build_id": build_id,
+                "label": build_label,
+                "error": "Download from Object Storage failed",
+            }
+
+        sidecar_path = local_path + ".json"
+        if os.path.exists(sidecar_path):
+            os.remove(sidecar_path)
+
+        storage.delete(build.path)
+        storage.purge_cdn("/" + build.path)
+
+        build.storage = "local"
+        db.session.commit()
+        cache.delete("packages_versions")
+        clear_catalog_cache()
         return {
-            "status": "error",
+            "status": "ok",
             "type": "rehome",
             "build_id": build_id,
             "label": build_label,
-            "error": "Download from Object Storage failed",
         }
 
-    sidecar_path = local_path + ".json"
-    if os.path.exists(sidecar_path):
-        os.remove(sidecar_path)
-
-    storage.delete(build.path)
-    storage.purge_cdn("/" + build.path)
-
-    build.storage = "local"
-    db.session.commit()
-    cache.delete("packages_versions")
-    clear_catalog_cache()
-    return {
-        "status": "ok",
-        "type": "rehome",
-        "build_id": build_id,
-        "label": build_label,
-    }
+    except Exception as exc:
+        db.session.rollback()
+        try:
+            raise self.retry(exc=exc)
+        except self.MaxRetriesExceededError:
+            return {
+                "status": "error",
+                "type": "rehome",
+                "build_id": build_id,
+                "label": build_label,
+                "error": str(exc),
+            }

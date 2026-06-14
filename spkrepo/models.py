@@ -637,6 +637,7 @@ class Version(db.Model):
         back_populates="version",
         cascade="all, delete-orphan",
         cascade_backrefs=False,
+        order_by="Build.id",
     )
 
     # Constraints

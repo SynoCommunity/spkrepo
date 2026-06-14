@@ -43,12 +43,7 @@ from ..models import (
     User,
     Version,
 )
-from ..utils import (
-    SPK,
-    apply_info_from_spk,
-    apply_sidecar_to_db,
-    extract_version_metadata,
-)
+from ..utils import SPK
 from .nas import clear_catalog_cache
 from .tasks import (
     rehome_from_storage,
@@ -175,48 +170,6 @@ def _resync_build_file(build):
     else:
         build.md5 = build.calculate_md5()
         build.size = build.calculate_size()
-
-
-def _resync_build_metadata(session, build):
-    """Re-read build metadata from SPK file or sidecar and apply to DB.
-
-    When the file is in Object Storage (sidecar exists), reads metadata
-    from the sidecar. When local, parses the SPK archive and checks
-    consistency against siblings first.
-    """
-    if not build.path:
-        raise ValueError("Build has no file path")
-
-    data_path = current_app.config["DATA_PATH"]
-    sidecar_path = os.path.join(data_path, build.path + ".json")
-
-    if os.path.exists(sidecar_path):
-        with io.open(sidecar_path, "r", encoding="utf-8") as f:
-            sidecar = json.load(f)
-        apply_sidecar_to_db(session, build, sidecar)
-        return
-
-    file_path = os.path.join(data_path, build.path)
-    with io.open(file_path, "rb") as stream:
-        spk = SPK(stream)
-        incoming_meta = extract_version_metadata(spk)
-
-        for sibling in build.version.builds:
-            if sibling.id == build.id or not sibling.path:
-                continue
-            sibling_path = os.path.join(data_path, sibling.path)
-            with io.open(sibling_path, "rb") as s2:
-                sibling_meta = extract_version_metadata(SPK(s2))
-            if sibling_meta != incoming_meta:
-                raise ValueError(
-                    "Version-level metadata mismatch between "
-                    f"{os.path.basename(build.path)} and "
-                    f"{os.path.basename(sibling.path)} — resync aborted. "
-                    "Inspect the SPK files to resolve the inconsistency."
-                )
-
-        md5 = spk.calculate_md5()
-        apply_info_from_spk(session, build, spk, md5)
 
 
 # ---------------------------------------------------------------------------
