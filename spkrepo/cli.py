@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import urllib.parse
 
 import click
 from flask import current_app
@@ -287,7 +288,7 @@ def ingest_logs():
 
     def parse_download(record):
         url = record.get("url", "")
-        path = url.split("?")[0]
+        path = urllib.parse.unquote(url.split("?")[0])
         match = re.match(r"^/([^/]+)/([^/]+)/", path)
         if not match:
             return None
