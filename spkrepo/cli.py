@@ -485,7 +485,7 @@ def ingest_logs():
             ) in [agg_key]
         ]
         try:
-            dialect = db.session.bind.dialect.name
+            dialect = db.engine.dialect.name
             if dialect == "postgresql":
                 from sqlalchemy.dialects.postgresql import insert as upsert_insert
             elif dialect == "sqlite":
