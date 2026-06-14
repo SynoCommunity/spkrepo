@@ -360,6 +360,8 @@ class DownloadStat(db.Model):
         db.Integer, db.ForeignKey("architecture.id"), nullable=False, index=True
     )
     firmware_build = db.Column(db.Integer, nullable=False, index=True)
+    target_firmware_build = db.Column(db.Integer, nullable=True, index=True)
+    target_noarch = db.Column(db.Boolean, nullable=False, default=False)
     date = db.Column(db.Date, nullable=False, index=True)
     count = db.Column(db.Integer, nullable=False, default=0)
 
@@ -369,6 +371,7 @@ class DownloadStat(db.Model):
             "package_id",
             "architecture_id",
             "firmware_build",
+            "target_firmware_build",
             "date",
             name="uq_download_stat",
         ),
@@ -551,6 +554,51 @@ Architecture.recent_download_count = db.column_property(
     deferred=True,
 )
 
+_noarch_id = (
+    db.select(Architecture.id).where(Architecture.code == "noarch").scalar_subquery()
+)
+
+Architecture.target_download_count = db.column_property(
+    db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+    .where(
+        db.or_(
+            db.and_(
+                DownloadStat.target_noarch.is_(True),
+                Architecture.id == _noarch_id,
+            ),
+            db.and_(
+                DownloadStat.target_noarch.isnot(True),
+                DownloadStat.architecture_id == Architecture.id,
+            ),
+        )
+    )
+    .correlate(Architecture)
+    .scalar_subquery(),
+    deferred=True,
+)
+
+Architecture.recent_target_download_count = db.column_property(
+    db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+    .where(
+        db.and_(
+            db.or_(
+                db.and_(
+                    DownloadStat.target_noarch.is_(True),
+                    Architecture.id == _noarch_id,
+                ),
+                db.and_(
+                    DownloadStat.target_noarch.isnot(True),
+                    DownloadStat.architecture_id == Architecture.id,
+                ),
+            ),
+            DownloadStat.date >= _days_ago(90),
+        )
+    )
+    .correlate(Architecture)
+    .scalar_subquery(),
+    deferred=True,
+)
+
 Firmware.download_count = db.column_property(
     db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
     .where(DownloadStat.firmware_build == Firmware.build)
@@ -564,6 +612,27 @@ Firmware.recent_download_count = db.column_property(
     .where(
         db.and_(
             DownloadStat.firmware_build == Firmware.build,
+            DownloadStat.date >= _days_ago(90),
+        )
+    )
+    .correlate(Firmware)
+    .scalar_subquery(),
+    deferred=True,
+)
+
+Firmware.target_download_count = db.column_property(
+    db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+    .where(DownloadStat.target_firmware_build == Firmware.build)
+    .correlate(Firmware)
+    .scalar_subquery(),
+    deferred=True,
+)
+
+Firmware.recent_target_download_count = db.column_property(
+    db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+    .where(
+        db.and_(
+            DownloadStat.target_firmware_build == Firmware.build,
             DownloadStat.date >= _days_ago(90),
         )
     )

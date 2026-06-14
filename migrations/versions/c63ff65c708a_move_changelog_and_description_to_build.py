@@ -34,9 +34,9 @@ def upgrade() -> None:
     op.execute(
         """
         UPDATE build
-        SET changelog = version.changelog
-        FROM version
-        WHERE build.version_id = version.id
+        SET changelog = (
+            SELECT changelog FROM version WHERE version.id = build.version_id
+        )
         """
     )
 
@@ -68,10 +68,10 @@ def downgrade() -> None:
     op.execute(
         """
         INSERT INTO description (version_id, language_id, description)
-        SELECT DISTINCT ON (b.version_id, bd.language_id)
-               b.version_id, bd.language_id, bd.description
+        SELECT b.version_id, bd.language_id, MIN(bd.description) AS description
         FROM build_description bd
         JOIN build b ON b.id = bd.build_id
+        GROUP BY b.version_id, bd.language_id
         """
     )
 
@@ -82,13 +82,11 @@ def downgrade() -> None:
     op.execute(
         """
         UPDATE version
-        SET changelog = sub.changelog
-        FROM (
-            SELECT DISTINCT ON (version_id) version_id, changelog
-            FROM build
-            WHERE changelog IS NOT NULL
-        ) sub
-        WHERE version.id = sub.version_id
+        SET changelog = (
+            SELECT changelog FROM build
+            WHERE build.version_id = version.id AND changelog IS NOT NULL
+            LIMIT 1
+        )
         """
     )
 

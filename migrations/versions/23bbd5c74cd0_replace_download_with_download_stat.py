@@ -10,7 +10,6 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "23bbd5c74cd0"
@@ -108,7 +107,7 @@ def downgrade() -> None:
         sa.Column(
             "user_agent", sa.VARCHAR(length=255), autoincrement=False, nullable=True
         ),
-        sa.Column("date", postgresql.TIMESTAMP(), autoincrement=False, nullable=False),
+        sa.Column("date", sa.DateTime(), autoincrement=False, nullable=False),
         sa.ForeignKeyConstraint(
             ["architecture_id"],
             ["architecture.id"],

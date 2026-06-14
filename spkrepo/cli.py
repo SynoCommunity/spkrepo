@@ -267,7 +267,6 @@ def ingest_logs():
 
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     from .models import Architecture, Build, DownloadStat, Version
 
@@ -308,7 +307,26 @@ def ingest_logs():
             record_date = datetime.fromisoformat(record["timestamp"]).date()
         except (KeyError, ValueError):
             record_date = date.today()
-        return package_name, version_number, arch_code, firmware_build, record_date
+
+        # Parse target info from the SPK filename
+        target_firmware_build = None
+        target_noarch = False
+        filename = path.rsplit("/", 1)[-1] if "/" in path else path
+        fm = re.search(r"\.f(\d+)\[([^\]]+)\]", filename)
+        if fm:
+            target_firmware_build = int(fm.group(1))
+            archs = fm.group(2).split("-")
+            target_noarch = "noarch" in archs
+
+        return (
+            package_name,
+            version_number,
+            arch_code,
+            firmware_build,
+            record_date,
+            target_firmware_build,
+            target_noarch,
+        )
 
     bucket = current_app.config["OBJECT_STORAGE_LOGS_BUCKET"]
     prefix = current_app.config.get("OBJECT_STORAGE_LOGS_PREFIX", "logs/")
@@ -334,10 +352,12 @@ def ingest_logs():
 
     logger.info("Processing %d log file(s).", len(objects))
 
-    build_cache = {}  # (package_name, version_number) -> (build_id, package_id) or None
+    # (pkg_name, ver, target_fw) -> (build_id, pkg_id) or None
+    build_cache = {}
     arch_cache = {}  # arch_code -> architecture_id or None
     counts = defaultdict(int)
     build_ids = {}  # agg_key -> build_id or None
+    target_noarchs = {}  # agg_key -> bool
     processed_keys = []
 
     skipped_no_arch = 0
@@ -365,25 +385,45 @@ def ingest_logs():
                 parsed = parse_download(record)
                 if parsed is None:
                     continue
-                package_name, version_number, arch_code, firmware_build, record_date = (
-                    parsed
-                )
+                (
+                    package_name,
+                    version_number,
+                    arch_code,
+                    firmware_build,
+                    record_date,
+                    target_firmware_build,
+                    target_noarch,
+                ) = parsed
 
                 if arch_code is None or firmware_build is None:
                     skipped_no_arch += 1
                     continue
 
-                cache_key = (package_name, version_number)
+                cache_key = (package_name, version_number, target_firmware_build)
                 if cache_key not in build_cache:
-                    build = (
+                    from .models import Firmware as FirmwareModel
+
+                    build_query = (
                         db.session.query(Build)
                         .join(Version)
                         .filter(
                             Version.version == version_number,
                             Version.package.has(name=package_name),
                         )
-                        .first()
                     )
+                    if target_firmware_build is not None:
+                        build_query = build_query.filter(
+                            Build.firmware_min.has(
+                                FirmwareModel.build <= target_firmware_build
+                            ),
+                            db.or_(
+                                Build.firmware_max_id.is_(None),
+                                Build.firmware_max.has(
+                                    FirmwareModel.build >= target_firmware_build
+                                ),
+                            ),
+                        )
+                    build = build_query.first()
                     if build:
                         build_cache[cache_key] = (build.id, build.version.package_id)
                     else:
@@ -404,13 +444,18 @@ def ingest_logs():
                     skipped_no_arch_id += 1
                     continue
 
-                agg_key = (package_id, architecture_id, firmware_build, record_date)
+                agg_key = (
+                    package_id,
+                    architecture_id,
+                    firmware_build,
+                    target_firmware_build,
+                    record_date,
+                )
                 counts[agg_key] += 1
+                target_noarchs[agg_key] = target_noarch
 
                 if agg_key not in build_ids:
                     build_ids[agg_key] = build_id
-                elif build_ids[agg_key] != build_id:
-                    build_ids[agg_key] = None
 
             processed_keys.append(key)
 
@@ -425,17 +470,36 @@ def ingest_logs():
                 "build_id": build_ids.get(agg_key),
                 "architecture_id": architecture_id,
                 "firmware_build": firmware_build,
+                "target_firmware_build": target_firmware_build,
+                "target_noarch": target_noarchs.get(agg_key, False),
                 "date": record_date,
                 "count": count,
             }
             for agg_key, count in counts.items()
-            for (package_id, architecture_id, firmware_build, record_date) in [agg_key]
+            for (
+                package_id,
+                architecture_id,
+                firmware_build,
+                target_firmware_build,
+                record_date,
+            ) in [agg_key]
         ]
         try:
-            stmt = pg_insert(DownloadStat).values(rows)
+            dialect = db.session.bind.dialect.name
+            if dialect == "postgresql":
+                from sqlalchemy.dialects.postgresql import insert as upsert_insert
+            elif dialect == "sqlite":
+                from sqlalchemy.dialects.sqlite import insert as upsert_insert
+            else:
+                raise RuntimeError(f"Upsert not supported for dialect: {dialect}")
+
+            stmt = upsert_insert(DownloadStat).values(rows)
             stmt = stmt.on_conflict_do_update(
                 constraint="uq_download_stat",
-                set_={"count": DownloadStat.count + stmt.excluded.count},
+                set_={
+                    "count": DownloadStat.count + stmt.excluded.count,
+                    "target_noarch": stmt.excluded.target_noarch,
+                },
             )
             db.session.execute(stmt)
             db.session.commit()

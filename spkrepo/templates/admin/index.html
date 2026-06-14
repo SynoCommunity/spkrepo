@@ -50,7 +50,7 @@
       <div class="card border-info h-100">
         <div class="card-header bg-secondary text-white" style="font-size: 0.85em;">Downloads (90d)</div>
         <div class="card-body bg-light d-flex align-items-center justify-content-center">
-          <span style="font-size: 2em;">{{ "{:,}".format(recent_downloads) }}</span>
+          <span style="font-size: 2em;">{{ recent_downloads | abbreviate_number }}</span>
         </div>
       </div>
     </div>
