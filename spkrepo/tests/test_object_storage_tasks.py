@@ -40,7 +40,7 @@ class UploadToStorageTestCase(BaseTestCase):
         self.assertIn("not signed", result["error"])
 
     def test_skipped_when_sidecar_exists(self):
-        build = BuildFactory(signed=True)
+        build = BuildFactory(signed=True, storage="remote")
         db.session.commit()
         sidecar = os.path.join(current_app.config["DATA_PATH"], build.path + ".json")
         with io.open(sidecar, "w") as f:
@@ -48,6 +48,17 @@ class UploadToStorageTestCase(BaseTestCase):
         result = upload_to_storage(build.id, str(build))
         self.assertEqual(result["status"], "skipped")
         os.remove(sidecar)
+
+    def test_stale_sidecar_is_cleaned(self):
+        """Sidecar with storage=local should be removed and upload reprocessed."""
+        build = BuildFactory(signed=True)
+        db.session.commit()
+        sidecar = os.path.join(current_app.config["DATA_PATH"], build.path + ".json")
+        with io.open(sidecar, "w") as f:
+            f.write("{}")
+        result = upload_to_storage(build.id, str(build))
+        self.assertNotEqual(result["status"], "skipped")
+        self.assertFalse(os.path.exists(sidecar))
 
     def test_skipped_when_build_not_found(self):
         result = upload_to_storage(999999, "nonexistent")
