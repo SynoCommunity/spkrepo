@@ -532,9 +532,7 @@ class Build(db.Model):
 
 Architecture.download_count = db.column_property(
     db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
-    .join(Build, Build.id == DownloadStat.build_id)
-    .join(build_architecture, build_architecture.c.build_id == Build.id)
-    .where(build_architecture.c.architecture_id == Architecture.id)
+    .where(DownloadStat.architecture_id == Architecture.id)
     .correlate(Architecture)
     .scalar_subquery(),
     deferred=True,
@@ -542,11 +540,9 @@ Architecture.download_count = db.column_property(
 
 Architecture.recent_download_count = db.column_property(
     db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
-    .join(Build, Build.id == DownloadStat.build_id)
-    .join(build_architecture, build_architecture.c.build_id == Build.id)
     .where(
         db.and_(
-            build_architecture.c.architecture_id == Architecture.id,
+            DownloadStat.architecture_id == Architecture.id,
             DownloadStat.date >= _days_ago(90),
         )
     )
@@ -557,13 +553,7 @@ Architecture.recent_download_count = db.column_property(
 
 Firmware.download_count = db.column_property(
     db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
-    .join(Build, Build.id == DownloadStat.build_id)
-    .where(
-        db.or_(
-            Build.firmware_min_id == Firmware.id,
-            Build.firmware_max_id == Firmware.id,
-        )
-    )
+    .where(DownloadStat.firmware_build == Firmware.build)
     .correlate(Firmware)
     .scalar_subquery(),
     deferred=True,
@@ -571,13 +561,9 @@ Firmware.download_count = db.column_property(
 
 Firmware.recent_download_count = db.column_property(
     db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
-    .join(Build, Build.id == DownloadStat.build_id)
     .where(
         db.and_(
-            db.or_(
-                Build.firmware_min_id == Firmware.id,
-                Build.firmware_max_id == Firmware.id,
-            ),
+            DownloadStat.firmware_build == Firmware.build,
             DownloadStat.date >= _days_ago(90),
         )
     )

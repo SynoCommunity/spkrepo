@@ -42,7 +42,6 @@ from ..models import (
     Service,
     User,
     Version,
-    _days_ago,
 )
 from ..utils import (
     SPK,
@@ -1417,10 +1416,11 @@ class IndexView(AdminIndexView):
                 .all()
             )
 
+        cutoff = date.today() - timedelta(days=90)
         if is_privileged:
             recent_downloads = db.session.execute(
                 db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0)).where(
-                    DownloadStat.date >= _days_ago(90)
+                    DownloadStat.date >= cutoff
                 )
             ).scalar()
         else:
@@ -1431,7 +1431,7 @@ class IndexView(AdminIndexView):
                 .where(
                     db.and_(
                         User.id == current_user.id,
-                        DownloadStat.date >= _days_ago(90),
+                        DownloadStat.date >= cutoff,
                     )
                 )
             ).scalar()
