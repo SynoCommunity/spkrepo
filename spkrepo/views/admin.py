@@ -566,15 +566,27 @@ class ArchitectureView(ModelView):
 
     form_excluded_columns = "builds"
 
-    column_list = ("code", "download_count", "recent_download_count")
+    list_template = "admin/model/download_stats_list.html"
+
+    column_list = (
+        "code",
+        "download_count",
+        "recent_download_count",
+        "target_download_count",
+        "recent_target_download_count",
+    )
     column_labels = {
-        "download_count": "Downloads",
-        "recent_download_count": "Downloads (90d)",
+        "download_count": "By NAS",
+        "recent_download_count": "By NAS (90d)",
+        "target_download_count": "By Build",
+        "recent_target_download_count": "By Build (90d)",
     }
     column_sortable_list = (
         ("code", "code"),
         ("download_count", "download_count"),
         ("recent_download_count", "recent_download_count"),
+        ("target_download_count", "target_download_count"),
+        ("recent_target_download_count", "recent_target_download_count"),
     )
     column_formatters = {
         "download_count": lambda v, c, m, p: (
@@ -582,6 +594,14 @@ class ArchitectureView(ModelView):
         ),
         "recent_download_count": lambda v, c, m, p: (
             f"{m.recent_download_count:,}" if m.recent_download_count else "0"
+        ),
+        "target_download_count": lambda v, c, m, p: (
+            f"{m.target_download_count:,}" if m.target_download_count else "0"
+        ),
+        "recent_target_download_count": lambda v, c, m, p: (
+            f"{m.recent_target_download_count:,}"
+            if m.recent_target_download_count
+            else "0"
         ),
     }
 
@@ -598,16 +618,22 @@ class FirmwareView(ModelView):
     can_edit = False
     can_delete = False
 
+    list_template = "admin/model/download_stats_list.html"
+
     column_list = (
         "version",
         "build",
         "type",
         "download_count",
         "recent_download_count",
+        "target_download_count",
+        "recent_target_download_count",
     )
     column_labels = {
-        "download_count": "Downloads",
-        "recent_download_count": "Downloads (90d)",
+        "download_count": "By NAS",
+        "recent_download_count": "By NAS (90d)",
+        "target_download_count": "By Build",
+        "recent_target_download_count": "By Build (90d)",
     }
     column_sortable_list = (
         ("version", "version"),
@@ -615,6 +641,8 @@ class FirmwareView(ModelView):
         ("type", "type"),
         ("download_count", "download_count"),
         ("recent_download_count", "recent_download_count"),
+        ("target_download_count", "target_download_count"),
+        ("recent_target_download_count", "recent_target_download_count"),
     )
     column_formatters = {
         "download_count": lambda v, c, m, p: (
@@ -622,6 +650,14 @@ class FirmwareView(ModelView):
         ),
         "recent_download_count": lambda v, c, m, p: (
             f"{m.recent_download_count:,}" if m.recent_download_count else "0"
+        ),
+        "target_download_count": lambda v, c, m, p: (
+            f"{m.target_download_count:,}" if m.target_download_count else "0"
+        ),
+        "recent_target_download_count": lambda v, c, m, p: (
+            f"{m.recent_target_download_count:,}"
+            if m.recent_target_download_count
+            else "0"
         ),
     }
 

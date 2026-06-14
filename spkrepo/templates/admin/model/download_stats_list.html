@@ -1,0 +1,67 @@
+{% extends 'admin/model/list.html' %}
+
+{% block list_header scoped %}
+    {% if actions %}
+    <th class="list-checkbox-column" rowspan="2">
+        <input type="checkbox" name="rowtoggle" class="action-rowtoggle" title="{{ _gettext('Select all records') }}" />
+    </th>
+    {% endif %}
+    {% if admin_view.column_display_actions %}
+    <th class="" rowspan="2">&nbsp;</th>
+    {% endif %}
+
+    {% set download_cols = ['download_count', 'recent_download_count', 'target_download_count', 'recent_target_download_count'] %}
+
+    {% for c, name in list_columns %}
+    {% set column = loop.index0 %}
+    {% if c not in download_cols %}
+    <th class="column-header col-{{c | replace('.', '-') }}" rowspan="2">
+        {% if admin_view.is_sortable(c) %}
+            {% if sort_column == column %}
+                <a href="{{ sort_url(column, True) }}" title="{{ _gettext('Sort by %(name)s', name=name) }}">
+                    {{ name }}
+                    {% if sort_desc %}
+                    <span class="fa fa-chevron-up glyphicon glyphicon-chevron-up"></span>
+                    {% else %}
+                    <span class="fa fa-chevron-down glyphicon glyphicon-chevron-down"></span>
+                    {% endif %}
+                </a>
+            {% else %}
+                <a href="{{ sort_url(column) }}" title="{{ _gettext('Sort by %(name)s', name=name) }}">{{ name }}</a>
+            {% endif %}
+        {% else %}
+            {{ name }}
+        {% endif %}
+    </th>
+    {% endif %}
+    {% endfor %}
+
+    <th colspan="4" style="text-align:center; vertical-align:middle; border-bottom:none">
+        {{ _gettext('Download Counts') }}
+    </th>
+</tr>
+<tr>
+    {% for c, name in list_columns %}
+    {% set column = loop.index0 %}
+    {% if c in download_cols %}
+    <th class="column-header col-{{c | replace('.', '-') }}" style="border-top:none">
+        {% if admin_view.is_sortable(c) %}
+            {% if sort_column == column %}
+                <a href="{{ sort_url(column, True) }}" title="{{ _gettext('Sort by %(name)s', name=name) }}">
+                    {{ name }}
+                    {% if sort_desc %}
+                    <span class="fa fa-chevron-up glyphicon glyphicon-chevron-up"></span>
+                    {% else %}
+                    <span class="fa fa-chevron-down glyphicon glyphicon-chevron-down"></span>
+                    {% endif %}
+                </a>
+            {% else %}
+                <a href="{{ sort_url(column) }}" title="{{ _gettext('Sort by %(name)s', name=name) }}">{{ name }}</a>
+            {% endif %}
+        {% else %}
+            {{ name }}
+        {% endif %}
+    </th>
+    {% endif %}
+    {% endfor %}
+{% endblock %}

@@ -20,13 +20,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.execute("CREATE TYPE storage_location AS ENUM ('local', 'remote')")
-
     op.add_column(
         "build",
         sa.Column(
             "storage",
-            sa.Enum("local", "remote", name="storage_location", create_type=False),
+            sa.Enum("local", "remote", name="storage_location"),
             nullable=False,
             server_default="local",
         ),
@@ -41,4 +39,3 @@ def downgrade() -> None:
     """Downgrade schema."""
     op.drop_column("build", "signed")
     op.drop_column("build", "storage")
-    op.execute("DROP TYPE IF EXISTS storage_location")
