@@ -353,7 +353,7 @@ def ingest_logs():
 
     logger.info("Processing %d log file(s).", len(objects))
 
-    # (pkg_name, ver, target_fw) -> (build_id, pkg_id) or None
+    # (pkg_name, ver, arch, target_fw) -> (build_id, pkg_id) or None
     build_cache = {}
     arch_cache = {}  # arch_code -> architecture_id or None
     counts = defaultdict(int)
@@ -400,7 +400,12 @@ def ingest_logs():
                     skipped_no_arch += 1
                     continue
 
-                cache_key = (package_name, version_number, target_firmware_build)
+                cache_key = (
+                    package_name,
+                    version_number,
+                    arch_code,
+                    target_firmware_build,
+                )
                 if cache_key not in build_cache:
                     from .models import Firmware as FirmwareModel
 
@@ -411,6 +416,8 @@ def ingest_logs():
                             Version.version == version_number,
                             Version.package.has(name=package_name),
                         )
+                        .join(Build.architectures)
+                        .filter(Architecture.code == arch_code)
                     )
                     if target_firmware_build is not None:
                         build_query = build_query.filter(
