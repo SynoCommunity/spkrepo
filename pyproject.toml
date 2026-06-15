@@ -1,6 +1,6 @@
 [project]
 name = "spkrepo"
-version = "0.4.9"
+version = "0.5.0"
 description = "Synology Package Repository"
 authors = [{ name = "Antoine Bertin", email = "diaoulael@gmail.com" }]
 requires-python = ">=3.12,<4.0"
