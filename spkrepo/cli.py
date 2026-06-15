@@ -315,9 +315,10 @@ def ingest_logs():
         filename = path.rsplit("/", 1)[-1] if "/" in path else path
         fm = re.search(r"\.f(\d+)\[([^\]]+)\]", filename)
         if fm:
-            target_firmware_build = int(fm.group(1))
             archs = fm.group(2).split("-")
             target_noarch = "noarch" in archs
+            if not target_noarch:
+                target_firmware_build = int(fm.group(1))
 
         return (
             package_name,
@@ -417,7 +418,12 @@ def ingest_logs():
                             Version.package.has(name=package_name),
                         )
                         .join(Build.architectures)
-                        .filter(Architecture.code == arch_code)
+                        .filter(
+                            db.or_(
+                                Architecture.code == arch_code,
+                                Architecture.code == "noarch",
+                            )
+                        )
                     )
                     if target_firmware_build is not None:
                         build_query = build_query.filter(
