@@ -1102,3 +1102,81 @@ class ScreenshotDeleteTestCase(BaseTestCase):
         db.session.expire_all()
         self.assertEqual(len(package.screenshots), 0)
         self.assertFalse(os.path.exists(screenshot_path))
+
+
+class ArchitectureViewTestCase(BaseTestCase):
+    def test_anonymous(self):
+        self.assert403(self.client.get(url_for("architecture.index_view")))
+
+    def test_package_admin(self):
+        with self.logged_user("package_admin"):
+            self.assert200(self.client.get(url_for("architecture.index_view")))
+
+    def test_developer_blocked(self):
+        with self.logged_user("developer"):
+            self.assert403(self.client.get(url_for("architecture.index_view")))
+
+    def test_list_contains_architectures(self):
+        with self.logged_user("package_admin"):
+            response = self.client.get(url_for("architecture.index_view"))
+            self.assert200(response)
+            self.assertIn("Download Counts", response.data.decode())
+
+
+class FirmwareViewTestCase(BaseTestCase):
+    def test_anonymous(self):
+        self.assert403(self.client.get(url_for("firmware.index_view")))
+
+    def test_package_admin(self):
+        with self.logged_user("package_admin"):
+            self.assert200(self.client.get(url_for("firmware.index_view")))
+
+    def test_developer_blocked(self):
+        with self.logged_user("developer"):
+            self.assert403(self.client.get(url_for("firmware.index_view")))
+
+    def test_list_contains_firmware(self):
+        with self.logged_user("package_admin"):
+            response = self.client.get(url_for("firmware.index_view"))
+            self.assert200(response)
+            self.assertIn("Download Counts", response.data.decode())
+
+
+class ServiceViewTestCase(BaseTestCase):
+    def test_anonymous(self):
+        self.assert403(self.client.get(url_for("service.index_view")))
+
+    def test_package_admin(self):
+        with self.logged_user("package_admin"):
+            self.assert200(self.client.get(url_for("service.index_view")))
+
+    def test_developer_blocked(self):
+        with self.logged_user("developer"):
+            self.assert403(self.client.get(url_for("service.index_view")))
+
+    def test_list_contains_services(self):
+        with self.logged_user("package_admin"):
+            response = self.client.get(url_for("service.index_view"))
+            self.assert200(response)
+            self.assertIn("apache-web", response.data.decode())
+
+
+class TaskStatusViewTestCase(BaseTestCase):
+    def test_anonymous(self):
+        response = self.client.get(url_for("tasks.index"))
+        self.assert302(response)
+
+    def test_package_admin(self):
+        with self.logged_user("package_admin"):
+            self.assert200(self.client.get(url_for("tasks.index")))
+            response = self.client.get(url_for("tasks.index"))
+            self.assertIn("Task Status", response.data.decode())
+
+    def test_developer(self):
+        with self.logged_user("developer"):
+            self.assert200(self.client.get(url_for("tasks.index")))
+
+    def test_user_blocked(self):
+        with self.logged_user():
+            response = self.client.get(url_for("tasks.index"))
+            self.assert302(response)
