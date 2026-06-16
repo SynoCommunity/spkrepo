@@ -339,7 +339,10 @@ class _AdminActionTestMixin:
             response = self.client.post(
                 url_for(self._action_endpoint),
                 follow_redirects=True,
-                data=dict(action="01_activate", rowid=[self._rowid(build1), self._rowid(build2)]),
+                data=dict(
+                    action="01_activate",
+                    rowid=[self._rowid(build1), self._rowid(build2)],
+                ),
             )
             self.assert200(response)
             self.assertIn("activated", response.data.decode())
@@ -367,7 +370,10 @@ class _AdminActionTestMixin:
             response = self.client.post(
                 url_for(self._action_endpoint),
                 follow_redirects=True,
-                data=dict(action="02_deactivate", rowid=[self._rowid(build1), self._rowid(build2)]),
+                data=dict(
+                    action="02_deactivate",
+                    rowid=[self._rowid(build1), self._rowid(build2)],
+                ),
             )
             self.assert200(response)
             self.assertIn("deactivated", response.data.decode())
