@@ -357,11 +357,16 @@ class DownloadStat(db.Model):
         index=True,
     )
     architecture_id = db.Column(
-        db.Integer, db.ForeignKey("architecture.id"), nullable=False, index=True
+        db.Integer, db.ForeignKey("architecture.id"), nullable=True, index=True
     )
-    firmware_build = db.Column(db.Integer, nullable=False, index=True)
+    firmware_build = db.Column(db.Integer, nullable=True, index=True)
     target_firmware_build = db.Column(db.Integer, nullable=True, index=True)
     target_noarch = db.Column(db.Boolean, nullable=False, default=False)
+    download_source = db.Column(
+        db.Enum("catalog", "manual", name="download_source"),
+        nullable=False,
+        server_default="catalog",
+    )
     date = db.Column(db.Date, nullable=False, index=True)
     count = db.Column(db.Integer, nullable=False, default=0)
 
