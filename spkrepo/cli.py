@@ -355,7 +355,6 @@ def ingest_logs():
 
     skipped_no_arch = 0
     skipped_no_build = 0
-    skipped_no_arch_id = 0
 
     for obj in objects:
         key = obj["Key"]
@@ -408,12 +407,8 @@ def ingest_logs():
 
                 if arch_code not in arch_cache:
                     arch = Architecture.find(arch_code, syno=True)
-                    arch_cache[arch_code] = arch.id if arch else None
+                    arch_cache[arch_code] = arch.id
                 architecture_id = arch_cache[arch_code]
-
-                if architecture_id is None:
-                    skipped_no_arch_id += 1
-                    continue
 
                 agg_key = (
                     package_id,
@@ -486,11 +481,9 @@ def ingest_logs():
 
     logger.info(
         "Ingested %d download events from %d file(s). "
-        "Skipped — missing arch/firmware: %d, "
-        "unknown build path: %d, unknown architecture: %d.",
+        "Skipped — missing arch/firmware: %d, unknown build path: %d.",
         sum(counts.values()),
         len(processed_keys),
         skipped_no_arch,
         skipped_no_build,
-        skipped_no_arch_id,
     )
