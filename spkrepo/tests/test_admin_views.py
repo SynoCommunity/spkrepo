@@ -3,9 +3,7 @@ from unittest.mock import patch
 
 from flask import url_for
 
-from spkrepo.tests.common import (
-    BaseTestCase,
-)
+from spkrepo.tests.common import BaseTestCase
 from spkrepo.views.tasks import resync_build_file, resync_build_metadata
 
 
