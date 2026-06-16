@@ -1,7 +1,9 @@
 import logging
 import os
+import re
 import shutil
 import urllib.parse
+from datetime import date, datetime
 
 import click
 from flask import current_app
@@ -256,15 +258,69 @@ def clean():
     click.echo("Done")
 
 
+def is_countable_download(record):
+    """Check whether a CDN log record represents a countable download."""
+    url = record.get("url", "")
+    path = url.split("?")[0]
+    if not path.endswith(".spk"):
+        return False
+    status = record.get("response_status")
+    if status == 200:
+        return True
+    if status == 206:
+        range_header = record.get("range", "")
+        return range_header == "" or range_header.startswith("bytes=0-")
+    return False
+
+
+def parse_download(record):
+    """Parse a CDN log record into its constituent parts.
+
+    Returns (url_path, arch_code, firmware_build, record_date,
+             target_firmware_build, target_noarch).
+    """
+    url = record.get("url", "")
+    path = urllib.parse.unquote(url.split("?")[0])
+    arch_code = record.get("arch") or None
+    firmware_build = record.get("build") or None
+    if firmware_build is not None:
+        try:
+            firmware_build = int(firmware_build)
+        except ValueError:
+            firmware_build = None
+    try:
+        record_date = datetime.fromisoformat(record["timestamp"]).date()
+    except (KeyError, ValueError):
+        record_date = date.today()
+
+    # Parse target info from the SPK filename
+    target_firmware_build = None
+    target_noarch = False
+    filename = path.rsplit("/", 1)[-1] if "/" in path else path
+    fm = re.search(r"\.f(\d+)\[([^\]]+)\]", filename)
+    if fm:
+        archs = fm.group(2).split("-")
+        target_noarch = "noarch" in archs
+        if not target_noarch:
+            target_firmware_build = int(fm.group(1))
+
+    return (
+        path.lstrip("/"),
+        arch_code,
+        firmware_build,
+        record_date,
+        target_firmware_build,
+        target_noarch,
+    )
+
+
 @spkrepo.command("ingest_logs")
 @with_appcontext
 def ingest_logs():
     """Ingest download stats from Object Storage log files."""
     import gzip
     import json
-    import re
     from collections import defaultdict
-    from datetime import date, datetime
 
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
@@ -272,54 +328,6 @@ def ingest_logs():
     from .models import Architecture, Build, DownloadStat
 
     logger = logging.getLogger(__name__)
-
-    def is_countable_download(record):
-        url = record.get("url", "")
-        path = url.split("?")[0]
-        if not path.endswith(".spk"):
-            return False
-        status = record.get("response_status")
-        if status == 200:
-            return True
-        if status == 206:
-            range_header = record.get("range", "")
-            return range_header == "" or range_header.startswith("bytes=0-")
-        return False
-
-    def parse_download(record):
-        url = record.get("url", "")
-        path = urllib.parse.unquote(url.split("?")[0])
-        arch_code = record.get("arch") or None
-        firmware_build = record.get("build") or None
-        if firmware_build is not None:
-            try:
-                firmware_build = int(firmware_build)
-            except ValueError:
-                firmware_build = None
-        try:
-            record_date = datetime.fromisoformat(record["timestamp"]).date()
-        except (KeyError, ValueError):
-            record_date = date.today()
-
-        # Parse target info from the SPK filename
-        target_firmware_build = None
-        target_noarch = False
-        filename = path.rsplit("/", 1)[-1] if "/" in path else path
-        fm = re.search(r"\.f(\d+)\[([^\]]+)\]", filename)
-        if fm:
-            archs = fm.group(2).split("-")
-            target_noarch = "noarch" in archs
-            if not target_noarch:
-                target_firmware_build = int(fm.group(1))
-
-        return (
-            path.lstrip("/"),
-            arch_code,
-            firmware_build,
-            record_date,
-            target_firmware_build,
-            target_noarch,
-        )
 
     bucket = current_app.config["OBJECT_STORAGE_LOGS_BUCKET"]
     prefix = current_app.config.get("OBJECT_STORAGE_LOGS_PREFIX", "logs/")
