@@ -351,9 +351,10 @@ def ingest_logs():
     counts = defaultdict(int)
     build_ids = {}  # agg_key -> build_id or None
     target_noarchs = {}  # agg_key -> bool
+    download_sources = {}  # agg_key -> str
     processed_keys = []
 
-    skipped_no_arch = 0
+    manual_downloads = 0
     skipped_no_build = 0
 
     for obj in objects:
@@ -386,10 +387,6 @@ def ingest_logs():
                     target_noarch,
                 ) = parsed
 
-                if arch_code is None or firmware_build is None:
-                    skipped_no_arch += 1
-                    continue
-
                 if url_path not in build_cache:
                     build = (
                         db.session.query(Build).filter(Build.path == url_path).first()
@@ -405,10 +402,21 @@ def ingest_logs():
                     continue
                 build_id, package_id = cached
 
-                if arch_code not in arch_cache:
-                    arch = Architecture.find(arch_code, syno=True)
-                    arch_cache[arch_code] = arch.id
-                architecture_id = arch_cache[arch_code]
+                if arch_code is not None:
+                    if arch_code not in arch_cache:
+                        arch = Architecture.find(arch_code, syno=True)
+                        arch_cache[arch_code] = arch.id
+                    architecture_id = arch_cache[arch_code]
+                else:
+                    architecture_id = None
+
+                if arch_code is None or firmware_build is None:
+                    arch_code = None
+                    firmware_build = None
+                    manual_downloads += 1
+                    download_source = "manual"
+                else:
+                    download_source = "catalog"
 
                 agg_key = (
                     package_id,
@@ -419,6 +427,7 @@ def ingest_logs():
                 )
                 counts[agg_key] += 1
                 target_noarchs[agg_key] = target_noarch
+                download_sources[agg_key] = download_source
 
                 if agg_key not in build_ids:
                     build_ids[agg_key] = build_id
@@ -438,6 +447,7 @@ def ingest_logs():
                 "firmware_build": firmware_build,
                 "target_firmware_build": target_firmware_build,
                 "target_noarch": target_noarchs.get(agg_key, False),
+                "download_source": download_sources.get(agg_key, "catalog"),
                 "date": record_date,
                 "count": count,
             }
@@ -481,9 +491,9 @@ def ingest_logs():
 
     logger.info(
         "Ingested %d download events from %d file(s). "
-        "Skipped — missing arch/firmware: %d, unknown build path: %d.",
+        "Skipped — unknown build path: %d. Manual downloads: %d.",
         sum(counts.values()),
         len(processed_keys),
-        skipped_no_arch,
         skipped_no_build,
+        manual_downloads,
     )
