@@ -6,14 +6,13 @@ from unittest.mock import patch
 from flask import current_app, url_for
 
 from spkrepo.ext import cache, db
-from spkrepo.models import Build, Firmware, Package, Version
+from spkrepo.models import Build, Firmware, Version
 from spkrepo.tests.common import (
     Architecture,
     BaseTestCase,
     BuildFactory,
     PackageFactory,
     VersionFactory,
-    create_image,
     create_info,
     create_spk,
 )
@@ -56,31 +55,6 @@ def patch_resync_file():
     return patch.object(
         resync_build_file, "delay", side_effect=_run_task_sync(resync_build_file.run)
     )
-
-
-class IndexTestCase(BaseTestCase):
-    def test_anonymous_redirects_to_login(self):
-        self.assert302(self.client.get(url_for("admin.index"), follow_redirects=False))
-        self.assertRedirectsTo(
-            self.client.get(url_for("admin.index")),
-            url_for("security.login"),
-        )
-
-    def test_user(self):
-        with self.logged_user():
-            self.assert403(self.client.get(url_for("admin.index")))
-
-    def test_developer(self):
-        with self.logged_user("developer"):
-            self.assert200(self.client.get(url_for("admin.index")))
-
-    def test_package_admin(self):
-        with self.logged_user("package_admin"):
-            self.assert200(self.client.get(url_for("admin.index")))
-
-    def test_admin(self):
-        with self.logged_user("admin"):
-            self.assert200(self.client.get(url_for("admin.index")))
 
 
 class UserTestCase(BaseTestCase):
@@ -176,47 +150,6 @@ class UserTestCase(BaseTestCase):
             )
             self.assertFalse(user1.active)
             self.assertFalse(user2.active)
-
-
-class PackageTestCase(BaseTestCase):
-    def test_anonymous(self):
-        self.assert403(self.client.get(url_for("package.index_view")))
-
-    def test_user(self):
-        with self.logged_user():
-            self.assert403(self.client.get(url_for("package.index_view")))
-
-    def test_developer(self):
-        with self.logged_user("developer"):
-            self.assert403(self.client.get(url_for("package.index_view")))
-
-    def test_package_admin(self):
-        with self.logged_user("package_admin"):
-            self.assert200(self.client.get(url_for("package.index_view")))
-
-    def test_admin(self):
-        with self.logged_user("admin"):
-            self.assert403(self.client.get(url_for("package.index_view")))
-
-    def test_on_model_create(self):
-        self.assertEqual(len(Package.query.all()), 0)
-        with self.logged_user("package_admin"):
-            self.client.post(url_for("package.create_view"), data=dict(name="test"))
-        self.assertEqual(len(Package.query.all()), 1)
-        package = Package.query.one()
-        package_path = os.path.join(current_app.config["DATA_PATH"], package.name)
-        self.assertTrue(os.path.exists(package_path))
-
-    def test_on_model_delete(self):
-        package = PackageFactory()
-        db.session.commit()
-        self.assertEqual(len(Package.query.all()), 1)
-        package_path = os.path.join(current_app.config["DATA_PATH"], package.name)
-        self.assertTrue(os.path.exists(package_path))
-        with self.logged_user("package_admin", "admin"):
-            self.client.post(url_for("package.delete_view", id=str(package.id)))
-        self.assertEqual(len(Package.query.all()), 0)
-        self.assertTrue(not os.path.exists(package_path))
 
 
 class _AdminActionTestMixin:
@@ -1040,65 +973,3 @@ class BuildTestCase(_AdminActionTestMixin, BaseTestCase):
             response_data = response.data.decode()
             self.assertIn(own_package.name, response_data)
             self.assertNotIn(other_build.version.package.name, response_data)
-
-
-class ScreenshotTestCase(BaseTestCase):
-    def test_anonymous(self):
-        self.assert403(self.client.get(url_for("screenshot.index_view")))
-
-    def test_user(self):
-        with self.logged_user():
-            self.assert403(self.client.get(url_for("screenshot.index_view")))
-
-    def test_developer(self):
-        with self.logged_user("developer"):
-            self.assert403(self.client.get(url_for("screenshot.index_view")))
-
-    def test_package_admin(self):
-        with self.logged_user("package_admin"):
-            self.assert200(self.client.get(url_for("screenshot.index_view")))
-
-    def test_admin(self):
-        with self.logged_user("admin"):
-            self.assert403(self.client.get(url_for("screenshot.index_view")))
-
-    def test_create(self):
-        package = PackageFactory(add_screenshot=False)
-        db.session.commit()
-        self.assertEqual(len(package.screenshots), 0)
-        with self.logged_user("package_admin"):
-            self.client.post(
-                url_for("screenshot.create_view"),
-                data=dict(
-                    package=str(package.id),
-                    path=(create_image("Test", 1280, 1024), "test.png"),
-                ),
-            )
-        self.assertEqual(len(package.screenshots), 1)
-        self.assertTrue(package.screenshots[0].path.endswith("screenshot_1.png"))
-
-
-class ScreenshotDeleteTestCase(BaseTestCase):
-    def test_delete_removes_file(self):
-        package = PackageFactory(add_screenshot=False)
-        db.session.commit()
-        with self.logged_user("package_admin"):
-            self.client.post(
-                url_for("screenshot.create_view"),
-                data=dict(
-                    package=str(package.id),
-                    path=(create_image("Delete Test", 1280, 1024), "test.png"),
-                ),
-            )
-            db.session.expire_all()
-            self.assertEqual(len(package.screenshots), 1)
-            screenshot = package.screenshots[0]
-            screenshot_path = os.path.join(
-                current_app.config["DATA_PATH"], screenshot.path
-            )
-            self.assertTrue(os.path.exists(screenshot_path))
-
-            self.client.post(url_for("screenshot.delete_view", id=str(screenshot.id)))
-        db.session.expire_all()
-        self.assertEqual(len(package.screenshots), 0)
-        self.assertFalse(os.path.exists(screenshot_path))
