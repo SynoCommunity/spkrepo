@@ -14,13 +14,14 @@ down_revision = "d429595e8362"
 
 
 def upgrade():
+    is_pg = op.get_bind().engine.dialect.name == "postgresql"
     op.add_column(
         "user",
         sa.Column(
             "fs_uniquifier",
             sa.String(length=255),
             nullable=False,
-            server_default=sa.text("md5(random()::text)"),
+            server_default=sa.text("md5(random()::text)") if is_pg else None,
         ),
     )
     op.create_unique_constraint("user_fs_uniquifier_key", "user", ["fs_uniquifier"])
