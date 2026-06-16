@@ -23,7 +23,7 @@ def upgrade() -> None:
     is_pg = op.get_bind().engine.dialect.name == "postgresql"
     if is_pg:
         op.execute(
-            "CREATE TYPE IF NOT EXISTS storage_location AS ENUM ('local', 'remote')"
+            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'storage_location') THEN CREATE TYPE storage_location AS ENUM ('local', 'remote'); END IF; END $$"
         )
     op.add_column(
         "build",

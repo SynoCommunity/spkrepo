@@ -23,7 +23,7 @@ def upgrade() -> None:
     is_pg = op.get_bind().engine.dialect.name == "postgresql"
     if is_pg:
         op.execute(
-            "CREATE TYPE IF NOT EXISTS download_source AS ENUM ('catalog', 'manual')"
+            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'download_source') THEN CREATE TYPE download_source AS ENUM ('catalog', 'manual'); END IF; END $$"
         )
     op.add_column(
         "download_stat",
