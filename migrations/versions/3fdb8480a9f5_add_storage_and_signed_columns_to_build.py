@@ -20,11 +20,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
+    is_pg = op.get_bind().engine.dialect.name == "postgresql"
+    if is_pg:
+        op.execute(
+            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'storage_location') THEN CREATE TYPE storage_location AS ENUM ('local', 'remote'); END IF; END $$"
+        )
     op.add_column(
         "build",
         sa.Column(
             "storage",
-            sa.Enum("local", "remote", name="storage_location"),
+            sa.Enum("local", "remote", name="storage_location", create_type=not is_pg),
             nullable=False,
             server_default="local",
         ),
@@ -39,3 +44,5 @@ def downgrade() -> None:
     """Downgrade schema."""
     op.drop_column("build", "signed")
     op.drop_column("build", "storage")
+    if op.get_bind().engine.dialect.name == "postgresql":
+        op.execute("DROP TYPE IF EXISTS storage_location")
