@@ -60,12 +60,14 @@ class PackagesTestCase(BaseTestCase):
 
 
 class PackageTestCase(BaseTestCase):
-    def test_get_active_stable(self):
-        build = BuildFactory(
+    def _assert_package_page(self, active, is_stable):
+        kwargs = dict(
             version__package__author=UserFactory(),
-            version__report_url=None,
-            active=True,
+            active=active,
         )
+        if is_stable:
+            kwargs["version__report_url"] = None
+        build = BuildFactory(**kwargs)
         db.session.commit()
         response = self.client.get(
             url_for("frontend.package", name=build.version.package.name)
@@ -82,82 +84,28 @@ class PackageTestCase(BaseTestCase):
             build.descriptions["enu"].description,
             response_data,
         )
-        self.assertNotIn("beta", response_data)
-        self.assertIn("badge badge-success", response_data)
+        if is_stable:
+            self.assertNotIn("beta", response_data)
+        else:
+            self.assertIn("beta", response_data)
+        if active:
+            self.assertIn("badge badge-success", response_data)
+            self.assertNotIn("Inactive: Manual installation only.", response_data)
+        else:
+            self.assertIn("badge badge-secondary", response_data)
+            self.assertIn("Inactive: Manual installation only.", response_data)
+
+    def test_get_active_stable(self):
+        self._assert_package_page(active=True, is_stable=True)
 
     def test_get_not_active_stable(self):
-        build = BuildFactory(
-            version__package__author=UserFactory(),
-            version__report_url=None,
-            active=False,
-        )
-        db.session.commit()
-        response = self.client.get(
-            url_for("frontend.package", name=build.version.package.name)
-        )
-        self.assert200(response)
-        response_data = response.data.decode()
-        for a in build.architectures:
-            self.assertIn(a.code, response_data)
-        self.assertIn(
-            build.version.displaynames["enu"].displayname,
-            response_data,
-        )
-        self.assertIn(
-            build.descriptions["enu"].description,
-            response_data,
-        )
-        self.assertNotIn("beta", response_data)
-        self.assertIn("badge badge-secondary", response_data)
+        self._assert_package_page(active=False, is_stable=True)
 
     def test_get_active_not_stable(self):
-        build = BuildFactory(
-            version__package__author=UserFactory(),
-            active=True,
-        )
-        db.session.commit()
-        response = self.client.get(
-            url_for("frontend.package", name=build.version.package.name)
-        )
-        self.assert200(response)
-        response_data = response.data.decode()
-        for a in build.architectures:
-            self.assertIn(a.code, response_data)
-        self.assertIn(
-            build.version.displaynames["enu"].displayname,
-            response_data,
-        )
-        self.assertIn(
-            build.descriptions["enu"].description,
-            response_data,
-        )
-        self.assertIn("beta", response_data)
-        self.assertIn("badge badge-success", response_data)
+        self._assert_package_page(active=True, is_stable=False)
 
     def test_get_not_active_not_stable(self):
-        build = BuildFactory(
-            version__package__author=UserFactory(),
-            active=False,
-        )
-        db.session.commit()
-        response = self.client.get(
-            url_for("frontend.package", name=build.version.package.name)
-        )
-        self.assert200(response)
-        response_data = response.data.decode()
-        for a in build.architectures:
-            self.assertIn(a.code, response_data)
-        self.assertIn(
-            build.version.displaynames["enu"].displayname,
-            response_data,
-        )
-        self.assertIn(
-            build.descriptions["enu"].description,
-            response_data,
-        )
-        self.assertIn("beta", response_data)
-        self.assertIn("badge badge-secondary", response_data)
-        self.assertIn("Inactive: Manual installation only.", response_data)
+        self._assert_package_page(active=False, is_stable=False)
 
     def test_get_no_package(self):
         response = self.client.get(url_for("frontend.package", name="no-package"))

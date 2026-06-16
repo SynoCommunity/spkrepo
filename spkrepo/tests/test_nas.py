@@ -152,50 +152,21 @@ class CatalogTestCase(BaseTestCase):
         self.assertIsInstance(entry["download_count"], int)
         self.assertIsInstance(entry["recent_download_count"], int)
 
-    def test_missing_data_arch(self):
-        self.assert400(
-            self.client.post(
-                url_for("nas.catalog"), data=dict(build="1594", language="enu")
-            )
-        )
-
-    def test_missing_data_build(self):
-        self.assert400(
-            self.client.post(
-                url_for("nas.catalog"), data=dict(arch="88f6281", language="enu")
-            )
-        )
-
-    def test_missing_data_language(self):
-        self.assert400(
-            self.client.post(
-                url_for("nas.catalog"), data=dict(arch="88f6281", build="1594")
-            )
-        )
-
-    def test_wrong_data_arch(self):
-        self.assert422(
-            self.client.post(
-                url_for("nas.catalog"),
-                data=dict(arch="zzzzzzz", build="1594", language="enu"),
-            )
-        )
-
-    def test_wrong_data_build(self):
-        self.assert422(
-            self.client.post(
-                url_for("nas.catalog"),
-                data=dict(arch="88f6281", build="zzzz", language="enu"),
-            )
-        )
-
-    def test_wrong_data_language(self):
-        self.assert422(
-            self.client.post(
-                url_for("nas.catalog"),
-                data=dict(arch="88f6281", build="1594", language="zzz"),
-            )
-        )
+    def test_catalog_validation(self):
+        cases = [
+            (dict(build="1594", language="enu"), 400),
+            (dict(arch="88f6281", language="enu"), 400),
+            (dict(arch="88f6281", build="1594"), 400),
+            (dict(arch="zzzzzzz", build="1594", language="enu"), 422),
+            (dict(arch="88f6281", build="zzzz", language="enu"), 422),
+            (dict(arch="88f6281", build="1594", language="zzz"), 422),
+            (dict(arch="88f6281", build="1594", language="enu", major="abc"), 422),
+        ]
+        for data, status in cases:
+            with self.subTest(data=data, status=status):
+                getattr(self, f"assert{status}")(
+                    self.client.post(url_for("nas.catalog"), data=data)
+                )
 
     def test_stable_build_active_stable(self):
         build = BuildFactory(
@@ -216,14 +187,11 @@ class CatalogTestCase(BaseTestCase):
         self.assertEqual(len(packages), 1)
         self.assertCatalogEntry(packages[0], build, data)
 
-    def test_stable_noarch_build_active_stable_dsm6(self):
-        # DSM 6.2 (build 23739): response format includes packages + keyrings
-        # (build >= 5004, < 40000). firmware_min must also be DSM 6.x so the
-        # major filter (startswith("6.")) matches.
+    def _assert_dsm6_catalog(self, arch_name):
         build = BuildFactory(
             active=True,
             version__report_url=None,
-            architectures=[Architecture.find("noarch", syno=True)],
+            architectures=[Architecture.find(arch_name, syno=True)],
             firmware_min=Firmware.find(23739),
         )
         db.session.commit()
@@ -237,24 +205,11 @@ class CatalogTestCase(BaseTestCase):
         self.assertEqual(len(catalog["packages"]), 1)
         self.assertCatalogEntry(catalog["packages"][0], build, data)
 
+    def test_stable_noarch_build_active_stable_dsm6(self):
+        self._assert_dsm6_catalog("noarch")
+
     def test_stable_arch_build_active_stable_dsm6(self):
-        # DSM 6.2 arch package appears in a DSM 6 query; response includes keyrings.
-        build = BuildFactory(
-            active=True,
-            version__report_url=None,
-            architectures=[Architecture.find("88f6281", syno=True)],
-            firmware_min=Firmware.find(23739),
-        )
-        db.session.commit()
-        data = dict(arch="88f6281", build="23739", language="enu")
-        response = self.client.post(url_for("nas.catalog"), data=data)
-        self.assert200(response)
-        self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode())
-        self.assertIn("packages", catalog)
-        self.assertIn("keyrings", catalog)
-        self.assertEqual(len(catalog["packages"]), 1)
-        self.assertCatalogEntry(catalog["packages"][0], build, data)
+        self._assert_dsm6_catalog("88f6281")
 
     def test_stable_build_active_stable_download_count(self):
         package = PackageFactory()
@@ -402,6 +357,13 @@ class CatalogTestCase(BaseTestCase):
         packages = catalog["packages"] if isinstance(catalog, dict) else catalog
         self.assertEqual(len(packages), 0)
 
+    def _catalog_post(self, data):
+        response = self.client.post(url_for("nas.catalog"), data=data)
+        self.assert200(response)
+        self.assertHeader(response, "Content-Type", "application/json")
+        catalog = json.loads(response.data.decode())
+        return catalog["packages"] if isinstance(catalog, dict) else catalog
+
     def test_stable_channel_excludes_inactive_stable_build(self):
         BuildFactory(
             active=False,
@@ -410,12 +372,9 @@ class CatalogTestCase(BaseTestCase):
             firmware_min=Firmware.find(1594),
         )
         db.session.commit()
-        data = dict(arch="88f6281", build="1594", language="enu")
-        response = self.client.post(url_for("nas.catalog"), data=data)
-        self.assert200(response)
-        self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode())
-        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        packages = self._catalog_post(
+            dict(arch="88f6281", build="1594", language="enu")
+        )
         self.assertEqual(len(packages), 0)
 
     def test_stable_channel_excludes_active_beta_build(self):
@@ -425,12 +384,9 @@ class CatalogTestCase(BaseTestCase):
             firmware_min=Firmware.find(1594),
         )
         db.session.commit()
-        data = dict(arch="88f6281", build="1594", language="enu")
-        response = self.client.post(url_for("nas.catalog"), data=data)
-        self.assert200(response)
-        self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode())
-        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        packages = self._catalog_post(
+            dict(arch="88f6281", build="1594", language="enu")
+        )
         self.assertEqual(len(packages), 0)
 
     def test_beta_channel_includes_active_stable_build(self):
@@ -444,11 +400,7 @@ class CatalogTestCase(BaseTestCase):
         data = dict(
             arch="88f6281", build="1594", language="enu", package_update_channel="beta"
         )
-        response = self.client.post(url_for("nas.catalog"), data=data)
-        self.assert200(response)
-        self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode())
-        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        packages = self._catalog_post(data)
         self.assertEqual(len(packages), 1)
         self.assertCatalogEntry(packages[0], build, data)
 
@@ -462,11 +414,7 @@ class CatalogTestCase(BaseTestCase):
         data = dict(
             arch="88f6281", build="1594", language="enu", package_update_channel="beta"
         )
-        response = self.client.post(url_for("nas.catalog"), data=data)
-        self.assert200(response)
-        self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode())
-        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        packages = self._catalog_post(data)
         self.assertEqual(len(packages), 1)
         self.assertCatalogEntry(packages[0], build, data)
 
@@ -481,15 +429,10 @@ class CatalogTestCase(BaseTestCase):
         data = dict(
             arch="88f6281", build="1594", language="enu", package_update_channel="beta"
         )
-        response = self.client.post(url_for("nas.catalog"), data=data)
-        self.assert200(response)
-        self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode())
-        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        packages = self._catalog_post(data)
         self.assertEqual(len(packages), 0)
 
     def test_inactive_beta_build_excluded_from_beta_channel(self):
-        # An inactive beta build must not appear even in the beta channel.
         BuildFactory(
             active=False,
             architectures=[Architecture.find("88f6281", syno=True)],
@@ -499,11 +442,7 @@ class CatalogTestCase(BaseTestCase):
         data = dict(
             arch="88f6281", build="1594", language="enu", package_update_channel="beta"
         )
-        response = self.client.post(url_for("nas.catalog"), data=data)
-        self.assert200(response)
-        self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode())
-        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        packages = self._catalog_post(data)
         self.assertEqual(len(packages), 0)
 
     def test_response_format_dsm7_no_keyrings(self):
@@ -595,14 +534,6 @@ class CatalogTestCase(BaseTestCase):
         )
         self.assertEqual(len(packages_explicit), 1)
         self.assertEqual(packages_explicit[0]["package"], build.version.package.name)
-
-    def test_invalid_major_parameter_returns_422(self):
-        self.assert422(
-            self.client.post(
-                url_for("nas.catalog"),
-                data=dict(arch="88f6281", build="1594", language="enu", major="abc"),
-            )
-        )
 
     def test_beta_build_fields_present_in_entry(self):
         build = BuildFactory(

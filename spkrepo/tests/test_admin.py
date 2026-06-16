@@ -59,10 +59,8 @@ def patch_resync_file():
 
 
 class IndexTestCase(BaseTestCase):
-    def test_anonymous(self):
-        self.assert302(self.client.get(url_for("admin.index"), follow_redirects=False))
-
     def test_anonymous_redirects_to_login(self):
+        self.assert302(self.client.get(url_for("admin.index"), follow_redirects=False))
         self.assertRedirectsTo(
             self.client.get(url_for("admin.index")),
             url_for("security.login"),
@@ -221,25 +219,199 @@ class PackageTestCase(BaseTestCase):
         self.assertTrue(not os.path.exists(package_path))
 
 
-class VersionTestCase(BaseTestCase):
+class _AdminActionTestMixin:
+    """Mixin for tests shared between VersionTestCase and BuildTestCase.
+
+    Subclasses must define:
+      - _index_endpoint: Flask endpoint for the list view (e.g. 'version.index_view')
+      - _action_endpoint: Flask endpoint for action view (e.g. 'version.action_view')
+      - _rowid(build): function returning the row ID for action posts
+    """
+
+    _index_endpoint = None
+    _action_endpoint = None
+
+    @staticmethod
+    def _rowid(build):
+        raise NotImplementedError
+
     def test_anonymous(self):
-        self.assert403(self.client.get(url_for("version.index_view")))
+        self.assert403(self.client.get(url_for(self._index_endpoint)))
 
     def test_user(self):
         with self.logged_user():
-            self.assert403(self.client.get(url_for("version.index_view")))
+            self.assert403(self.client.get(url_for(self._index_endpoint)))
 
     def test_developer(self):
         with self.logged_user("developer"):
-            self.assert200(self.client.get(url_for("version.index_view")))
+            self.assert200(self.client.get(url_for(self._index_endpoint)))
 
     def test_package_admin(self):
         with self.logged_user("package_admin"):
-            self.assert200(self.client.get(url_for("version.index_view")))
+            self.assert200(self.client.get(url_for(self._index_endpoint)))
 
     def test_admin(self):
         with self.logged_user("admin"):
-            self.assert403(self.client.get(url_for("version.index_view")))
+            self.assert403(self.client.get(url_for(self._index_endpoint)))
+
+    def test_action_resync_info_visible_to_package_admin(self):
+        with self.logged_user("package_admin"):
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertIn("Resync Info", response.data.decode())
+
+    def test_action_resync_info_requires_admin_or_package_admin(self):
+        with self.logged_user("developer"):
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertNotIn("Resync Info", response.data.decode())
+
+    def test_action_resync_info_invalidates_cache(self):
+        build = BuildFactory()
+        db.session.commit()
+        cache.set("packages_versions", "stale")
+        with self.logged_user("package_admin", "admin"):
+            with patch_resync_info():
+                self.client.post(
+                    url_for(self._action_endpoint),
+                    follow_redirects=True,
+                    data=dict(action="05_resync_info", rowid=[self._rowid(build)]),
+                )
+        self.assertIsNone(cache.get("packages_versions"))
+
+    def test_action_resync_file_invalidates_cache(self):
+        build = BuildFactory()
+        db.session.commit()
+        cache.set("packages_versions", "stale")
+        with self.logged_user("package_admin", "admin"):
+            with patch_resync_file():
+                self.client.post(
+                    url_for(self._action_endpoint),
+                    follow_redirects=True,
+                    data=dict(action="06_resync_file", rowid=[self._rowid(build)]),
+                )
+        self.assertIsNone(cache.get("packages_versions"))
+
+    def test_action_resync_info_single_build_no_siblings_succeeds(self):
+        build = BuildFactory()
+        db.session.commit()
+        self.assertEqual(len(build.version.builds), 1)
+        with self.logged_user("package_admin", "admin"):
+            with patch_resync_info():
+                response = self.client.post(
+                    url_for(self._action_endpoint),
+                    follow_redirects=True,
+                    data=dict(action="05_resync_info", rowid=[self._rowid(build)]),
+                )
+        self.assert200(response)
+        self.assertIn("queued", response.data.decode())
+
+    def test_action_resync_file_visible_to_package_admin(self):
+        with self.logged_user("package_admin"):
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertIn("Resync File", response.data.decode())
+
+    def test_action_resync_file_requires_admin_or_package_admin(self):
+        with self.logged_user("developer"):
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertNotIn("Resync File", response.data.decode())
+
+    def test_action_activate_one(self):
+        with self.logged_user("package_admin"):
+            build = BuildFactory(active=False, signed=True)
+            db.session.commit()
+            response = self.client.post(
+                url_for(self._action_endpoint),
+                follow_redirects=True,
+                data=dict(action="01_activate", rowid=[self._rowid(build)]),
+            )
+            self.assert200(response)
+            self.assertIn("activated", response.data.decode())
+            self.assertTrue(build.active)
+
+    def test_action_activate_multi(self):
+        with self.logged_user("package_admin"):
+            build1 = BuildFactory(active=False, signed=True)
+            build2 = BuildFactory(active=False, signed=True)
+            db.session.commit()
+            response = self.client.post(
+                url_for(self._action_endpoint),
+                follow_redirects=True,
+                data=dict(
+                    action="01_activate",
+                    rowid=[self._rowid(build1), self._rowid(build2)],
+                ),
+            )
+            self.assert200(response)
+            self.assertIn("activated", response.data.decode())
+            self.assertTrue(build1.active)
+            self.assertTrue(build2.active)
+
+    def test_action_deactivate_one(self):
+        with self.logged_user("package_admin"):
+            build = BuildFactory(active=True, signed=True)
+            db.session.commit()
+            response = self.client.post(
+                url_for(self._action_endpoint),
+                follow_redirects=True,
+                data=dict(action="02_deactivate", rowid=[self._rowid(build)]),
+            )
+            self.assert200(response)
+            self.assertIn("deactivated", response.data.decode())
+            self.assertFalse(build.active)
+
+    def test_action_deactivate_multi(self):
+        with self.logged_user("package_admin"):
+            build1 = BuildFactory(active=True, signed=True)
+            build2 = BuildFactory(active=True, signed=True)
+            db.session.commit()
+            response = self.client.post(
+                url_for(self._action_endpoint),
+                follow_redirects=True,
+                data=dict(
+                    action="02_deactivate",
+                    rowid=[self._rowid(build1), self._rowid(build2)],
+                ),
+            )
+            self.assert200(response)
+            self.assertIn("deactivated", response.data.decode())
+            self.assertFalse(build1.active)
+            self.assertFalse(build2.active)
+
+    def test_action_resync_info_allowed_for_package_admin(self):
+        with self.logged_user("package_admin"):
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertIn("Resync Info", response.data.decode())
+
+    def test_action_resync_info_blocked_for_developer(self):
+        with self.logged_user("developer"):
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertNotIn("Resync Info", response.data.decode())
+
+    def test_action_resync_file_allowed_for_package_admin(self):
+        with self.logged_user("package_admin"):
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertIn("Resync File", response.data.decode())
+
+    def test_action_resync_file_blocked_for_developer(self):
+        with self.logged_user("developer"):
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertNotIn("Resync File", response.data.decode())
+
+
+class VersionTestCase(_AdminActionTestMixin, BaseTestCase):
+    _index_endpoint = "version.index_view"
+    _action_endpoint = "version.action_view"
+
+    @staticmethod
+    def _rowid(build):
+        return build.version.id
 
     def test_on_model_delete(self):
         version = VersionFactory()
@@ -624,105 +796,13 @@ class VersionTestCase(BaseTestCase):
         self.assert403(response)
 
 
-class BuildTestCase(BaseTestCase):
-    def test_anonymous(self):
-        self.assert403(self.client.get(url_for("build.index_view")))
+class BuildTestCase(_AdminActionTestMixin, BaseTestCase):
+    _index_endpoint = "build.index_view"
+    _action_endpoint = "build.action_view"
 
-    def test_user(self):
-        with self.logged_user():
-            self.assert403(self.client.get(url_for("build.index_view")))
-
-    def test_developer(self):
-        with self.logged_user("developer"):
-            self.assert200(self.client.get(url_for("build.index_view")))
-
-    def test_package_admin(self):
-        with self.logged_user("package_admin"):
-            self.assert200(self.client.get(url_for("build.index_view")))
-
-    def test_admin(self):
-        with self.logged_user("admin"):
-            self.assert403(self.client.get(url_for("build.index_view")))
-
-    def test_action_activate_one(self):
-        with self.logged_user("package_admin"):
-            build = BuildFactory(active=False, signed=True)
-            db.session.commit()
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="01_activate", rowid=[build.id]),
-            )
-            self.assert200(response)
-            self.assertIn(
-                "activated",
-                response.data.decode(),
-            )
-            self.assertTrue(build.active)
-
-    def test_action_activate_multi(self):
-        with self.logged_user("package_admin"):
-            build1 = BuildFactory(active=False, signed=True)
-            build2 = BuildFactory(active=False, signed=True)
-            db.session.commit()
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="01_activate", rowid=[build1.id, build2.id]),
-            )
-            self.assert200(response)
-            self.assertIn(
-                "activated",
-                response.data.decode(),
-            )
-            self.assertTrue(build1.active)
-            self.assertTrue(build2.active)
-
-    def test_action_deactivate_one(self):
-        with self.logged_user("package_admin"):
-            build = BuildFactory(active=True)
-            db.session.commit()
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="02_deactivate", rowid=[build.id]),
-            )
-            self.assert200(response)
-            self.assertIn(
-                "Build was successfully deactivated.",
-                response.data.decode(),
-            )
-            self.assertFalse(build.active)
-
-    def test_action_deactivate_multi(self):
-        with self.logged_user("package_admin"):
-            build1 = BuildFactory(active=True)
-            build2 = BuildFactory(active=True)
-            db.session.commit()
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="02_deactivate", rowid=[build1.id, build2.id]),
-            )
-            self.assert200(response)
-            self.assertIn(
-                "2 builds were successfully deactivated.",
-                response.data.decode(),
-            )
-            self.assertFalse(build1.active)
-            self.assertFalse(build2.active)
-
-    def test_action_resync_info_visible_to_package_admin(self):
-        with self.logged_user("package_admin"):
-            response = self.client.get(url_for("build.index_view"))
-            self.assert200(response)
-            self.assertIn("Resync Info", response.data.decode())
-
-    def test_action_resync_info_requires_admin_or_package_admin(self):
-        with self.logged_user("developer"):
-            response = self.client.get(url_for("build.index_view"))
-            self.assert200(response)
-            self.assertNotIn("Resync Info", response.data.decode())
+    @staticmethod
+    def _rowid(build):
+        return build.id
 
     def test_action_resync_info_refreshes_version_metadata(self):
         build = BuildFactory()
@@ -788,32 +868,6 @@ class BuildTestCase(BaseTestCase):
         self.assert200(response)
         self.assertIn("queued", response.data.decode())
 
-    def test_action_resync_info_invalidates_cache(self):
-        build = BuildFactory()
-        db.session.commit()
-        cache.set("packages_versions", "stale")
-        with self.logged_user("package_admin", "admin"):
-            with patch_resync_info():
-                self.client.post(
-                    url_for("build.action_view"),
-                    follow_redirects=True,
-                    data=dict(action="05_resync_info", rowid=[build.id]),
-                )
-        self.assertIsNone(cache.get("packages_versions"))
-
-    def test_action_resync_file_invalidates_cache(self):
-        build = BuildFactory()
-        db.session.commit()
-        cache.set("packages_versions", "stale")
-        with self.logged_user("package_admin", "admin"):
-            with patch_resync_file():
-                self.client.post(
-                    url_for("build.action_view"),
-                    follow_redirects=True,
-                    data=dict(action="06_resync_file", rowid=[build.id]),
-                )
-        self.assertIsNone(cache.get("packages_versions"))
-
     def test_action_resync_info_rejects_inconsistent_sibling_build(self):
         build1 = BuildFactory(architectures=[Architecture.find("88f628x")])
         build2 = BuildFactory(
@@ -866,18 +920,6 @@ class BuildTestCase(BaseTestCase):
             unchanged.version.displaynames["enu"].displayname,
             original_displayname,
         )
-
-    def test_action_resync_file_visible_to_package_admin(self):
-        with self.logged_user("package_admin"):
-            response = self.client.get(url_for("build.index_view"))
-            self.assert200(response)
-            self.assertIn("Resync File", response.data.decode())
-
-    def test_action_resync_file_requires_admin_or_package_admin(self):
-        with self.logged_user("developer"):
-            response = self.client.get(url_for("build.index_view"))
-            self.assert200(response)
-            self.assertNotIn("Resync File", response.data.decode())
 
     def test_action_resync_file_refreshes_single_build(self):
         build = BuildFactory()
