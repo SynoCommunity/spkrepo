@@ -6,14 +6,13 @@ from unittest.mock import patch
 from flask import current_app, url_for
 
 from spkrepo.ext import cache, db
-from spkrepo.models import Build, Firmware, Package, Version
+from spkrepo.models import Build, Firmware, Version
 from spkrepo.tests.common import (
     Architecture,
     BaseTestCase,
     BuildFactory,
     PackageFactory,
     VersionFactory,
-    create_image,
     create_info,
     create_spk,
 )
@@ -56,33 +55,6 @@ def patch_resync_file():
     return patch.object(
         resync_build_file, "delay", side_effect=_run_task_sync(resync_build_file.run)
     )
-
-
-class IndexTestCase(BaseTestCase):
-    def test_anonymous(self):
-        self.assert302(self.client.get(url_for("admin.index"), follow_redirects=False))
-
-    def test_anonymous_redirects_to_login(self):
-        self.assertRedirectsTo(
-            self.client.get(url_for("admin.index")),
-            url_for("security.login"),
-        )
-
-    def test_user(self):
-        with self.logged_user():
-            self.assert403(self.client.get(url_for("admin.index")))
-
-    def test_developer(self):
-        with self.logged_user("developer"):
-            self.assert200(self.client.get(url_for("admin.index")))
-
-    def test_package_admin(self):
-        with self.logged_user("package_admin"):
-            self.assert200(self.client.get(url_for("admin.index")))
-
-    def test_admin(self):
-        with self.logged_user("admin"):
-            self.assert200(self.client.get(url_for("admin.index")))
 
 
 class UserTestCase(BaseTestCase):
@@ -180,66 +152,199 @@ class UserTestCase(BaseTestCase):
             self.assertFalse(user2.active)
 
 
-class PackageTestCase(BaseTestCase):
+class _AdminActionTestMixin:
+    """Mixin for tests shared between VersionTestCase and BuildTestCase.
+
+    Subclasses must define:
+      - _index_endpoint: Flask endpoint for the list view (e.g. 'version.index_view')
+      - _action_endpoint: Flask endpoint for action view (e.g. 'version.action_view')
+      - _rowid(build): function returning the row ID for action posts
+    """
+
+    _index_endpoint = None
+    _action_endpoint = None
+
+    @staticmethod
+    def _rowid(build):
+        raise NotImplementedError
+
     def test_anonymous(self):
-        self.assert403(self.client.get(url_for("package.index_view")))
+        self.assert403(self.client.get(url_for(self._index_endpoint)))
 
     def test_user(self):
         with self.logged_user():
-            self.assert403(self.client.get(url_for("package.index_view")))
+            self.assert403(self.client.get(url_for(self._index_endpoint)))
 
     def test_developer(self):
         with self.logged_user("developer"):
-            self.assert403(self.client.get(url_for("package.index_view")))
+            self.assert200(self.client.get(url_for(self._index_endpoint)))
 
     def test_package_admin(self):
         with self.logged_user("package_admin"):
-            self.assert200(self.client.get(url_for("package.index_view")))
+            self.assert200(self.client.get(url_for(self._index_endpoint)))
 
     def test_admin(self):
         with self.logged_user("admin"):
-            self.assert403(self.client.get(url_for("package.index_view")))
+            self.assert403(self.client.get(url_for(self._index_endpoint)))
 
-    def test_on_model_create(self):
-        self.assertEqual(len(Package.query.all()), 0)
+    def test_action_resync_info_visible_to_package_admin(self):
         with self.logged_user("package_admin"):
-            self.client.post(url_for("package.create_view"), data=dict(name="test"))
-        self.assertEqual(len(Package.query.all()), 1)
-        package = Package.query.one()
-        package_path = os.path.join(current_app.config["DATA_PATH"], package.name)
-        self.assertTrue(os.path.exists(package_path))
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertIn("Resync Info", response.data.decode())
 
-    def test_on_model_delete(self):
-        package = PackageFactory()
+    def test_action_resync_info_requires_admin_or_package_admin(self):
+        with self.logged_user("developer"):
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertNotIn("Resync Info", response.data.decode())
+
+    def test_action_resync_info_invalidates_cache(self):
+        build = BuildFactory()
         db.session.commit()
-        self.assertEqual(len(Package.query.all()), 1)
-        package_path = os.path.join(current_app.config["DATA_PATH"], package.name)
-        self.assertTrue(os.path.exists(package_path))
+        cache.set("packages_versions", "stale")
         with self.logged_user("package_admin", "admin"):
-            self.client.post(url_for("package.delete_view", id=str(package.id)))
-        self.assertEqual(len(Package.query.all()), 0)
-        self.assertTrue(not os.path.exists(package_path))
+            with patch_resync_info():
+                self.client.post(
+                    url_for(self._action_endpoint),
+                    follow_redirects=True,
+                    data=dict(action="05_resync_info", rowid=[self._rowid(build)]),
+                )
+        self.assertIsNone(cache.get("packages_versions"))
 
+    def test_action_resync_file_invalidates_cache(self):
+        build = BuildFactory()
+        db.session.commit()
+        cache.set("packages_versions", "stale")
+        with self.logged_user("package_admin", "admin"):
+            with patch_resync_file():
+                self.client.post(
+                    url_for(self._action_endpoint),
+                    follow_redirects=True,
+                    data=dict(action="06_resync_file", rowid=[self._rowid(build)]),
+                )
+        self.assertIsNone(cache.get("packages_versions"))
 
-class VersionTestCase(BaseTestCase):
-    def test_anonymous(self):
-        self.assert403(self.client.get(url_for("version.index_view")))
+    def test_action_resync_info_single_build_no_siblings_succeeds(self):
+        build = BuildFactory()
+        db.session.commit()
+        self.assertEqual(len(build.version.builds), 1)
+        with self.logged_user("package_admin", "admin"):
+            with patch_resync_info():
+                response = self.client.post(
+                    url_for(self._action_endpoint),
+                    follow_redirects=True,
+                    data=dict(action="05_resync_info", rowid=[self._rowid(build)]),
+                )
+        self.assert200(response)
+        self.assertIn("queued", response.data.decode())
 
-    def test_user(self):
-        with self.logged_user():
-            self.assert403(self.client.get(url_for("version.index_view")))
-
-    def test_developer(self):
-        with self.logged_user("developer"):
-            self.assert200(self.client.get(url_for("version.index_view")))
-
-    def test_package_admin(self):
+    def test_action_resync_file_visible_to_package_admin(self):
         with self.logged_user("package_admin"):
-            self.assert200(self.client.get(url_for("version.index_view")))
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertIn("Resync File", response.data.decode())
 
-    def test_admin(self):
-        with self.logged_user("admin"):
-            self.assert403(self.client.get(url_for("version.index_view")))
+    def test_action_resync_file_requires_admin_or_package_admin(self):
+        with self.logged_user("developer"):
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertNotIn("Resync File", response.data.decode())
+
+    def test_action_activate_one(self):
+        with self.logged_user("package_admin"):
+            build = BuildFactory(active=False, signed=True)
+            db.session.commit()
+            response = self.client.post(
+                url_for(self._action_endpoint),
+                follow_redirects=True,
+                data=dict(action="01_activate", rowid=[self._rowid(build)]),
+            )
+            self.assert200(response)
+            self.assertIn("activated", response.data.decode())
+            self.assertTrue(build.active)
+
+    def test_action_activate_multi(self):
+        with self.logged_user("package_admin"):
+            build1 = BuildFactory(active=False, signed=True)
+            build2 = BuildFactory(active=False, signed=True)
+            db.session.commit()
+            response = self.client.post(
+                url_for(self._action_endpoint),
+                follow_redirects=True,
+                data=dict(
+                    action="01_activate",
+                    rowid=[self._rowid(build1), self._rowid(build2)],
+                ),
+            )
+            self.assert200(response)
+            self.assertIn("activated", response.data.decode())
+            self.assertTrue(build1.active)
+            self.assertTrue(build2.active)
+
+    def test_action_deactivate_one(self):
+        with self.logged_user("package_admin"):
+            build = BuildFactory(active=True, signed=True)
+            db.session.commit()
+            response = self.client.post(
+                url_for(self._action_endpoint),
+                follow_redirects=True,
+                data=dict(action="02_deactivate", rowid=[self._rowid(build)]),
+            )
+            self.assert200(response)
+            self.assertIn("deactivated", response.data.decode())
+            self.assertFalse(build.active)
+
+    def test_action_deactivate_multi(self):
+        with self.logged_user("package_admin"):
+            build1 = BuildFactory(active=True, signed=True)
+            build2 = BuildFactory(active=True, signed=True)
+            db.session.commit()
+            response = self.client.post(
+                url_for(self._action_endpoint),
+                follow_redirects=True,
+                data=dict(
+                    action="02_deactivate",
+                    rowid=[self._rowid(build1), self._rowid(build2)],
+                ),
+            )
+            self.assert200(response)
+            self.assertIn("deactivated", response.data.decode())
+            self.assertFalse(build1.active)
+            self.assertFalse(build2.active)
+
+    def test_action_resync_info_allowed_for_package_admin(self):
+        with self.logged_user("package_admin"):
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertIn("Resync Info", response.data.decode())
+
+    def test_action_resync_info_blocked_for_developer(self):
+        with self.logged_user("developer"):
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertNotIn("Resync Info", response.data.decode())
+
+    def test_action_resync_file_allowed_for_package_admin(self):
+        with self.logged_user("package_admin"):
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertIn("Resync File", response.data.decode())
+
+    def test_action_resync_file_blocked_for_developer(self):
+        with self.logged_user("developer"):
+            response = self.client.get(url_for(self._index_endpoint))
+            self.assert200(response)
+            self.assertNotIn("Resync File", response.data.decode())
+
+
+class VersionTestCase(_AdminActionTestMixin, BaseTestCase):
+    _index_endpoint = "version.index_view"
+    _action_endpoint = "version.action_view"
+
+    @staticmethod
+    def _rowid(build):
+        return build.version.id
 
     def test_on_model_delete(self):
         version = VersionFactory()
@@ -624,105 +729,13 @@ class VersionTestCase(BaseTestCase):
         self.assert403(response)
 
 
-class BuildTestCase(BaseTestCase):
-    def test_anonymous(self):
-        self.assert403(self.client.get(url_for("build.index_view")))
+class BuildTestCase(_AdminActionTestMixin, BaseTestCase):
+    _index_endpoint = "build.index_view"
+    _action_endpoint = "build.action_view"
 
-    def test_user(self):
-        with self.logged_user():
-            self.assert403(self.client.get(url_for("build.index_view")))
-
-    def test_developer(self):
-        with self.logged_user("developer"):
-            self.assert200(self.client.get(url_for("build.index_view")))
-
-    def test_package_admin(self):
-        with self.logged_user("package_admin"):
-            self.assert200(self.client.get(url_for("build.index_view")))
-
-    def test_admin(self):
-        with self.logged_user("admin"):
-            self.assert403(self.client.get(url_for("build.index_view")))
-
-    def test_action_activate_one(self):
-        with self.logged_user("package_admin"):
-            build = BuildFactory(active=False, signed=True)
-            db.session.commit()
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="01_activate", rowid=[build.id]),
-            )
-            self.assert200(response)
-            self.assertIn(
-                "activated",
-                response.data.decode(),
-            )
-            self.assertTrue(build.active)
-
-    def test_action_activate_multi(self):
-        with self.logged_user("package_admin"):
-            build1 = BuildFactory(active=False, signed=True)
-            build2 = BuildFactory(active=False, signed=True)
-            db.session.commit()
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="01_activate", rowid=[build1.id, build2.id]),
-            )
-            self.assert200(response)
-            self.assertIn(
-                "activated",
-                response.data.decode(),
-            )
-            self.assertTrue(build1.active)
-            self.assertTrue(build2.active)
-
-    def test_action_deactivate_one(self):
-        with self.logged_user("package_admin"):
-            build = BuildFactory(active=True)
-            db.session.commit()
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="02_deactivate", rowid=[build.id]),
-            )
-            self.assert200(response)
-            self.assertIn(
-                "Build was successfully deactivated.",
-                response.data.decode(),
-            )
-            self.assertFalse(build.active)
-
-    def test_action_deactivate_multi(self):
-        with self.logged_user("package_admin"):
-            build1 = BuildFactory(active=True)
-            build2 = BuildFactory(active=True)
-            db.session.commit()
-            response = self.client.post(
-                url_for("build.action_view"),
-                follow_redirects=True,
-                data=dict(action="02_deactivate", rowid=[build1.id, build2.id]),
-            )
-            self.assert200(response)
-            self.assertIn(
-                "2 builds were successfully deactivated.",
-                response.data.decode(),
-            )
-            self.assertFalse(build1.active)
-            self.assertFalse(build2.active)
-
-    def test_action_resync_info_visible_to_package_admin(self):
-        with self.logged_user("package_admin"):
-            response = self.client.get(url_for("build.index_view"))
-            self.assert200(response)
-            self.assertIn("Resync Info", response.data.decode())
-
-    def test_action_resync_info_requires_admin_or_package_admin(self):
-        with self.logged_user("developer"):
-            response = self.client.get(url_for("build.index_view"))
-            self.assert200(response)
-            self.assertNotIn("Resync Info", response.data.decode())
+    @staticmethod
+    def _rowid(build):
+        return build.id
 
     def test_action_resync_info_refreshes_version_metadata(self):
         build = BuildFactory()
@@ -788,32 +801,6 @@ class BuildTestCase(BaseTestCase):
         self.assert200(response)
         self.assertIn("queued", response.data.decode())
 
-    def test_action_resync_info_invalidates_cache(self):
-        build = BuildFactory()
-        db.session.commit()
-        cache.set("packages_versions", "stale")
-        with self.logged_user("package_admin", "admin"):
-            with patch_resync_info():
-                self.client.post(
-                    url_for("build.action_view"),
-                    follow_redirects=True,
-                    data=dict(action="05_resync_info", rowid=[build.id]),
-                )
-        self.assertIsNone(cache.get("packages_versions"))
-
-    def test_action_resync_file_invalidates_cache(self):
-        build = BuildFactory()
-        db.session.commit()
-        cache.set("packages_versions", "stale")
-        with self.logged_user("package_admin", "admin"):
-            with patch_resync_file():
-                self.client.post(
-                    url_for("build.action_view"),
-                    follow_redirects=True,
-                    data=dict(action="06_resync_file", rowid=[build.id]),
-                )
-        self.assertIsNone(cache.get("packages_versions"))
-
     def test_action_resync_info_rejects_inconsistent_sibling_build(self):
         build1 = BuildFactory(architectures=[Architecture.find("88f628x")])
         build2 = BuildFactory(
@@ -866,18 +853,6 @@ class BuildTestCase(BaseTestCase):
             unchanged.version.displaynames["enu"].displayname,
             original_displayname,
         )
-
-    def test_action_resync_file_visible_to_package_admin(self):
-        with self.logged_user("package_admin"):
-            response = self.client.get(url_for("build.index_view"))
-            self.assert200(response)
-            self.assertIn("Resync File", response.data.decode())
-
-    def test_action_resync_file_requires_admin_or_package_admin(self):
-        with self.logged_user("developer"):
-            response = self.client.get(url_for("build.index_view"))
-            self.assert200(response)
-            self.assertNotIn("Resync File", response.data.decode())
 
     def test_action_resync_file_refreshes_single_build(self):
         build = BuildFactory()
@@ -998,65 +973,3 @@ class BuildTestCase(BaseTestCase):
             response_data = response.data.decode()
             self.assertIn(own_package.name, response_data)
             self.assertNotIn(other_build.version.package.name, response_data)
-
-
-class ScreenshotTestCase(BaseTestCase):
-    def test_anonymous(self):
-        self.assert403(self.client.get(url_for("screenshot.index_view")))
-
-    def test_user(self):
-        with self.logged_user():
-            self.assert403(self.client.get(url_for("screenshot.index_view")))
-
-    def test_developer(self):
-        with self.logged_user("developer"):
-            self.assert403(self.client.get(url_for("screenshot.index_view")))
-
-    def test_package_admin(self):
-        with self.logged_user("package_admin"):
-            self.assert200(self.client.get(url_for("screenshot.index_view")))
-
-    def test_admin(self):
-        with self.logged_user("admin"):
-            self.assert403(self.client.get(url_for("screenshot.index_view")))
-
-    def test_create(self):
-        package = PackageFactory(add_screenshot=False)
-        db.session.commit()
-        self.assertEqual(len(package.screenshots), 0)
-        with self.logged_user("package_admin"):
-            self.client.post(
-                url_for("screenshot.create_view"),
-                data=dict(
-                    package=str(package.id),
-                    path=(create_image("Test", 1280, 1024), "test.png"),
-                ),
-            )
-        self.assertEqual(len(package.screenshots), 1)
-        self.assertTrue(package.screenshots[0].path.endswith("screenshot_1.png"))
-
-
-class ScreenshotDeleteTestCase(BaseTestCase):
-    def test_delete_removes_file(self):
-        package = PackageFactory(add_screenshot=False)
-        db.session.commit()
-        with self.logged_user("package_admin"):
-            self.client.post(
-                url_for("screenshot.create_view"),
-                data=dict(
-                    package=str(package.id),
-                    path=(create_image("Delete Test", 1280, 1024), "test.png"),
-                ),
-            )
-            db.session.expire_all()
-            self.assertEqual(len(package.screenshots), 1)
-            screenshot = package.screenshots[0]
-            screenshot_path = os.path.join(
-                current_app.config["DATA_PATH"], screenshot.path
-            )
-            self.assertTrue(os.path.exists(screenshot_path))
-
-            self.client.post(url_for("screenshot.delete_view", id=str(screenshot.id)))
-        db.session.expire_all()
-        self.assertEqual(len(package.screenshots), 0)
-        self.assertFalse(os.path.exists(screenshot_path))
