@@ -20,11 +20,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
+    is_pg = op.get_bind().engine.dialect.name == "postgresql"
+    if is_pg:
+        op.execute(
+            "CREATE TYPE IF NOT EXISTS download_source AS ENUM ('catalog', 'manual')"
+        )
     op.add_column(
         "download_stat",
         sa.Column(
             "download_source",
-            sa.Enum("catalog", "manual", name="download_source"),
+            sa.Enum("catalog", "manual", name="download_source", create_type=not is_pg),
             server_default="catalog",
             nullable=False,
         ),
@@ -46,3 +51,5 @@ def downgrade() -> None:
         "download_stat", "architecture_id", existing_type=sa.INTEGER(), nullable=False
     )
     op.drop_column("download_stat", "download_source")
+    if op.get_bind().engine.dialect.name == "postgresql":
+        op.execute("DROP TYPE IF EXISTS download_source")
