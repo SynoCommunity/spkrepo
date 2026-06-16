@@ -1180,3 +1180,24 @@ class TaskStatusViewTestCase(BaseTestCase):
         with self.logged_user():
             response = self.client.get(url_for("tasks.index"))
             self.assert302(response)
+
+    def test_status_json_returns_empty_list(self):
+        with self.logged_user("package_admin"):
+            response = self.client.get(url_for("tasks.status_json"))
+            self.assert200(response)
+            data = response.get_json()
+            self.assertEqual(data["tasks"], [])
+            self.assertEqual(data["pending_count"], 0)
+
+    def test_status_json_redirects_for_anonymous(self):
+        response = self.client.get(url_for("tasks.status_json"))
+        self.assert302(response)
+
+    def test_clear_redirects_when_no_tasks(self):
+        with self.logged_user("package_admin"):
+            response = self.client.post(url_for("tasks.clear"), follow_redirects=True)
+            self.assert200(response)
+
+    def test_clear_redirects_for_anonymous(self):
+        response = self.client.post(url_for("tasks.clear"))
+        self.assert302(response)
