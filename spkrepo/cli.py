@@ -269,7 +269,7 @@ def ingest_logs():
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
 
-    from .models import Architecture, Build, DownloadStat, Version
+    from .models import Architecture, Build, DownloadStat
 
     logger = logging.getLogger(__name__)
 
@@ -289,14 +289,6 @@ def ingest_logs():
     def parse_download(record):
         url = record.get("url", "")
         path = urllib.parse.unquote(url.split("?")[0])
-        match = re.match(r"^/([^/]+)/([^/]+)/", path)
-        if not match:
-            return None
-        package_name = match.group(1)
-        try:
-            version_number = int(match.group(2))
-        except ValueError:
-            return None
         arch_code = record.get("arch") or None
         firmware_build = record.get("build") or None
         if firmware_build is not None:
@@ -321,8 +313,7 @@ def ingest_logs():
                 target_firmware_build = int(fm.group(1))
 
         return (
-            package_name,
-            version_number,
+            path.lstrip("/"),
             arch_code,
             firmware_build,
             record_date,
@@ -354,7 +345,7 @@ def ingest_logs():
 
     logger.info("Processing %d log file(s).", len(objects))
 
-    # (pkg_name, ver, arch, target_fw) -> (build_id, pkg_id) or None
+    # url_path -> (build_id, pkg_id) or None
     build_cache = {}
     arch_cache = {}  # arch_code -> architecture_id or None
     counts = defaultdict(int)
@@ -388,8 +379,7 @@ def ingest_logs():
                 if parsed is None:
                     continue
                 (
-                    package_name,
-                    version_number,
+                    url_path,
                     arch_code,
                     firmware_build,
                     record_date,
@@ -401,49 +391,16 @@ def ingest_logs():
                     skipped_no_arch += 1
                     continue
 
-                cache_key = (
-                    package_name,
-                    version_number,
-                    arch_code,
-                    target_firmware_build,
-                )
-                if cache_key not in build_cache:
-                    from .models import Firmware as FirmwareModel
-
-                    build_query = (
-                        db.session.query(Build)
-                        .join(Version)
-                        .filter(
-                            Version.version == version_number,
-                            Version.package.has(name=package_name),
-                        )
-                        .join(Build.architectures)
-                        .filter(
-                            db.or_(
-                                Architecture.code == arch_code,
-                                Architecture.code == "noarch",
-                            )
-                        )
+                if url_path not in build_cache:
+                    build = (
+                        db.session.query(Build).filter(Build.path == url_path).first()
                     )
-                    if target_firmware_build is not None:
-                        build_query = build_query.filter(
-                            Build.firmware_min.has(
-                                FirmwareModel.build <= target_firmware_build
-                            ),
-                            db.or_(
-                                Build.firmware_max_id.is_(None),
-                                Build.firmware_max.has(
-                                    FirmwareModel.build >= target_firmware_build
-                                ),
-                            ),
-                        )
-                    build = build_query.first()
                     if build:
-                        build_cache[cache_key] = (build.id, build.version.package_id)
+                        build_cache[url_path] = (build.id, build.version.package_id)
                     else:
-                        build_cache[cache_key] = None
+                        build_cache[url_path] = None
 
-                cached = build_cache[cache_key]
+                cached = build_cache[url_path]
                 if cached is None:
                     skipped_no_build += 1
                     continue
@@ -530,7 +487,7 @@ def ingest_logs():
     logger.info(
         "Ingested %d download events from %d file(s). "
         "Skipped — missing arch/firmware: %d, "
-        "unknown package/version: %d, unknown architecture: %d.",
+        "unknown build path: %d, unknown architecture: %d.",
         sum(counts.values()),
         len(processed_keys),
         skipped_no_arch,
