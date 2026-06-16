@@ -125,15 +125,12 @@ class SPKParseTestCase(BaseTestCase):
         with create_spk(build, info=info) as f:
             SPK(f)
 
-    def test_info_boolean_yes(self):
-        build = BuildFactory.build(version__startable=True)
-        with create_spk(build) as f:
-            self.assertTrue(SPK(f).info["startable"])
-
-    def test_info_boolean_no(self):
-        build = BuildFactory.build(version__startable=False)
-        with create_spk(build) as f:
-            self.assertFalse(SPK(f).info["startable"])
+    def test_info_boolean(self):
+        for startable, expected in [(True, True), (False, False)]:
+            with self.subTest(startable=startable, expected=expected):
+                build = BuildFactory.build(version__startable=startable)
+                with create_spk(build) as f:
+                    self.assertEqual(SPK(f).info["startable"], expected)
 
     def test_no_info(self):
         build = BuildFactory.build()

@@ -59,10 +59,8 @@ def patch_resync_file():
 
 
 class IndexTestCase(BaseTestCase):
-    def test_anonymous(self):
-        self.assert302(self.client.get(url_for("admin.index"), follow_redirects=False))
-
     def test_anonymous_redirects_to_login(self):
+        self.assert302(self.client.get(url_for("admin.index"), follow_redirects=False))
         self.assertRedirectsTo(
             self.client.get(url_for("admin.index")),
             url_for("security.login"),
