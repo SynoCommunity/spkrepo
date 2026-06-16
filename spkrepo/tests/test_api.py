@@ -628,6 +628,7 @@ class PackagesTestCase(BaseTestCase):
 
     def test_post_existing_version_mismatched_displayname_rejected(self):
         # A second build with a different displayname must be rejected with 422.
+        # Also verify the DB is not partially modified on rejection.
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
         db.session.commit()
 
@@ -647,8 +648,7 @@ class PackagesTestCase(BaseTestCase):
         persisted_version = Build.query.one().version
         existing_displayname = persisted_version.displaynames["enu"].displayname
 
-        # Second build: different arch to avoid conflict, modified displayname AND
-        # displayname_enu so the bare key is not shadowed by the suffixed key.
+        # Second build: different arch to avoid conflict, modified displayname.
         new_build = BuildFactory.build(
             version=persisted_version,
             architectures=[Architecture.find("cedarview")],
@@ -664,6 +664,12 @@ class PackagesTestCase(BaseTestCase):
             )
         self.assert422(response)
         self.assertIn("displaynames", response.data.decode())
+
+        db.session.expire_all()
+        self.assertEqual(
+            Build.query.one().version.displaynames["enu"].displayname,
+            existing_displayname,
+        )
 
     def test_post_existing_version_different_changelog_allowed(self):
         # A second build with a different changelog must be accepted since
@@ -739,47 +745,6 @@ class PackagesTestCase(BaseTestCase):
                     data=spk.read(),
                 )
             )
-
-    def test_post_existing_version_metadata_mismatch_does_not_persist(self):
-        # A rejected upload must not partially modify the DB.
-        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
-        db.session.commit()
-
-        build = BuildFactory.build(
-            architectures=[Architecture.find("88f628x")],
-        )
-        with create_spk(build) as spk:
-            self.assert201(
-                self.client.post(
-                    url_for("api.packages"),
-                    headers=authorization_header(user),
-                    data=spk.read(),
-                )
-            )
-
-        persisted_version = Build.query.one().version
-        original_displayname = persisted_version.displaynames["enu"].displayname
-
-        new_build = BuildFactory.build(
-            version=persisted_version,
-            architectures=[Architecture.find("cedarview")],
-        )
-        info = create_info(new_build)
-        info["displayname"] = original_displayname + " MODIFIED"
-        info["displayname_enu"] = original_displayname + " MODIFIED"
-        with create_spk(new_build, info=info) as spk:
-            response = self.client.post(
-                url_for("api.packages"),
-                headers=authorization_header(user),
-                data=spk.read(),
-            )
-        self.assert422(response)
-
-        db.session.expire_all()
-        self.assertEqual(
-            Build.query.one().version.displaynames["enu"].displayname,
-            original_displayname,
-        )
 
     def test_post_201_response_body(self):
         # The 201 response body must contain package, version, firmware, architectures.
