@@ -3,7 +3,7 @@ import logging
 import sys
 
 import jinja2
-from flask import Flask
+from flask import Flask, request
 from flask_admin import Admin
 
 from . import config as default_config
@@ -27,6 +27,14 @@ from .views import (
     frontend,
     nas,
 )
+
+CACHEABLE_ENDPOINTS = {
+    "nas.catalog",
+    "nas.data",
+    "frontend.index",
+    "frontend.packages",
+    "frontend.package",
+}
 
 
 def create_app(config=None, register_blueprints=True, init_admin=True):
@@ -119,5 +127,19 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
 
     celery.Task = FlaskTask
     app.extensions["celery"] = celery
+
+    @app.after_request
+    def set_cache_control(response):
+        endpoint = request.endpoint or ""
+
+        if (
+            endpoint.startswith("security.")
+            or request.path.startswith("/admin")
+            or endpoint == "frontend.profile"
+        ):
+            response.headers["Cache-Control"] = "no-store, private"
+        elif endpoint in CACHEABLE_ENDPOINTS:
+            response.headers["Cache-Control"] = "public"
+        return response
 
     return app
