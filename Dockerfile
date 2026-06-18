@@ -5,7 +5,8 @@ WORKDIR /usr/src/app
 COPY requirements.txt ./
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg curl gcc libpq-dev \
- && pip install --no-cache-dir gunicorn psycopg2 redis -r requirements.txt \
+ && pip install --no-cache-dir uv \
+ && uv pip install --system --no-cache gunicorn psycopg2 redis -r requirements.txt \
  && apt-get purge -y --auto-remove gcc \
  && rm -rf /var/lib/apt/lists/*
 
