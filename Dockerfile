@@ -12,7 +12,7 @@ COPY pyproject.toml uv.lock ./
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
   gnupg curl gcc libpq-dev \
-  && uv sync --locked --no-dev --no-cache --no-install-project \
+  && uv sync --no-project --locked --no-dev --no-cache \
   && apt-get purge -y --auto-remove gcc \
   && rm -rf /var/lib/apt/lists/*
 
