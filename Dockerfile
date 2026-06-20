@@ -12,7 +12,7 @@ COPY pyproject.toml uv.lock ./
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
   gnupg curl gcc libpq-dev \
-  && uv sync --locked --no-dev --no-cache --no-editable \
+  && uv sync --locked --no-dev --no-cache --no-install-project \
   && apt-get purge -y --auto-remove gcc \
   && rm -rf /var/lib/apt/lists/*
 
@@ -20,6 +20,8 @@ COPY spkrepo ./spkrepo
 COPY migrations ./migrations
 COPY wsgi.py ./
 COPY celery_app.py ./
+
+RUN uv sync --locked --no-dev --no-cache --no-editable
 
 HEALTHCHECK --interval=1m --timeout=5s \
   CMD curl -f http://localhost:8000/ || exit 1
