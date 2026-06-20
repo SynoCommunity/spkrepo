@@ -626,6 +626,18 @@ wheels = [
 ]
 
 [[package]]
+name = "gunicorn"
+version = "26.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6d/b7/a4a3f632f823e432ce6bc65f62961b7980c898c77f075a2f7118cb3846fe/gunicorn-26.0.0.tar.gz", hash = "sha256:ca9346f85e3a4aeeb64d491045c16b9a35647abd37ea15efe53080eb8b090baf", size = 727286, upload-time = "2026-05-05T06:38:25.529Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e6/40/9c2384fc2be4ad25dd4a49decd5ad9ea5a3639814c11bd40ab77cb9f0a14/gunicorn-26.0.0-py3-none-any.whl", hash = "sha256:40233d26a5f0d1872916188c276e21641155111c2853f0c2cd55260aec0d24fc", size = 212009, upload-time = "2026-05-05T06:38:23.007Z" },
+]
+
+[[package]]
 name = "identify"
 version = "2.6.19"
 source = { registry = "https://pypi.org/simple" }
@@ -1218,7 +1230,9 @@ dependencies = [
     { name = "flask-security" },
     { name = "flask-sqlalchemy" },
     { name = "flask-wtf" },
+    { name = "gunicorn" },
     { name = "pillow" },
+    { name = "psycopg2" },
     { name = "python-gnupg" },
     { name = "requests" },
     { name = "sqlalchemy" },
@@ -1233,7 +1247,6 @@ dev = [
     { name = "lxml" },
     { name = "mock" },
     { name = "pre-commit" },
-    { name = "psycopg2" },
     { name = "pytest" },
     { name = "setuptools" },
     { name = "sphinx" },
@@ -1260,7 +1273,9 @@ requires-dist = [
     { name = "flask-security", specifier = ">=5.7.1" },
     { name = "flask-sqlalchemy", specifier = ">=3.1.1" },
     { name = "flask-wtf", specifier = ">=1.2.2" },
+    { name = "gunicorn", specifier = ">=23.0.0" },
     { name = "pillow", specifier = ">=12.0.0" },
+    { name = "psycopg2", specifier = ">=2.9.11" },
     { name = "python-gnupg", specifier = ">=0.5.5" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "sqlalchemy", specifier = ">=2.0.45" },
@@ -1275,7 +1290,6 @@ dev = [
     { name = "lxml", specifier = ">=6.0.2" },
     { name = "mock", specifier = ">=5.2.0" },
     { name = "pre-commit", specifier = ">=4.5.1" },
-    { name = "psycopg2", specifier = ">=2.9.11" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "setuptools", specifier = ">=80.9.0" },
     { name = "sphinx", specifier = ">=9.0.4" },
