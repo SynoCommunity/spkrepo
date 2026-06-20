@@ -1,15 +1,18 @@
+FROM ghcr.io/astral-sh/uv:0.11.23 AS uv
+
 FROM python:3.14-slim
 
 WORKDIR /usr/src/app
 
+COPY --from=uv /uv /usr/local/bin/uv
+
 COPY pyproject.toml uv.lock ./
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gnupg curl gcc libpq-dev \
- && pip install --no-cache-dir uv \
- && uv sync --locked --no-dev --no-cache \
- && apt-get purge -y --auto-remove gcc \
- && rm -rf /var/lib/apt/lists/*
+  gnupg curl gcc libpq-dev \
+  && uv sync --locked --no-dev --no-cache \
+  && apt-get purge -y --auto-remove gcc \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY spkrepo ./spkrepo
 COPY migrations ./migrations
