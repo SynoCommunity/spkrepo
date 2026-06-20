@@ -10,11 +10,10 @@ jobs:
   clear-cache:
     runs-on: ubuntu-latest
     steps:
-      # FIX: This gives the runner access to the repo context
       - name: Checkout repository
         uses: actions/checkout@v4
 
-       Penting-name: Delete all caches
+      - name: Delete all caches
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
