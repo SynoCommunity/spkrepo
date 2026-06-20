@@ -14,7 +14,7 @@ ARG CACHE_BUSTER=1
 RUN echo "Building fresh version: ${CACHE_BUSTER}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  gnupg curl gcc libpq-dev \
+  gnupg curl gcc libc6-dev libpq-dev \
   && uv sync --locked --no-dev --no-cache --no-install-project \
   && apt-get purge -y --auto-remove gcc \
   && rm -rf /var/lib/apt/lists/*
