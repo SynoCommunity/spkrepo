@@ -10,6 +10,9 @@ COPY --from=uv /uv /usr/local/bin/uv
 
 COPY pyproject.toml uv.lock ./
 
+ARG CACHE_BUSTER=1
+RUN echo "Building fresh version: ${CACHE_BUSTER}"
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
   gnupg curl gcc libpq-dev \
   && uv sync --no-project --locked --no-dev --no-cache \
