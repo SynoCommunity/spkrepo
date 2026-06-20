@@ -5,62 +5,32 @@ on:
 
 permissions:
   actions: write
-  packages: write  # Required to delete container layers
+  packages: write
 
 jobs:
-  clear-cache:
+  purge:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # STEP 1: Purge internal GitHub Actions & Docker type=gha Caches
-      - name: Delete all Action caches
+      - name: Clear GitHub Actions & GHCR Docker Caches
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Fetching action and Docker gha caches..."
-          CACHE_IDS=$(gh cache list --limit 100 --json id --jq '.[].id')
-          
-          if [ -z "$CACHE_IDS" ]; then
-            echo "No standard action caches found."
-          else
-            echo "Deleting action caches..."
-            for ID in $CACHE_IDS; do
-              echo "Deleting cache ID: $ID"
-              gh cache delete "$ID"
-            done
-            echo "Action cache storage completely cleared."
-          fi
-
-      # STEP 2: Purge dangling Docker Registry Layers natively from GHCR
-      - name: Delete untagged GHCR container layers
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PACKAGE_NAME="spkrepo"
-          OWNER="${{ github.repository_owner }}"
-          
-          echo "Fetching untagged versions for ${PACKAGE_NAME}..."
-          
-          # List all package version IDs that do not have any tags
-          UNTAGGED_IDS=$(gh api /orgs/${OWNER}/packages/container/${PACKAGE_NAME}/versions --paginate \
-
-            | jq -r '.[] | select(.metadata.container.tags | length == 0) | .id' 2>/dev/null || \
-            gh api /users/${OWNER}/packages/container/${PACKAGE_NAME}/versions --paginate \
-
-            | jq -r '.[] | select(.metadata.container.tags | length == 0) | .id' 2>/dev/null)
-
-          if [ -z "$UNTAGGED_IDS" ]; then
-            echo "No untagged Docker layers found in GHCR."
-            exit 0
-          fi
-
-          echo "Deleting untagged layers..."
-          for ID in $UNTAGGED_IDS; do
-            echo "Deleting version ID: $ID"
-            # Try deleting via org endpoint first, fallback to user endpoint if personal repo
-            gh api --method DELETE /orgs/${OWNER}/packages/container/${PACKAGE_NAME}/versions/$ID 2>/dev/null || \
-            gh api --method DELETE /users/${OWNER}/packages/container/${PACKAGE_NAME}/versions/$ID 2>/dev/null
+          # 1. Delete all Action and Docker gha layer caches
+          for id in $(gh cache list --repo ${{ github.repository }} --limit 100 --json id --jq '.[].id'); do
+            gh cache delete "$id" --repo ${{ github.repository }}
           done
-          echo "All untagged GHCR layers successfully purged."
+
+          # 2. Delete all untagged Docker layers from GHCR
+          OWNER="${{ github.repository_owner }}"
+          URL="/orgs/$OWNER/packages/container/spkrepo/versions"
+          
+          # Fetch matching IDs from org endpoint (or fallback to user endpoint)
+          IDS=$(gh api $URL --paginate --jq '.[] | select(.metadata.container.tags | length == 0) | .id' 2>/dev/null || \
+                gh api "/users/$OWNER/packages/container/spkrepo/versions" --paginate --jq '.[] | select(.metadata.container.tags | length == 0) | .id' 2>/dev/null)
+
+          for id in $IDS; do
+            gh api --method DELETE "$URL/$id" 2>/dev/null || \
+            gh api --method DELETE "/users/$OWNER/packages/container/spkrepo/versions/$id" 2>/dev/null
+          done
+          
+          echo "All caches and untagged container layers successfully purged."
