@@ -1,13 +1,11 @@
 ---
 default_language_version:
-  python: python3.12
+  python: python3.14
 repos:
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.9.18
+    rev: 0.11.23
     hooks:
       - id: uv-lock
-      - id: uv-export
-        args: ["--frozen", "--no-install-project", "--output-file=requirements.txt", "--quiet"]
 
   - repo: https://github.com/psf/black
     rev: 25.12.0
