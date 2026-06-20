@@ -4,6 +4,8 @@ FROM python:3.14-slim
 
 WORKDIR /usr/src/app
 
+ENV UV_SYSTEM_PYTHON=1
+
 COPY --from=uv /uv /usr/local/bin/uv
 
 COPY pyproject.toml uv.lock ./
