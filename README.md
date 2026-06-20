@@ -100,10 +100,10 @@ docker run -it --rm --name spkrepo -v $(pwd)/data:/data -v $(pwd)/docker-config.
 Example:
 
 ```bash
-pip install gunicorn
+# Production
 SPKREPO_CONFIG="$PWD/config.py" gunicorn -w 4 'wsgi:app'
-# or
-SPKREPO_CONFIG="$PWD/config.py" uv run --with gunicorn gunicorn -b 0.0.0.0:8080 -w 4 wsgi:app
+# Development
+SPKREPO_CONFIG="$PWD/config.py" uv run gunicorn -b 0.0.0.0:8080 -w 4 wsgi:app
 ```
 
 ## Add migration
