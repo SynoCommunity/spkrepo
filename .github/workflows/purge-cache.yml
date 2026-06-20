@@ -1,21 +1,24 @@
 name: Purge All Caches
 
 on:
-  workflow_dispatch: # Allows manual triggering from the UI
+  workflow_dispatch:
 
 permissions:
-  actions: write # Required to delete caches
+  actions: write
 
 jobs:
   clear-cache:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete all caches
+      # FIX: This gives the runner access to the repo context
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+       Penting-name: Delete all caches
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Fetching cache list..."
-          # Get all cache IDs in the repository
           CACHE_IDS=$(gh cache list --limit 100 --json id --jq '.[].id')
           
           if [ -z "$CACHE_IDS" ]; then
@@ -24,7 +27,6 @@ jobs:
           fi
 
           echo "Deleting caches..."
-          # Loop through and delete each cache ID
           for ID in $CACHE_IDS; do
             echo "Deleting cache ID: $ID"
             gh cache delete "$ID"
