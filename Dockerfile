@@ -4,7 +4,8 @@ FROM python:3.14-slim
 
 WORKDIR /usr/src/app
 
-ENV UV_SYSTEM_PYTHON=1
+ENV UV_SYSTEM_PYTHON=1 \
+    PATH="/usr/src/app/.venv/bin:${PATH}"
 
 COPY --from=uv /uv /usr/local/bin/uv
 
