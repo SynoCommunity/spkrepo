@@ -9,4 +9,3 @@ docs/
 .flake8
 .gitignore
 .pre-commit-config.yaml
-README.md
