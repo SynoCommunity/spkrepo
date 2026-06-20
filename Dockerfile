@@ -23,6 +23,7 @@ COPY spkrepo ./spkrepo
 COPY migrations ./migrations
 COPY wsgi.py ./
 COPY celery_app.py ./
+COPY README.md ./
 
 RUN uv sync --locked --no-dev --no-cache --no-editable
 
