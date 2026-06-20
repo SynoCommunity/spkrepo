@@ -5,6 +5,7 @@ on:
 
 permissions:
   actions: write
+  packages: write  # Required to delete container registry layers
 
 jobs:
   clear-cache:
@@ -13,21 +14,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Delete all caches
+      # STEP 1: Purge internal GitHub Actions & Docker type=gha Caches
+      - name: Delete all Action caches
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Fetching cache list..."
+          echo "Fetching action and Docker gha caches..."
           CACHE_IDS=$(gh cache list --limit 100 --json id --jq '.[].id')
           
           if [ -z "$CACHE_IDS" ]; then
-            echo "No caches found to delete."
-            exit 0
+            echo "No standard action caches found."
+          else
+            echo "Deleting action caches..."
+            for ID in $CACHE_IDS; do
+              echo "Deleting cache ID: $ID"
+              gh cache delete "$ID"
+            done
+            echo "Action cache storage completely cleared."
           fi
 
-          echo "Deleting caches..."
-          for ID in $CACHE_IDS; do
-            echo "Deleting cache ID: $ID"
-            gh cache delete "$ID"
-          done
-          echo "All caches successfully purged."
+      # STEP 2: Purge dangling Docker Registry Layers from GHCR
+      - name: Delete untagged GHCR container layers
+        uses: daemonite/ghcr-cleanup-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          package: spkrepo         # Change this to match your repository package name
+          untagged-only: true       # Cleans up orphaned or untagged layer blobs
+          dry-run: false
