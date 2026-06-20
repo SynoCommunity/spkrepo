@@ -23,7 +23,7 @@ jobs:
           # 2. Delete all untagged Docker layers from GHCR
           OWNER="${{ github.repository_owner }}"
           URL="/orgs/$OWNER/packages/container/spkrepo/versions"
-          
+
           # Fetch matching IDs from org endpoint (or fallback to user endpoint)
           IDS=$(gh api $URL --paginate --jq '.[] | select(.metadata.container.tags | length == 0) | .id' 2>/dev/null || \
                 gh api "/users/$OWNER/packages/container/spkrepo/versions" --paginate --jq '.[] | select(.metadata.container.tags | length == 0) | .id' 2>/dev/null)
@@ -32,5 +32,5 @@ jobs:
             gh api --method DELETE "$URL/$id" 2>/dev/null || \
             gh api --method DELETE "/users/$OWNER/packages/container/spkrepo/versions/$id" 2>/dev/null
           done
-          
+
           echo "All caches and untagged container layers successfully purged."
