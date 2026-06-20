@@ -2,18 +2,19 @@ FROM python:3.14-slim
 
 WORKDIR /usr/src/app
 
-COPY requirements.txt ./
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg curl gcc libpq-dev \
- && pip install --no-cache-dir uv \
- && uv pip install --system --no-cache gunicorn psycopg2 redis -r requirements.txt \
- && apt-get purge -y --auto-remove gcc \
  && rm -rf /var/lib/apt/lists/*
 
+COPY pyproject.toml uv.lock ./
 COPY spkrepo ./spkrepo
 COPY migrations ./migrations
 COPY wsgi.py ./
 COPY celery_app.py ./
+
+RUN pip install --no-cache-dir uv \
+ && uv sync --locked --no-dev --no-cache \
+ && apt-get purge -y --auto-remove gcc
 
 HEALTHCHECK --interval=1m --timeout=5s \
   CMD curl -f http://localhost:8000/ || exit 1
