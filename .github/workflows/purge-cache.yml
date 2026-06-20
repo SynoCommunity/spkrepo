@@ -1,0 +1,32 @@
+name: Purge All Caches
+
+on:
+  workflow_dispatch: # Allows manual triggering from the UI
+
+permissions:
+  actions: write # Required to delete caches
+
+jobs:
+  clear-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all caches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Fetching cache list..."
+          # Get all cache IDs in the repository
+          CACHE_IDS=$(gh cache list --limit 100 --json id --jq '.[].id')
+          
+          if [ -z "$CACHE_IDS" ]; then
+            echo "No caches found to delete."
+            exit 0
+          fi
+
+          echo "Deleting caches..."
+          # Loop through and delete each cache ID
+          for ID in $CACHE_IDS; do
+            echo "Deleting cache ID: $ID"
+            gh cache delete "$ID"
+          done
+          echo "All caches successfully purged."
