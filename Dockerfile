@@ -8,7 +8,7 @@ ENV UV_SYSTEM_PYTHON=1
 
 COPY --from=uv /uv /usr/local/bin/uv
 
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock ./
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
   gnupg curl gcc libpq-dev \
