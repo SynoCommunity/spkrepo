@@ -314,6 +314,8 @@ def refresh_download_counts():
     Also call this task directly after bulk download imports or any operation
     that significantly changes download_stat row counts.
     """
+    if db.engine.dialect.name != "postgresql":
+        return
     db.session.execute(
         db.text("REFRESH MATERIALIZED VIEW CONCURRENTLY package_download_counts")
     )
