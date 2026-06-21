@@ -395,6 +395,28 @@ class DownloadStat(db.Model):
         )
 
 
+class PackageDownloadCounts(db.Model):
+    """Read-only model backed by the package_download_counts materialized view.
+
+    Refreshed periodically by the refresh_download_counts Celery task.
+    Never written to directly — use REFRESH MATERIALIZED VIEW instead.
+    """
+
+    __tablename__ = "package_download_counts"
+
+    package_id = db.Column(
+        db.Integer, db.ForeignKey("package.id"), primary_key=True, nullable=False
+    )
+    download_count = db.Column(db.BigInteger, nullable=False, default=0)
+    recent_download_count = db.Column(db.BigInteger, nullable=False, default=0)
+
+    def __repr__(self):
+        return (
+            f"<{self.__class__.__name__} package_id={self.package_id} "
+            f"total={self.download_count} recent={self.recent_download_count}>"
+        )
+
+
 build_architecture = db.Table(
     "build_architecture",
     db.Column("build_id", db.Integer(), db.ForeignKey("build.id"), index=True),

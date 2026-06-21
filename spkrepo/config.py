@@ -77,6 +77,12 @@ CELERY = {
         "ops": {},  # admin-triggered background operations (upload, rehome, resync)
     },
     "task_default_queue": "celery",
+    "beat_schedule": {
+        "refresh-download-counts": {
+            "task": "spkrepo.views.tasks.refresh_download_counts",
+            "schedule": 3600,
+        },
+    },
 }
 
 # Debug Toolbar
