@@ -42,7 +42,8 @@ def is_valid_language(language):
 def get_catalog(arch, build, major, language, beta):
     # Raise work_mem for this transaction only to avoid the catalog sort
     # spilling to disk (observed: 6.9 MB spill with default work_mem).
-    db.session.execute(db.text("SET LOCAL work_mem = '16MB'"))
+    if db.engine.dialect.name == "postgresql":
+        db.session.execute(db.text("SET LOCAL work_mem = '16MB'"))
 
     firmware_min_alias = aliased(Firmware)
     firmware_max_alias = aliased(Firmware)
