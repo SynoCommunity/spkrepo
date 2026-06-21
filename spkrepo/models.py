@@ -124,6 +124,8 @@ user_datastore = SQLAlchemyUserDatastore(db, User, Role)
 class Architecture(db.Model):
     __tablename__ = "architecture"
 
+    __table_args__ = (db.Index("ix_architecture_id_code", "id", "code"),)
+
     # Columns
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.Unicode(20), unique=True, nullable=False)
@@ -175,6 +177,20 @@ class Language(db.Model):
 
 class Firmware(db.Model):
     __tablename__ = "firmware"
+
+    __table_args__ = (
+        db.Index(
+            "ix_firmware_version",
+            "version",
+            postgresql_ops={"version": "text_pattern_ops"},
+        ),
+        db.Index(
+            "ix_firmware_build_version",
+            "build",
+            "version",
+            postgresql_ops={"version": "text_pattern_ops"},
+        ),
+    )
 
     # Columns
     id = db.Column(db.Integer, primary_key=True)
