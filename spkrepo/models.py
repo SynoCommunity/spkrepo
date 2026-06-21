@@ -420,6 +420,14 @@ class PackageDownloadCounts(db.Model):
 
     __tablename__ = "package_download_counts"
 
+    __table_args__ = (
+        db.Index(
+            "ix_package_download_counts_package_id",
+            "package_id",
+            unique=True,
+        ),
+    )
+
     package_id = db.Column(
         db.Integer, db.ForeignKey("package.id"), primary_key=True, nullable=False
     )
