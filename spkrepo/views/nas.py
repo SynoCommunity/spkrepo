@@ -21,6 +21,7 @@ from ..models import (
     Firmware,
     Language,
     Package,
+    PackageDownloadCounts,
     Version,
 )
 
@@ -39,6 +40,11 @@ def is_valid_language(language):
 
 @cache.memoize(timeout=600)
 def get_catalog(arch, build, major, language, beta):
+    # Raise work_mem for this transaction only to avoid the catalog sort
+    # spilling to disk (observed: 6.9 MB spill with default work_mem).
+    if db.engine.dialect.name == "postgresql":
+        db.session.execute(db.text("SET LOCAL work_mem = '16MB'"))
+
     firmware_min_alias = aliased(Firmware)
     firmware_max_alias = aliased(Firmware)
 
@@ -106,23 +112,18 @@ def get_catalog(arch, build, major, language, beta):
         .subquery()
     )
 
-    # Step 3: Get the latest builds for versions, undefer download counts
-    # so they are computed once and included in the cache rather than
-    # firing a correlated subquery per package on every cache hit.
+    # Step 3: Get the latest builds for versions.
+    # Download counts are no longer undeferred here — they are fetched in
+    # bulk from the package_download_counts materialized view below, which
+    # replaces the correlated per-row subqueries that were firing ~7000
+    # times per catalog request.
     firmware_min_for_build = aliased(Firmware)
     latest_build = (
         Build.query.options(
             db.joinedload(Build.architectures),
             db.joinedload(Build.firmware_min),
             db.joinedload(Build.firmware_max),
-            db.joinedload(Build.version)
-            .joinedload(Version.package)
-            .undefer(Package.download_count),
-            db.joinedload(Build.version)
-            .joinedload(Version.package)
-            .undefer(Package.recent_download_count),
             db.joinedload(Build.version).joinedload(Version.package),
-            db.joinedload(Build.version).joinedload(Version.service_dependencies),
             db.joinedload(Build.version).joinedload(Version.icons),
             db.joinedload(Build.version)
             .joinedload(Version.displaynames)
@@ -143,10 +144,24 @@ def get_catalog(arch, build, major, language, beta):
                 firmware_min_for_build.build == latest_firmware.c.latest_firmware,
             ),
         )
+        .all()
     )
 
-    # Step 4: Construct response with "packages"
-    packages = [build_package_entry(b, language, arch, build) for b in latest_build]
+    # Step 4: Bulk fetch download counts from the materialized view in one
+    # query rather than firing a correlated subquery per package per row.
+    package_ids = [b.version.package_id for b in latest_build]
+    counts_by_package = {
+        row.package_id: row
+        for row in PackageDownloadCounts.query.filter(
+            PackageDownloadCounts.package_id.in_(package_ids)
+        )
+    }
+
+    # Step 5: Construct response with "packages"
+    packages = [
+        build_package_entry(b, language, arch, build, counts_by_package)
+        for b in latest_build
+    ]
 
     # DSM 5.1+
     if build >= 5004:
@@ -172,7 +187,8 @@ def _set_if_truthy(entry, key, value):
         entry[key] = value
 
 
-def build_package_entry(b, language, arch, build):
+def build_package_entry(b, language, arch, build, counts_by_package):
+    counts = counts_by_package.get(b.version.package_id)
     entry = {
         "package": b.version.package.name,
         "version": b.version.version_string,
@@ -200,8 +216,8 @@ def build_package_entry(b, language, arch, build):
         ),
         "deppkgs": b.buildmanifest.dependencies if b.buildmanifest else None,
         "conflictpkgs": b.buildmanifest.conflicts if b.buildmanifest else None,
-        "download_count": b.version.package.download_count,
-        "recent_download_count": b.version.package.recent_download_count,
+        "download_count": counts.download_count if counts else 0,
+        "recent_download_count": counts.recent_download_count if counts else 0,
         "snapshot": (
             [
                 url_for(".data", path=screenshot.path, _external=True)

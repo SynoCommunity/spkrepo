@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from flask import url_for
 
 from spkrepo.ext import db
-from spkrepo.models import Architecture, Firmware
+from spkrepo.models import Architecture, DownloadStat, Firmware, PackageDownloadCounts
 from spkrepo.tests.common import (
     BaseTestCase,
     BuildFactory,
@@ -239,6 +239,32 @@ class CatalogTestCase(BaseTestCase):
             count=4,
         )
         db.session.commit()
+
+        # Populate the package_download_counts materialized view used by
+        # the catalog, matching what the production Celery task does.
+        ninety_days_ago = datetime.now().date() - timedelta(days=90)
+        total = (
+            db.session.query(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+            .filter(DownloadStat.package_id == package.id)
+            .scalar()
+        )
+        recent = (
+            db.session.query(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+            .filter(
+                DownloadStat.package_id == package.id,
+                DownloadStat.date >= ninety_days_ago,
+            )
+            .scalar()
+        )
+        db.session.add(
+            PackageDownloadCounts(
+                package_id=package.id,
+                download_count=total,
+                recent_download_count=recent,
+            )
+        )
+        db.session.commit()
+
         data = dict(arch="cedarview", build="1594", language="enu")
         response = self.client.post(url_for("nas.catalog"), data=data)
         self.assert200(response)

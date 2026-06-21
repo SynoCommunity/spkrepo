@@ -25,31 +25,34 @@ def upgrade() -> None:
         op.execute(
             "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'download_source') THEN CREATE TYPE download_source AS ENUM ('catalog', 'manual'); END IF; END $$"
         )
-    op.add_column(
-        "download_stat",
-        sa.Column(
-            "download_source",
-            sa.Enum("catalog", "manual", name="download_source", create_type=not is_pg),
-            server_default="catalog",
-            nullable=False,
-        ),
-    )
-    op.alter_column(
-        "download_stat", "architecture_id", existing_type=sa.INTEGER(), nullable=True
-    )
-    op.alter_column(
-        "download_stat", "firmware_build", existing_type=sa.INTEGER(), nullable=True
-    )
+    with op.batch_alter_table("download_stat") as batch_op:
+        batch_op.add_column(
+            sa.Column(
+                "download_source",
+                sa.Enum(
+                    "catalog", "manual", name="download_source", create_type=not is_pg
+                ),
+                server_default="catalog",
+                nullable=False,
+            ),
+        )
+        batch_op.alter_column(
+            "architecture_id", existing_type=sa.INTEGER(), nullable=True
+        )
+        batch_op.alter_column(
+            "firmware_build", existing_type=sa.INTEGER(), nullable=True
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.alter_column(
-        "download_stat", "firmware_build", existing_type=sa.INTEGER(), nullable=False
-    )
-    op.alter_column(
-        "download_stat", "architecture_id", existing_type=sa.INTEGER(), nullable=False
-    )
-    op.drop_column("download_stat", "download_source")
+    with op.batch_alter_table("download_stat") as batch_op:
+        batch_op.alter_column(
+            "firmware_build", existing_type=sa.INTEGER(), nullable=False
+        )
+        batch_op.alter_column(
+            "architecture_id", existing_type=sa.INTEGER(), nullable=False
+        )
+        batch_op.drop_column("download_source")
     if op.get_bind().engine.dialect.name == "postgresql":
         op.execute("DROP TYPE IF EXISTS download_source")

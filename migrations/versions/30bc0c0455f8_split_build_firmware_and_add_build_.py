@@ -21,22 +21,27 @@ def upgrade():
     meta = sa.MetaData()
 
     # 1) Add new columns (nullable for backfill), add FKs
-    op.add_column("build", sa.Column("firmware_min_id", sa.Integer(), nullable=True))
-    op.add_column("build", sa.Column("firmware_max_id", sa.Integer(), nullable=True))
-    op.create_foreign_key(None, "build", "firmware", ["firmware_min_id"], ["id"])
-    op.create_foreign_key(None, "build", "firmware", ["firmware_max_id"], ["id"])
+    with op.batch_alter_table("build") as batch_op:
+        batch_op.add_column(sa.Column("firmware_min_id", sa.Integer(), nullable=True))
+        batch_op.add_column(sa.Column("firmware_max_id", sa.Integer(), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_build_firmware_min_id", "firmware", ["firmware_min_id"], ["id"]
+        )
+        batch_op.create_foreign_key(
+            "fk_build_firmware_max_id", "firmware", ["firmware_max_id"], ["id"]
+        )
 
     # 2) Backfill firmware_min_id from legacy firmware_id (still present right now)
     op.execute("UPDATE build SET firmware_min_id = firmware_id")
 
     # 3) Make firmware_min_id NOT NULL
-    op.alter_column(
-        "build", "firmware_min_id", existing_type=sa.Integer(), nullable=False
-    )
-
     # 4) Drop old FK and legacy column firmware_id
-    op.drop_constraint(op.f("build_firmware_id_fkey"), "build", type_="foreignkey")
-    op.drop_column("build", "firmware_id")
+    with op.batch_alter_table("build") as batch_op:
+        batch_op.alter_column(
+            "firmware_min_id", existing_type=sa.Integer(), nullable=False
+        )
+        batch_op.drop_constraint(op.f("build_firmware_id_fkey"), type_="foreignkey")
+        batch_op.drop_column("firmware_id")
 
     # 5) Create buildmanifest table
     op.create_table(
@@ -87,12 +92,13 @@ def upgrade():
         )
 
     # 8) Drop moved columns from version
-    op.drop_column("version", "conf_resource")
-    op.drop_column("version", "conf_dependencies")
-    op.drop_column("version", "conf_conflicts")
-    op.drop_column("version", "dependencies")
-    op.drop_column("version", "conf_privilege")
-    op.drop_column("version", "conflicts")
+    with op.batch_alter_table("version") as batch_op:
+        batch_op.drop_column("conf_resource")
+        batch_op.drop_column("conf_dependencies")
+        batch_op.drop_column("conf_conflicts")
+        batch_op.drop_column("dependencies")
+        batch_op.drop_column("conf_privilege")
+        batch_op.drop_column("conflicts")
 
 
 def downgrade():
@@ -100,12 +106,13 @@ def downgrade():
     meta = sa.MetaData()
 
     # 1) Recreate columns on version
-    op.add_column("version", sa.Column("conflicts", sa.Unicode(255)))
-    op.add_column("version", sa.Column("conf_privilege", sa.UnicodeText()))
-    op.add_column("version", sa.Column("dependencies", sa.Unicode(255)))
-    op.add_column("version", sa.Column("conf_conflicts", sa.UnicodeText()))
-    op.add_column("version", sa.Column("conf_dependencies", sa.UnicodeText()))
-    op.add_column("version", sa.Column("conf_resource", sa.UnicodeText()))
+    with op.batch_alter_table("version") as batch_op:
+        batch_op.add_column(sa.Column("conflicts", sa.Unicode(255)))
+        batch_op.add_column(sa.Column("conf_privilege", sa.UnicodeText()))
+        batch_op.add_column(sa.Column("dependencies", sa.Unicode(255)))
+        batch_op.add_column(sa.Column("conf_conflicts", sa.UnicodeText()))
+        batch_op.add_column(sa.Column("conf_dependencies", sa.UnicodeText()))
+        batch_op.add_column(sa.Column("conf_resource", sa.UnicodeText()))
 
     # Reflect
     version = sa.Table("version", meta, autoload_with=bind)
@@ -155,23 +162,25 @@ def downgrade():
     op.drop_table("buildmanifest")
 
     # 4) Restore legacy firmware_id and backfill from firmware_min_id
-    op.add_column("build", sa.Column("firmware_id", sa.Integer(), nullable=True))
+    with op.batch_alter_table("build") as batch_op:
+        batch_op.add_column(sa.Column("firmware_id", sa.Integer(), nullable=True))
 
     op.execute("UPDATE build SET firmware_id = firmware_min_id")
 
-    op.alter_column("build", "firmware_id", existing_type=sa.Integer(), nullable=False)
-    op.create_foreign_key(
-        op.f("build_firmware_id_fkey"), "build", "firmware", ["firmware_id"], ["id"]
-    )
+    with op.batch_alter_table("build") as batch_op:
+        batch_op.alter_column("firmware_id", existing_type=sa.Integer(), nullable=False)
+        batch_op.create_foreign_key(
+            op.f("build_firmware_id_fkey"), "firmware", ["firmware_id"], ["id"]
+        )
 
     # 5) Drop FKs on firmware_min_id / firmware_max_id (names may be auto-generated)
     bind = op.get_bind()
     insp = sa.inspect(bind)
-    for fk in insp.get_foreign_keys("build"):
-        cols = tuple(fk.get("constrained_columns") or ())
-        if "firmware_min_id" in cols or "firmware_max_id" in cols:
-            op.drop_constraint(fk["name"], "build", type_="foreignkey")
-
     # 6) Drop the new columns
-    op.drop_column("build", "firmware_max_id")
-    op.drop_column("build", "firmware_min_id")
+    with op.batch_alter_table("build") as batch_op:
+        for fk in insp.get_foreign_keys("build"):
+            cols = tuple(fk.get("constrained_columns") or ())
+            if "firmware_min_id" in cols or "firmware_max_id" in cols:
+                batch_op.drop_constraint(fk["name"], type_="foreignkey")
+        batch_op.drop_column("firmware_max_id")
+        batch_op.drop_column("firmware_min_id")

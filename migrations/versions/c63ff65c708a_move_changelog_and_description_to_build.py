@@ -19,7 +19,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("build", sa.Column("changelog", sa.UnicodeText(), nullable=True))
+    with op.batch_alter_table("build") as batch_op:
+        batch_op.add_column(sa.Column("changelog", sa.UnicodeText(), nullable=True))
 
     op.create_table(
         "build_description",
@@ -49,7 +50,8 @@ def upgrade() -> None:
         """
     )
 
-    op.drop_column("version", "changelog")
+    with op.batch_alter_table("version") as batch_op:
+        batch_op.drop_column("changelog")
 
     op.drop_table("description")
 
@@ -77,7 +79,8 @@ def downgrade() -> None:
 
     op.drop_table("build_description")
 
-    op.add_column("version", sa.Column("changelog", sa.UnicodeText(), nullable=True))
+    with op.batch_alter_table("version") as batch_op:
+        batch_op.add_column(sa.Column("changelog", sa.UnicodeText(), nullable=True))
 
     op.execute(
         """
@@ -90,4 +93,5 @@ def downgrade() -> None:
         """
     )
 
-    op.drop_column("build", "changelog")
+    with op.batch_alter_table("build") as batch_op:
+        batch_op.drop_column("changelog")

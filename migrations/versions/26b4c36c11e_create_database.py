@@ -255,6 +255,7 @@ def upgrade():
         sa.ForeignKeyConstraint(
             ["firmware_id"],
             ["firmware.id"],
+            name="build_firmware_id_fkey",
         ),
         sa.ForeignKeyConstraint(
             ["publisher_user_id"],

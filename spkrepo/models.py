@@ -124,6 +124,8 @@ user_datastore = SQLAlchemyUserDatastore(db, User, Role)
 class Architecture(db.Model):
     __tablename__ = "architecture"
 
+    __table_args__ = (db.Index("ix_architecture_id_code", "id", "code"),)
+
     # Columns
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.Unicode(20), unique=True, nullable=False)
@@ -175,6 +177,20 @@ class Language(db.Model):
 
 class Firmware(db.Model):
     __tablename__ = "firmware"
+
+    __table_args__ = (
+        db.Index(
+            "ix_firmware_version",
+            "version",
+            postgresql_ops={"version": "text_pattern_ops"},
+        ),
+        db.Index(
+            "ix_firmware_build_version",
+            "build",
+            "version",
+            postgresql_ops={"version": "text_pattern_ops"},
+        ),
+    )
 
     # Columns
     id = db.Column(db.Integer, primary_key=True)
@@ -392,6 +408,36 @@ class DownloadStat(db.Model):
         return (
             f"<{self.__class__.__name__} package={self.package_id} "
             f"date={self.date} count={self.count}>"
+        )
+
+
+class PackageDownloadCounts(db.Model):
+    """Read-only model backed by the package_download_counts materialized view.
+
+    Refreshed periodically by the refresh_download_counts Celery task.
+    Never written to directly — use REFRESH MATERIALIZED VIEW instead.
+    """
+
+    __tablename__ = "package_download_counts"
+
+    __table_args__ = (
+        db.Index(
+            "ix_package_download_counts_package_id",
+            "package_id",
+            unique=True,
+        ),
+    )
+
+    package_id = db.Column(
+        db.Integer, db.ForeignKey("package.id"), primary_key=True, nullable=False
+    )
+    download_count = db.Column(db.BigInteger, nullable=False, default=0)
+    recent_download_count = db.Column(db.BigInteger, nullable=False, default=0)
+
+    def __repr__(self):
+        return (
+            f"<{self.__class__.__name__} package_id={self.package_id} "
+            f"total={self.download_count} recent={self.recent_download_count}>"
         )
 
 

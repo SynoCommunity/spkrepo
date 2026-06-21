@@ -25,24 +25,26 @@ def upgrade() -> None:
         op.execute(
             "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'storage_location') THEN CREATE TYPE storage_location AS ENUM ('local', 'remote'); END IF; END $$"
         )
-    op.add_column(
-        "build",
-        sa.Column(
-            "storage",
-            sa.Enum("local", "remote", name="storage_location", create_type=not is_pg),
-            nullable=False,
-            server_default="local",
-        ),
-    )
-    op.add_column(
-        "build",
-        sa.Column("signed", sa.Boolean(), nullable=False, server_default="false"),
-    )
+    with op.batch_alter_table("build") as batch_op:
+        batch_op.add_column(
+            sa.Column(
+                "storage",
+                sa.Enum(
+                    "local", "remote", name="storage_location", create_type=not is_pg
+                ),
+                nullable=False,
+                server_default="local",
+            ),
+        )
+        batch_op.add_column(
+            sa.Column("signed", sa.Boolean(), nullable=False, server_default="false"),
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_column("build", "signed")
-    op.drop_column("build", "storage")
+    with op.batch_alter_table("build") as batch_op:
+        batch_op.drop_column("signed")
+        batch_op.drop_column("storage")
     if op.get_bind().engine.dialect.name == "postgresql":
         op.execute("DROP TYPE IF EXISTS storage_location")

@@ -302,6 +302,26 @@ def upload_to_storage(self, build_id, build_label):
     }
 
 
+@celery.task(queue="ops")
+def refresh_download_counts():
+    """Refresh the package_download_counts materialized view.
+
+    Runs hourly via Celery beat. Uses CONCURRENTLY so the view remains
+    readable during the refresh with no locking. Requires the unique index
+    ix_package_download_counts_package_id to exist (created in migration
+    3f5664905242_add_package_download_counts_materialized_view).
+
+    Also call this task directly after bulk download imports or any operation
+    that significantly changes download_stat row counts.
+    """
+    if db.engine.dialect.name != "postgresql":
+        return
+    db.session.execute(
+        db.text("REFRESH MATERIALIZED VIEW CONCURRENTLY package_download_counts")
+    )
+    db.session.commit()
+
+
 @celery.task(bind=True, max_retries=3, default_retry_delay=10, queue="ops")
 def rehome_from_storage(self, build_id, build_label):
     """Download a build from Object Storage back to local disk for editing."""

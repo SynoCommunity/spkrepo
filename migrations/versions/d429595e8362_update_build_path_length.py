@@ -14,20 +14,26 @@ down_revision = "dc7687894ba7"
 
 
 def upgrade():
-    op.alter_column(
-        "build",
-        "path",
-        existing_type=sa.VARCHAR(length=100),
-        type_=sa.Unicode(length=2048),
-        existing_nullable=False,
-    )
+    with op.batch_alter_table("build") as batch_op:
+        batch_op.alter_column(
+            "path",
+            existing_type=sa.VARCHAR(length=100),
+            type_=sa.Unicode(length=2048),
+            existing_nullable=False,
+        )
 
 
 def downgrade():
-    op.alter_column(
-        "build",
-        "path",
-        existing_type=sa.Unicode(length=2048),
-        type_=sa.VARCHAR(length=100),
-        existing_nullable=False,
-    )
+    # Truncate any paths longer than 100 chars so the column resize succeeds
+    bind = op.get_bind()
+    if bind.engine.dialect.name == "postgresql":
+        op.execute(
+            "UPDATE build SET path = substring(path, 1, 100) WHERE length(path) > 100"
+        )
+    with op.batch_alter_table("build") as batch_op:
+        batch_op.alter_column(
+            "path",
+            existing_type=sa.Unicode(length=2048),
+            type_=sa.VARCHAR(length=100),
+            existing_nullable=False,
+        )
