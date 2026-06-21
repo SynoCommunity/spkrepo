@@ -272,6 +272,9 @@ class SignResyncMixin:
                         else:
                             already_signed.append(label)
                         continue
+                    if current_app.config["GNUPG_PATH"] is None:
+                        failed.append((label, "GNUPG_PATH is not configured"))
+                        continue
                     try:
                         spk.sign(
                             current_app.config["GNUPG_TIMESTAMP_URL"],
@@ -281,10 +284,10 @@ class SignResyncMixin:
                         build.signed = True
                         db.session.commit()
                         success.append(label)
-                    except Exception:
+                    except Exception as e:
                         current_app.logger.exception("Failed to sign build %s", label)
                         db.session.rollback()
-                        failed.append(label)
+                        failed.append((label, str(e) or "unknown error"))
             if not_local:
                 flash(
                     "Build(s) in Object Storage must be re-homed before signing: "
@@ -298,7 +301,7 @@ class SignResyncMixin:
                 )
             _flash_action_results(
                 success,
-                [(f, "") for f in failed],
+                failed,
                 skipped=already_signed,
                 item_label="build",
             )
@@ -336,10 +339,10 @@ class SignResyncMixin:
                         build.signed = False
                         db.session.commit()
                         success.append(label)
-                    except Exception:
+                    except Exception as e:
                         current_app.logger.exception("Failed to unsign build %s", label)
                         db.session.rollback()
-                        failed.append(label)
+                        failed.append((label, str(e) or "unknown error"))
             if not_local:
                 flash(
                     "Build(s) in Object Storage must be re-homed before unsigning: "
@@ -360,7 +363,7 @@ class SignResyncMixin:
                 )
             _flash_action_results(
                 success,
-                [(f, "") for f in failed],
+                failed,
                 skipped=not_signed,
                 item_label="build",
             )
@@ -1068,43 +1071,56 @@ class VersionView(SignResyncMixin, ModelView):
     def action_01_activate(self, ids):
         try:
             versions = get_query_for_ids(self.get_query(), self.model, ids).all()
-            upload_tasks = []
+            activated = []
+            not_signed = []
             storage_ok = storage_service.storage_configured()
             for version in versions:
                 for build in version.builds:
                     if not build.signed and not _detect_and_fix_signed(build):
+                        not_signed.append(str(build))
                         continue
                     build.active = True
-                    if build.storage == "local" and storage_ok:
+                    activated.append(build)
+            db.session.commit()
+            cache.delete("packages_versions")
+            clear_catalog_cache()
+
+            upload_tasks = []
+            if storage_ok:
+                for build in activated:
+                    if build.storage == "local":
                         result = upload_to_storage.delay(build.id, str(build))
                         upload_tasks.append(
                             {"id": result.id, "type": "upload", "label": str(build)}
                         )
-            db.session.commit()
-            cache.delete("packages_versions")
-            clear_catalog_cache()
             if upload_tasks:
                 _store_task_tasks(upload_tasks)
-            if upload_tasks:
+            if not_signed:
                 flash(
-                    Markup(
-                        "Builds were activated and queued for upload. "
-                        '<a href="/admin/tasks/">View status</a>'
-                    ),
-                    "info",
+                    "Build(s) have no signature and cannot be activated: "
+                    + ", ".join(not_signed),
+                    "warning",
                 )
-            else:
-                flash(
-                    (
-                        "Builds on version were successfully activated."
-                        if len(versions) == 1
+            if activated:
+                if upload_tasks:
+                    msg = (
+                        "Build was successfully activated and queued for upload."
+                        if len(activated) == 1
                         else (
-                            "Builds have been successfully activated for "
-                            f"{len(versions)} versions."
+                            f"{len(activated)} builds were successfully activated "
+                            "and queued for upload."
                         )
-                    ),
-                    "success",
-                )
+                    )
+                    flash(
+                        Markup(msg + ' <a href="/admin/tasks/">View status</a>'), "info"
+                    )
+                else:
+                    msg = (
+                        "Build was successfully activated."
+                        if len(activated) == 1
+                        else f"{len(activated)} builds were successfully activated."
+                    )
+                    flash(msg, "success")
         except SQLAlchemyError:
             db.session.rollback()
             current_app.logger.exception("Failed to activate versions' builds")

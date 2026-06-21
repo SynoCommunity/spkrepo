@@ -311,7 +311,7 @@ class Packages(Resource):
         )
 
         # sign
-        if current_app.config["GNUPG_PATH"] is not None:  # pragma: no cover
+        if current_app.config["GNUPG_PATH"] is not None:
             try:
                 spk.sign(
                     current_app.config["GNUPG_TIMESTAMP_URL"],
