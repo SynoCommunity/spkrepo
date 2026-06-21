@@ -24,6 +24,13 @@ def upgrade():
 
 
 def downgrade():
+    # Truncate any paths longer than 100 chars so the column resize succeeds
+    bind = op.get_bind()
+    if bind.engine.dialect.name == "postgresql":
+        op.execute(
+            "UPDATE build SET path = substring(path, 1, 100)"
+            " WHERE length(path) > 100"
+        )
     with op.batch_alter_table("build") as batch_op:
         batch_op.alter_column(
             "path",
