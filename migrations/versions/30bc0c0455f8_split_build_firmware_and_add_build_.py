@@ -24,8 +24,12 @@ def upgrade():
     with op.batch_alter_table("build") as batch_op:
         batch_op.add_column(sa.Column("firmware_min_id", sa.Integer(), nullable=True))
         batch_op.add_column(sa.Column("firmware_max_id", sa.Integer(), nullable=True))
-        batch_op.create_foreign_key("fk_build_firmware_min_id", "firmware", ["firmware_min_id"], ["id"])
-        batch_op.create_foreign_key("fk_build_firmware_max_id", "firmware", ["firmware_max_id"], ["id"])
+        batch_op.create_foreign_key(
+            "fk_build_firmware_min_id", "firmware", ["firmware_min_id"], ["id"]
+        )
+        batch_op.create_foreign_key(
+            "fk_build_firmware_max_id", "firmware", ["firmware_max_id"], ["id"]
+        )
 
     # 2) Backfill firmware_min_id from legacy firmware_id (still present right now)
     op.execute("UPDATE build SET firmware_min_id = firmware_id")
@@ -33,7 +37,9 @@ def upgrade():
     # 3) Make firmware_min_id NOT NULL
     # 4) Drop old FK and legacy column firmware_id
     with op.batch_alter_table("build") as batch_op:
-        batch_op.alter_column("firmware_min_id", existing_type=sa.Integer(), nullable=False)
+        batch_op.alter_column(
+            "firmware_min_id", existing_type=sa.Integer(), nullable=False
+        )
         batch_op.drop_constraint(op.f("build_firmware_id_fkey"), type_="foreignkey")
         batch_op.drop_column("firmware_id")
 

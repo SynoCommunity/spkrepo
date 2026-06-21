@@ -21,7 +21,9 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Upgrade schema."""
     with op.batch_alter_table("download_stat") as batch_op:
-        batch_op.add_column(sa.Column("target_firmware_build", sa.Integer(), nullable=True))
+        batch_op.add_column(
+            sa.Column("target_firmware_build", sa.Integer(), nullable=True)
+        )
         batch_op.add_column(
             sa.Column(
                 "target_noarch",

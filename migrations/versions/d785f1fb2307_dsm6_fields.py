@@ -22,8 +22,12 @@ def upgrade():
             existing_nullable=False,
         )
     with op.batch_alter_table("version") as batch_op:
-        batch_op.add_column(sa.Column("conf_privilege", sa.Unicode(length=255), nullable=True))
-        batch_op.add_column(sa.Column("conf_resource", sa.Unicode(length=255), nullable=True))
+        batch_op.add_column(
+            sa.Column("conf_privilege", sa.Unicode(length=255), nullable=True)
+        )
+        batch_op.add_column(
+            sa.Column("conf_resource", sa.Unicode(length=255), nullable=True)
+        )
 
 
 def downgrade():

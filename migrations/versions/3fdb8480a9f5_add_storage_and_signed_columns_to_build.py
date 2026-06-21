@@ -29,7 +29,9 @@ def upgrade() -> None:
         batch_op.add_column(
             sa.Column(
                 "storage",
-                sa.Enum("local", "remote", name="storage_location", create_type=not is_pg),
+                sa.Enum(
+                    "local", "remote", name="storage_location", create_type=not is_pg
+                ),
                 nullable=False,
                 server_default="local",
             ),
