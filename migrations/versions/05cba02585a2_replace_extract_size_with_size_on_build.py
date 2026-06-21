@@ -20,14 +20,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column("build", sa.Column("size", sa.Integer(), nullable=True))
-    op.drop_column("build", "extract_size")
+    with op.batch_alter_table("build") as batch_op:
+        batch_op.add_column(sa.Column("size", sa.Integer(), nullable=True))
+        batch_op.drop_column("extract_size")
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.add_column(
-        "build",
-        sa.Column("extract_size", sa.INTEGER(), autoincrement=False, nullable=True),
-    )
-    op.drop_column("build", "size")
+    with op.batch_alter_table("build") as batch_op:
+        batch_op.add_column(
+            sa.Column("extract_size", sa.INTEGER(), autoincrement=False, nullable=True),
+        )
+        batch_op.drop_column("size")

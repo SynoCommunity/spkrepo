@@ -14,28 +14,26 @@ down_revision = "26b4c36c11e"
 
 
 def upgrade():
-    op.alter_column(
-        "screenshot",
-        "path",
-        existing_type=sa.VARCHAR(length=100),
-        type_=sa.Unicode(length=200),
-        existing_nullable=False,
-    )
-    op.add_column(
-        "version", sa.Column("conf_privilege", sa.Unicode(length=255), nullable=True)
-    )
-    op.add_column(
-        "version", sa.Column("conf_resource", sa.Unicode(length=255), nullable=True)
-    )
+    with op.batch_alter_table("screenshot") as batch_op:
+        batch_op.alter_column(
+            "path",
+            existing_type=sa.VARCHAR(length=100),
+            type_=sa.Unicode(length=200),
+            existing_nullable=False,
+        )
+    with op.batch_alter_table("version") as batch_op:
+        batch_op.add_column(sa.Column("conf_privilege", sa.Unicode(length=255), nullable=True))
+        batch_op.add_column(sa.Column("conf_resource", sa.Unicode(length=255), nullable=True))
 
 
 def downgrade():
-    op.drop_column("version", "conf_resource")
-    op.drop_column("version", "conf_privilege")
-    op.alter_column(
-        "screenshot",
-        "path",
-        existing_type=sa.Unicode(length=200),
-        type_=sa.VARCHAR(length=100),
-        existing_nullable=False,
-    )
+    with op.batch_alter_table("version") as batch_op:
+        batch_op.drop_column("conf_resource")
+        batch_op.drop_column("conf_privilege")
+    with op.batch_alter_table("screenshot") as batch_op:
+        batch_op.alter_column(
+            "path",
+            existing_type=sa.Unicode(length=200),
+            type_=sa.VARCHAR(length=100),
+            existing_nullable=False,
+        )
