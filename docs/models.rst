@@ -54,7 +54,11 @@ Data
     :members:
     :undoc-members:
 
-.. autoclass:: Description
+.. autoclass:: BuildDescription
+    :members:
+    :undoc-members:
+
+.. autoclass:: BuildManifest
     :members:
     :undoc-members:
 
@@ -64,6 +68,10 @@ Data
 
 Statistics
 ----------
-.. autoclass:: Download
+.. autoclass:: DownloadStat
+    :members:
+    :undoc-members:
+
+.. autoclass:: PackageDownloadCounts
     :members:
     :undoc-members:

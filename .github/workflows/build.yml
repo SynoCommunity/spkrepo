@@ -45,5 +45,7 @@ jobs:
         run: uv sync --locked --all-extras --dev
       - name: Run tests
         run: uv run pytest -v
+      - name: Build docs
+        run: uv run sphinx-build -W -b html docs/ docs/_build/html
       - name: Minimize uv cache
         run: uv cache prune --ci
