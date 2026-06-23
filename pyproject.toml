@@ -62,8 +62,13 @@ dev = [
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
     "setuptools>=80.9.0",
+]
+
+[project.optional-dependencies]
+docs = [
     "sphinx>=9.0.4",
-    "sphinx-rtd-theme>=0.5.1",
+    "pydata-sphinx-theme>=0.16.0",
+    "sphinxcontrib-httpdomain>=2",
 ]
 
 [build-system]
