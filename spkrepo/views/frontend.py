@@ -74,7 +74,7 @@ def packages():
         versions = (
             Version.query.join(Version.package)
             .options(
-                db.joinedload(Version.package),
+                db.joinedload(Version.package).joinedload(Package.download_counts),
                 db.joinedload(Version.icons),
                 db.joinedload(Version.displaynames).joinedload(DisplayName.language),
                 db.joinedload(Version.builds)
@@ -100,6 +100,7 @@ def package(name):
     pkg = (
         Package.query.filter_by(name=name)
         .options(
+            db.joinedload(Package.download_counts),
             db.joinedload(Package.versions).joinedload(Version.icons),
             db.joinedload(Package.versions).joinedload(Version.displaynames),
             db.joinedload(Package.versions)

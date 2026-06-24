@@ -10,6 +10,48 @@
       <h1>{{ package.versions[-1].displaynames['enu'].displayname }}
         <small class="text-muted">v{{ package.versions[-1].version_string }}</small>
       </h1>
+
+      {# Active installs badge — only shown when package has meaningful recent downloads #}
+      {% if package.download_counts %}
+        {% set n = package.download_counts.recent_download_count %}
+        {% if n >= 100000 %}
+          <p>
+            <span class="badge badge-dark badge-pill">100k+ installs</span>
+            <small class="text-muted ml-1">based on downloads in the last 90 days</small>
+          </p>
+        {% elif n >= 50000 %}
+          <p>
+            <span class="badge badge-primary badge-pill">50k+ installs</span>
+            <small class="text-muted ml-1">based on downloads in the last 90 days</small>
+          </p>
+        {% elif n >= 25000 %}
+          <p>
+            <span class="badge badge-primary badge-pill">25k+ installs</span>
+            <small class="text-muted ml-1">based on downloads in the last 90 days</small>
+          </p>
+        {% elif n >= 10000 %}
+          <p>
+            <span class="badge badge-info badge-pill">10k+ installs</span>
+            <small class="text-muted ml-1">based on downloads in the last 90 days</small>
+          </p>
+        {% elif n >= 5000 %}
+          <p>
+            <span class="badge badge-success badge-pill">5k+ installs</span>
+            <small class="text-muted ml-1">based on downloads in the last 90 days</small>
+          </p>
+        {% elif n >= 2500 %}
+          <p>
+            <span class="badge badge-success badge-pill">2.5k+ installs</span>
+            <small class="text-muted ml-1">based on downloads in the last 90 days</small>
+          </p>
+        {% elif n >= 1000 %}
+          <p>
+            <span class="badge badge-secondary badge-pill">1k+ installs</span>
+            <small class="text-muted ml-1">based on downloads in the last 90 days</small>
+          </p>
+        {% endif %}
+      {% endif %}
+
       <p>{{ package.versions[-1].builds[0].descriptions['enu'].description }}</p>
       <div class="package-screenshots">
         {% for screenshot in package.screenshots %}

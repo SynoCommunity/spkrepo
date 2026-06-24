@@ -1,6 +1,28 @@
 {% extends 'layout.html' %}
 {% block title %}Packages - {{ super() }}{% endblock %}
 {% block content %}
+
+{% macro installs_badge(counts) %}
+  {% if counts %}
+    {% set n = counts.recent_download_count %}
+    {% if n >= 100000 %}
+      <span class="badge badge-dark" title="Based on downloads in last 90 days">100k+ installs</span>
+    {% elif n >= 50000 %}
+      <span class="badge badge-primary" title="Based on downloads in last 90 days">50k+ installs</span>
+    {% elif n >= 25000 %}
+      <span class="badge badge-primary" title="Based on downloads in last 90 days">25k+ installs</span>
+    {% elif n >= 10000 %}
+      <span class="badge badge-info" title="Based on downloads in last 90 days">10k+ installs</span>
+    {% elif n >= 5000 %}
+      <span class="badge badge-success" title="Based on downloads in last 90 days">5k+ installs</span>
+    {% elif n >= 2500 %}
+      <span class="badge badge-success" title="Based on downloads in last 90 days">2.5k+ installs</span>
+    {% elif n >= 1000 %}
+      <span class="badge badge-secondary" title="Based on downloads in last 90 days">1k+ installs</span>
+    {% endif %}
+  {% endif %}
+{% endmacro %}
+
 <div id="packages">
   {% for version_row in versions | batch(3) %}
   <div class="row package-row">
@@ -19,6 +41,7 @@
           <div class="ellipsis package-description">
             <p>{{ version.builds[0].descriptions['enu'].description }}</p>
           </div>
+          {{ installs_badge(version.package.download_counts) }}
         </div>
       </div>
     </div>
