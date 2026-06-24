@@ -875,8 +875,8 @@ class PackageView(ModelView):
         ("name", "name"),
         ("author", "author.username"),
         ("insert_date", "insert_date"),
-        ("download_count", "download_count"),
-        ("recent_download_count", "recent_download_count"),
+        ("download_count", "download_counts.download_count"),
+        ("recent_download_count", "download_counts.recent_download_count"),
         ("last_download_date", "last_download_date"),
     )
     column_formatters = {
@@ -884,10 +884,14 @@ class PackageView(ModelView):
             m.insert_date.strftime("%Y-%m-%d") if m.insert_date else None
         ),
         "download_count": lambda v, c, m, p: (
-            f"{m.download_count:,}" if m.download_count else "0"
+            f"{m.download_counts.download_count:,}"
+            if m.download_counts and m.download_counts.download_count
+            else "0"
         ),
         "recent_download_count": lambda v, c, m, p: (
-            f"{m.recent_download_count:,}" if m.recent_download_count else "0"
+            f"{m.download_counts.recent_download_count:,}"
+            if m.download_counts and m.download_counts.recent_download_count
+            else "0"
         ),
         "last_download_date": lambda v, c, m, p: (
             m.last_download_date.strftime("%Y-%m-%d") if m.last_download_date else None

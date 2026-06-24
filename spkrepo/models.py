@@ -926,6 +926,13 @@ class Package(db.Model):
         back_populates="package",
         cascade="all, delete-orphan",
     )
+    download_counts = db.relationship(
+        "PackageDownloadCounts",
+        primaryjoin="Package.id == PackageDownloadCounts.package_id",
+        foreign_keys="PackageDownloadCounts.package_id",
+        uselist=False,
+        viewonly=True,
+    )
 
     # Constraints
     __table_args__ = (db.UniqueConstraint(name),)
