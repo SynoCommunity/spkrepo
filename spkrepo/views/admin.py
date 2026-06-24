@@ -38,6 +38,7 @@ from ..models import (
     DownloadStat,
     Firmware,
     Package,
+    PackageDownloadCounts,
     Screenshot,
     Service,
     User,
@@ -862,6 +863,24 @@ class PackageView(ModelView):
             for ver, build, total in rows
         ]
 
+    def get_query(self):
+        # Explicitly outer-join PackageDownloadCounts so that Flask-Admin's
+        # sort can reference its columns directly. Without this, sorting by
+        # download_counts.download_count produces a join but NULLs (packages
+        # with no download_stat rows) sort above real values in descending
+        # order. The COALESCE in column_sortable_list below fixes that.
+        return (
+            super()
+            .get_query()
+            .outerjoin(
+                PackageDownloadCounts,
+                Package.id == PackageDownloadCounts.package_id,
+            )
+        )
+
+    def get_count_query(self):
+        return super().get_count_query()
+
     column_list = (
         "name",
         "author",
@@ -875,8 +894,11 @@ class PackageView(ModelView):
         ("name", "name"),
         ("author", "author.username"),
         ("insert_date", "insert_date"),
-        ("download_count", "download_counts.download_count"),
-        ("recent_download_count", "download_counts.recent_download_count"),
+        ("download_count", db.func.coalesce(PackageDownloadCounts.download_count, 0)),
+        (
+            "recent_download_count",
+            db.func.coalesce(PackageDownloadCounts.recent_download_count, 0),
+        ),
         ("last_download_date", "last_download_date"),
     )
     column_formatters = {
