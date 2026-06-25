@@ -1,0 +1,17 @@
+{% extends 'admin/model/list.html' %}
+
+{% block model_menu_bar_before_filters %}
+{% set _archived = request.args.get('archived', '') %}
+<li class="nav-item dropdown">
+  <a class="nav-link dropdown-toggle{% if _archived %} font-weight-bold{% endif %}" data-toggle="dropdown" href="javascript:void(0)">
+    {% if _archived == 'yes' %}Archived only{% elif _archived == 'no' %}Active only{% else %}Archived{% endif %}
+    <span class="caret"></span>
+  </a>
+  <ul class="dropdown-menu">
+    <li><a class="dropdown-item{% if _archived == 'yes' %} active{% endif %}" href="{{ get_url('.index_view', archived='yes') }}">Archived only</a></li>
+    <li><a class="dropdown-item{% if _archived == 'no' %} active{% endif %}" href="{{ get_url('.index_view', archived='no') }}">Active only</a></li>
+    <li><a class="dropdown-item{% if not _archived %} active{% endif %}" href="{{ get_url('.index_view') }}">All packages</a></li>
+  </ul>
+</li>
+{{ super() }}
+{% endblock %}

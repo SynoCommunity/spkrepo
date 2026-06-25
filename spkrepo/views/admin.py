@@ -102,10 +102,10 @@ def _task_redis_key():
     The task ID list itself lives in Redis.
     """
 
-    key = session.get("resync_task_key")
+    key = session.get("background_task_key")
     if not key:
-        key = f"resync_tasks:{uuid.uuid4()}"
-        session["resync_task_key"] = key
+        key = f"background_tasks:{uuid.uuid4()}"
+        session["background_task_key"] = key
     return key
 
 
@@ -127,7 +127,7 @@ def _get_task_ids():
 def _clear_task_ids():
     """Remove the current user's task ID list from Redis."""
 
-    key = session.pop("resync_task_key", None)
+    key = session.pop("background_task_key", None)
     if key:
         cache.delete(key)
 
@@ -800,6 +800,7 @@ class PackageView(ModelView):
 
     can_view_details = True
     details_template = "admin/package_detail.html"
+    list_template = "admin/model/package_list.html"
 
     @expose("/details/")
     def details_view(self):
@@ -869,7 +870,7 @@ class PackageView(ModelView):
         # download_counts.download_count produces a join but NULLs (packages
         # with no download_stat rows) sort above real values in descending
         # order. The COALESCE in column_sortable_list below fixes that.
-        return (
+        q = (
             super()
             .get_query()
             .outerjoin(
@@ -877,6 +878,12 @@ class PackageView(ModelView):
                 Package.id == PackageDownloadCounts.package_id,
             )
         )
+        archived = request.args.get("archived")
+        if archived == "yes":
+            q = q.filter(~Package.has_active_builds)
+        elif archived == "no":
+            q = q.filter(Package.has_active_builds)
+        return q
 
     def get_count_query(self):
         return super().get_count_query()
@@ -885,6 +892,7 @@ class PackageView(ModelView):
         "name",
         "author",
         "maintainers",
+        "has_active_builds",
         "download_count",
         "recent_download_count",
         "last_download_date",
@@ -905,6 +913,11 @@ class PackageView(ModelView):
         "insert_date": lambda v, c, m, p: (
             m.insert_date.strftime("%Y-%m-%d") if m.insert_date else None
         ),
+        "has_active_builds": lambda v, c, m, p: (
+            Markup('<i class="fa fa-check-circle text-success"></i>')
+            if not m.has_active_builds
+            else Markup('<i class="fa fa-times-circle text-danger"></i>')
+        ),
         "download_count": lambda v, c, m, p: (
             f"{m.download_counts.download_count:,}"
             if m.download_counts and m.download_counts.download_count
@@ -922,20 +935,30 @@ class PackageView(ModelView):
 
     column_formatters_detail = {
         "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "has_active_builds": lambda v, c, m, p: (
+            Markup('<i class="fa fa-check-circle text-success"></i>')
+            if not m.has_active_builds
+            else Markup('<i class="fa fa-times-circle text-danger"></i>')
+        ),
     }
     column_labels = {
         "download_count": "Downloads",
         "recent_download_count": "Downloads (90d)",
         "last_download_date": "Last Download",
         "author.username": "Author",
+        "has_active_builds": "Archived",
         "arch_breakdown": "Top Architectures (90d)",
         "firmware_breakdown": "Top Firmwares (90d)",
     }
-    column_filters = ("name", "author.username")
+    column_filters = (
+        "name",
+        "author.username",
+    )
     column_details_list = (
         "name",
         "author",
         "maintainers",
+        "has_active_builds",
         "insert_date",
         "download_count",
         "recent_download_count",
@@ -1488,7 +1511,7 @@ class IndexView(AdminIndexView):
 
 
 class TaskStatusView(BaseView):
-    """Admin panel page showing the status of queued resync tasks."""
+    """Admin panel page showing the status of queued background tasks."""
 
     def is_accessible(self):
         return current_user.is_authenticated and any(
