@@ -240,6 +240,11 @@ def build_package_entry(b, language, arch, build, counts_by_package):
     _set_if_truthy(entry, "md5", b.md5)
     _set_if_truthy(entry, "size", b.size)
 
+    _retina_icon = b.version.icons.get("256")
+    if _retina_icon:
+        _retina_url = url_for(".data", path=_retina_icon.path, _external=True)
+        entry["thumbnail_retina"] = [_retina_url, _retina_url]
+
     if b.version.startable is not None:
         entry["startable"] = "yes" if b.version.startable else "no"
 
