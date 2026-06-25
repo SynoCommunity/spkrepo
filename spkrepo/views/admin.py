@@ -886,7 +886,13 @@ class PackageView(ModelView):
         return q
 
     def get_count_query(self):
-        return super().get_count_query()
+        q = super().get_count_query()
+        archived = request.args.get("archived")
+        if archived == "yes":
+            q = q.filter(~Package.has_active_builds)
+        elif archived == "no":
+            q = q.filter(Package.has_active_builds)
+        return q
 
     column_list = (
         "name",
