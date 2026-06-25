@@ -934,6 +934,17 @@ class Package(db.Model):
         viewonly=True,
     )
 
+    has_active_builds = db.column_property(
+        db.exists(
+            db.select(db.literal(1))
+            .select_from(Build)
+            .join(Version, Build.version_id == Version.id)
+            .where(Version.package_id == id)
+            .where(Build.active)
+        ),
+        deferred=True,
+    )
+
     # Constraints
     __table_args__ = (db.UniqueConstraint(name),)
 

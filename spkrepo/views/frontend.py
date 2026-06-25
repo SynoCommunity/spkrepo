@@ -75,6 +75,7 @@ def packages():
             Version.query.join(Version.package)
             .options(
                 db.joinedload(Version.package).joinedload(Package.download_counts),
+                db.joinedload(Version.package).undefer(Package.has_active_builds),
                 db.joinedload(Version.icons),
                 db.joinedload(Version.displaynames).joinedload(DisplayName.language),
                 db.joinedload(Version.builds)
