@@ -23,30 +23,79 @@
   {% endif %}
 {% endmacro %}
 
-<div id="packages">
-  {% for version_row in versions | batch(3) %}
-  <div class="row package-row">
-    {% for version in version_row %}
-    <div class="col-md-4">
-      <div class="d-flex">
-        <div class="flex-shrink-0 mr-3" style="width: 72px;">
-          <a href="{{ url_for('frontend.package', name=version.package.name) }}">
-            <img src="{{ url_for('nas.data', path=version.icons['72'].path) }}" alt="Icon">
-          </a>
-        </div>
-        <div class="flex-grow-1">
-          <h5>{{ version.displaynames['enu'].displayname }}
-            <small class="text-muted">v{{ version.version_string }}</small>
-          </h5>
-          {{ installs_badge(version.package.download_counts) }}
-          <div class="ellipsis package-description">
-            <p>{{ version.builds[0].descriptions['enu'].description }}</p>
-          </div>
-        </div>
+{% macro package_card(version, archived=false) %}
+<div class="col-md-4">
+  <div class="d-flex{% if archived %}" style="opacity: 0.6;{% endif %}">
+    <div class="flex-shrink-0 mr-3" style="width: 72px;">
+      <a href="{{ url_for('frontend.package', name=version.package.name) }}">
+        <img src="{{ url_for('nas.data', path=version.icons['72'].path) }}" alt="Icon"
+             {% if archived %}style="filter: grayscale(60%);"{% endif %}>
+      </a>
+    </div>
+    <div class="flex-grow-1">
+      <h5>{{ version.displaynames['enu'].displayname }}
+        <small class="text-muted">v{{ version.version_string }}</small>
+        {% if archived %}
+          <span class="badge badge-secondary ml-1">Archived</span>
+        {% endif %}
+      </h5>
+      {% if not archived %}
+        {{ installs_badge(version.package.download_counts) }}
+      {% endif %}
+      <div class="ellipsis package-description">
+        <p>{{ version.builds[0].descriptions['enu'].description }}</p>
       </div>
     </div>
+  </div>
+</div>
+{% endmacro %}
+
+{# Split versions into active and archived.
+   A package is considered archived only if no build across any of its
+   versions is active. All versions' builds are pre-loaded in frontend.py
+   via the Package.versions -> Version.builds joinedload chain. #}
+{% set active_versions = [] %}
+{% set archived_versions = [] %}
+{% for version in versions %}
+  {% if version.package.has_active_builds %}
+    {% set _ = active_versions.append(version) %}
+  {% else %}
+    {% set _ = archived_versions.append(version) %}
+  {% endif %}
+{% endfor %}
+
+<div id="packages">
+
+  {# ── Active packages ── #}
+  {% for version_row in active_versions | batch(3) %}
+  <div class="row package-row">
+    {% for version in version_row %}
+      {{ package_card(version) }}
     {% endfor %}
   </div>
   {% endfor %}
+
+  {# ── Archived packages ── #}
+  {% if archived_versions %}
+  <div class="row mt-5 mb-2">
+    <div class="col-12">
+      <h4 class="text-muted">
+        <i class="bi bi-archive mr-2"></i>Archived Packages
+      </h4>
+      <p class="text-muted small">
+        These packages are no longer in the active catalog and are not actively maintained.
+      </p>
+      <hr>
+    </div>
+  </div>
+  {% for version_row in archived_versions | batch(3) %}
+  <div class="row package-row archived-package-row">
+    {% for version in version_row %}
+      {{ package_card(version, archived=true) }}
+    {% endfor %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
 </div>
 {% endblock %}
