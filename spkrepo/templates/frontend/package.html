@@ -4,12 +4,24 @@
 <div class="row">
   <div class="d-flex">
     <div class="flex-shrink-0 mr-3">
-      <img src="{{ url_for('nas.data', path=package.versions[-1].icons['72'].path) }}" alt="Icon">
+      {% set _icon = package.versions[-1].icons.get("256") or package.versions[-1].icons["72"] %}
+      <img src="{{ url_for('nas.data', path=_icon.path) }}" alt="Icon"
+           style="{% if "256" in package.versions[-1].icons %}width:128px;{% endif %}height:auto;{% if not package.has_active_builds %} filter: grayscale(60%);{% endif %}">
     </div>
     <div class="flex-grow-1">
       <h1>{{ package.versions[-1].displaynames['enu'].displayname }}
         <small class="text-muted">v{{ package.versions[-1].version_string }}</small>
+        {% if not package.has_active_builds %}
+          <span class="badge badge-secondary ml-1">Archived</span>
+        {% endif %}
       </h1>
+
+      {% if not package.has_active_builds %}
+      <div class="alert alert-secondary py-2" role="alert">
+        <i class="bi bi-archive mr-2"></i>
+        This package is no longer in the active catalog and is not actively maintained.
+      </div>
+      {% endif %}
 
       {# Active installs badge — only shown when package has meaningful recent downloads #}
       {% if package.download_counts %}
