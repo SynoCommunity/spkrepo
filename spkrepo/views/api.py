@@ -10,6 +10,7 @@ from flask_login import login_user
 from flask_principal import Identity, identity_changed
 from flask_restful import Api, Resource, abort
 from flask_security import current_user
+from sqlalchemy.exc import IntegrityError
 
 from ..exceptions import SPKParseError, SPKSignError
 from ..ext import db
@@ -351,7 +352,20 @@ class Packages(Resource):
 
         # insert the package into database
         db.session.add(build)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError as e:
+            db.session.rollback()
+            if "version_package_id_version_key" in str(e):
+                msg = (
+                    f"Version {version.version_string} already exists"
+                    f" for {package.name}"
+                )
+            elif "package_name_key" in str(e):
+                msg = f"Package {package.name} was created by another request"
+            else:
+                msg = "Database constraint violation"
+            abort(409, message=msg)
 
         return (
             {
