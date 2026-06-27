@@ -14,3 +14,7 @@ python:
       path: .
       extra_requirements:
         - docs
+
+addons:
+  flyout:
+    enabled: false

@@ -43,10 +43,10 @@ pygments_style = "sphinx"
 
 html_theme = "pydata_sphinx_theme"
 html_theme_options = {
+    "navigation_depth": 4,
     "show_nav_level": 2,
     "navigation_with_keys": True,
     "use_edit_page_button": True,
-    # Keep toctree captions in the navbar (now only 4, no overflow)
     "navbar_center": ["navbar-nav"],
     "icon_links": [
         {
@@ -55,20 +55,26 @@ html_theme_options = {
             "icon": "fa-brands fa-github",
         },
     ],
-    # Right sidebar: in-page TOC (headings on the current page)
     "secondary_sidebar_items": ["page-toc"],
+    # Prevent RTD addon system from taking over the sidebar
+    "logo": {
+        "text": _project_title,
+    },
 }
 html_context = {
     "github_user": "SynoCommunity",
     "github_repo": "spkrepo",
     "github_version": "main",
     "doc_path": "docs",
+    # Tell pydata this is an RTD build so it uses compatible sidebar mode
+    "READTHEDOCS": True,
+    "readthedocs_url": "https://spkrepo.readthedocs.io",
 }
 
 html_static_path = ["_static"]
 
-# Left sidebar: site-wide navigation tree only.
-# The in-page TOC moves to the right sidebar via secondary_sidebar_items.
+# Left sidebar: site-wide navigation tree.
+# The in-page TOC is in the right sidebar via secondary_sidebar_items above.
 html_sidebars = {
     "**": ["sidebar-nav-bs"],
 }
