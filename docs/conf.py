@@ -117,11 +117,24 @@ pygments_style = "sphinx"
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 html_theme = "pydata_sphinx_theme"
-
-# Theme options are theme-specific and customize the look and feel of a theme
-# further.  For a list of options available for each theme, see the
-# documentation.
-# html_theme_options = {}
+html_theme_options = {
+    "show_nav_level": 2,
+    "navigation_with_keys": True,
+    "use_edit_page_button": True,
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/SynoCommunity/spkrepo",
+            "icon": "fa-brands fa-github",
+        },
+    ],
+}
+html_context = {
+    "github_user": "SynoCommunity",
+    "github_repo": "spkrepo",
+    "github_version": "main",
+    "doc_path": "docs",
+}
 
 # Add any paths that contain custom themes here, relative to this directory.
 
@@ -160,7 +173,9 @@ html_static_path = ["_static"]
 # html_use_smartypants = True
 
 # Custom sidebar templates, maps document names to template names.
-# html_sidebars = {}
+html_sidebars = {
+    "**": ["sidebar-nav-bs", "page-toc"],
+}
 
 # Additional templates that should be rendered to pages, maps page names to
 # template names.
