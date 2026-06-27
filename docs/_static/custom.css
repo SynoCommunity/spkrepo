@@ -70,3 +70,17 @@
     min-width: 160px;
     max-width: 260px;
 }
+
+/* ---------------------------------------------------------------
+   Navbar — collapse empty center zone and pull end items left
+--------------------------------------------------------------- */
+
+/* Hide the empty center slot so it doesn't push icons to the far right */
+.navbar-header-items__center {
+    display: none;
+}
+
+/* Pull end items flush after the logo */
+.bd-navbar .navbar-header-items {
+    justify-content: flex-end;
+}
