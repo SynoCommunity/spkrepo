@@ -23,6 +23,7 @@
     padding: 0.2rem 0.25rem;
     border-radius: 0.25rem;
     line-height: 1.4;
+    white-space: nowrap;
 }
 
 #pst-primary-sidebar ul li a:hover {
@@ -45,17 +46,27 @@
     margin-top: 1.25rem;
     margin-bottom: 0.25rem;
     padding-left: 0.25rem;
+    white-space: nowrap;
 }
 
 #pst-primary-sidebar p.caption:first-child {
     margin-top: 0.25rem;
 }
 
-/* Remove the caption span role styling */
 #pst-primary-sidebar p.caption span.caption-text {
     font-size: inherit;
     font-weight: inherit;
     color: inherit;
     letter-spacing: inherit;
     text-transform: inherit;
+}
+
+/* ---------------------------------------------------------------
+   Sidebar width — driven by content rather than a fixed pixel value
+--------------------------------------------------------------- */
+
+#pst-primary-sidebar {
+    width: max-content;
+    min-width: 160px;
+    max-width: 260px;
 }
