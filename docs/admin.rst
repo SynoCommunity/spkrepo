@@ -57,8 +57,11 @@ Available actions appear in the dropdown after selecting items in a list view.
     Removes the GPG signature from the SPK file.
     Build must be deactivated first.
 
+.. _task-status:
+
 Task Status
 -----------
 The Task Status page shows the progress of background operations (upload,
 rehome, resync). Tasks are tracked per-user via Redis and are retained
-for 24 hours after completion.
+for 24 hours after completion. See :doc:`operations` for the underlying
+task implementation.

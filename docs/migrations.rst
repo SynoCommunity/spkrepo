@@ -23,7 +23,7 @@ Running migrations
     uv run flask db upgrade +1
     uv run flask db downgrade -1
 
-    # Downrgade to base (all migrations)
+    # Downgrade to base (roll back all migrations)
     uv run flask db downgrade base
 
 Portability notes

@@ -4,7 +4,7 @@ Quickstart
 Prerequisites
 -------------
 - Docker and Docker Compose
-- Python 3.14
+- Python 3.12 or later
 - `uv <https://docs.astral.sh/uv/>`_ (package manager)
 
 Setup

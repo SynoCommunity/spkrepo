@@ -4,12 +4,16 @@ Utilities
 
 SPK
 ---
+The :class:`SPK` class handles parsing and introspection of ``.spk`` package files.
+
 .. autoclass:: SPK
     :members:
     :undoc-members:
 
 Helpers
 -------
+These functions resolve reference data and apply SPK metadata to the database.
+
 .. autofunction:: resolve_firmware
 .. autofunction:: resolve_architectures
 .. autofunction:: resolve_services
