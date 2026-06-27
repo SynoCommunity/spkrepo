@@ -23,11 +23,11 @@ classifiers = [
     "Topic :: System :: Archiving :: Packaging",
 ]
 dependencies = [
-    "alembic>=1.17.2",
+    "alembic>=1.18.5",
     "bcrypt>=5.0.0",
-    "boto3>=1.34",
+    "boto3>=1.43.36",
     "celery[redis]>=5.3",
-    "click>=8.3.1",
+    "click>=8.4.2",
     "configparser>=7.2.0",
     "flask>=3.1.2",
     "flask-admin>=2.0.2",
