@@ -46,11 +46,10 @@ html_theme_options = {
     "navigation_with_keys": True,
     "use_edit_page_button": True,
     # No page links in navbar — navigation is entirely in the left sidebar.
-    # Setting navbar_align to "left" collapses the empty center reservation
-    # so the right-side icons sit close to the logo instead of floating far right.
     "navbar_center": [],
     "navbar_align": "left",
-    "navbar_end": ["search-field", "theme-switcher", "navbar-icon-links"],
+    # Omit search-field since RTD injects its own search addon.
+    "navbar_end": ["theme-switcher", "navbar-icon-links"],
     "icon_links": [
         {
             "name": "GitHub",
