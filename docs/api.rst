@@ -17,7 +17,7 @@ If the authentication fails, a :http:statuscode:`401` is returned.
 
 Errors
 ------
-In case of ambiguous error, a detailed explaination is returned in JSON as ``message``
+In case of an ambiguous error, a detailed explanation is returned in JSON as ``message``:
 
 .. sourcecode:: http
 

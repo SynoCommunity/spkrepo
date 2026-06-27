@@ -4,6 +4,8 @@ Models
 
 Referential
 -----------
+These models represent the fixed reference data that packages are built against.
+
 .. autoclass:: Architecture
     :members:
     :undoc-members:
@@ -32,6 +34,10 @@ Users
 
 Core
 ----
+The three-level hierarchy that represents a package in the repository:
+a :class:`Package` has one or more :class:`Version` records, each of which
+has one or more :class:`Build` records per architecture/firmware combination.
+
 .. autoclass:: Package
     :members:
     :undoc-members:
@@ -46,6 +52,8 @@ Core
 
 Data
 ----
+Supporting data attached to packages and builds.
+
 .. autoclass:: Screenshot
     :members:
     :undoc-members:
@@ -75,3 +83,15 @@ Statistics
 .. autoclass:: PackageDownloadCounts
     :members:
     :undoc-members:
+
+Exceptions
+----------
+Exceptions raised by the spkrepo application layer.
+
+.. module:: spkrepo.exceptions
+
+.. autoclass:: SpkrepoError
+
+.. autoclass:: SPKParseError
+
+.. autoclass:: SPKSignError

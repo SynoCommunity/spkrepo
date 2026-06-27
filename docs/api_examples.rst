@@ -28,13 +28,13 @@ and firmware version. Parameters are sent as POST form data:
 
 .. code-block:: console
 
-    http POST http://packages.synocommunity.com/ \\
-        arch=apollolake \\
-        build=25556 \\
-        major=7 \\
-        minor=2 \\
-        micro=2 \\
-        language=enu \\
+    http POST http://packages.synocommunity.com/ \
+        arch=apollolake \
+        build=25556 \
+        major=7 \
+        minor=2 \
+        micro=2 \
+        language=enu \
         package_update_channel=stable
 
 The response is a JSON array of package entries with download URLs,
