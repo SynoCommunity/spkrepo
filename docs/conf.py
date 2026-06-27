@@ -7,8 +7,6 @@ import tomllib
 
 sys.path.insert(0, os.path.abspath(".."))
 
-# Read package metadata from pyproject.toml without importing spkrepo
-# (which triggers a circular import chain on ReadTheDocs).
 _pyproject_path = os.path.join(os.path.dirname(__file__), "..", "pyproject.toml")
 with open(_pyproject_path, "rb") as _f:
     _pyproject = tomllib.load(_f)
@@ -43,11 +41,11 @@ pygments_style = "sphinx"
 
 html_theme = "pydata_sphinx_theme"
 html_theme_options = {
-    "navigation_depth": 4,
+    "navigation_depth": 2,
     "show_nav_level": 2,
     "navigation_with_keys": True,
     "use_edit_page_button": True,
-    "navbar_center": ["navbar-nav"],
+    "navbar_center": [],
     "icon_links": [
         {
             "name": "GitHub",
@@ -59,13 +57,7 @@ html_theme_options = {
     "logo": {
         "text": _project_title,
     },
-    # Explicitly declare sidebar contents so pydata owns the slot entirely,
-    # preventing RTD's addon JS from clearing it.
     "primary_sidebar_end": [],
-    "article_footer_items": [],
-    "content_footer_items": [],
-    "footer_start": ["copyright"],
-    "footer_end": [],
 }
 html_context = {
     "github_user": "SynoCommunity",
@@ -75,12 +67,10 @@ html_context = {
 }
 
 html_static_path = ["_static"]
+html_css_files = ["custom.css"]
 
-# Use pydata's built-in sidebar component. If RTD addon JS continues to
-# interfere, the fallback is to swap "sidebar-nav-bs" for "globaltoc.html"
-# which RTD does not target.
 html_sidebars = {
-    "**": ["sidebar-nav-bs"],
+    "**": ["globaltoc.html"],
 }
 
 htmlhelp_basename = _project_title + "doc"

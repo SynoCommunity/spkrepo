@@ -1,0 +1,61 @@
+/* ---------------------------------------------------------------
+   Restyle globaltoc.html to match pydata-sphinx-theme's native
+   sidebar-nav-bs component.
+--------------------------------------------------------------- */
+
+/* Remove default bullet points and reset padding */
+#pst-primary-sidebar ul {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+}
+
+#pst-primary-sidebar ul ul {
+    padding-left: 0.75rem;
+}
+
+/* Page links */
+#pst-primary-sidebar ul li a {
+    font-size: 0.875rem;
+    color: var(--pst-color-text-base);
+    text-decoration: none;
+    display: block;
+    padding: 0.2rem 0.25rem;
+    border-radius: 0.25rem;
+    line-height: 1.4;
+}
+
+#pst-primary-sidebar ul li a:hover {
+    color: var(--pst-color-primary);
+    background-color: var(--pst-color-surface);
+}
+
+#pst-primary-sidebar ul li.current > a {
+    color: var(--pst-color-primary);
+    font-weight: 600;
+}
+
+/* Toctree captions (Getting Started, API, Reference, Releases) */
+#pst-primary-sidebar p.caption {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--pst-color-text-muted);
+    margin-top: 1.25rem;
+    margin-bottom: 0.25rem;
+    padding-left: 0.25rem;
+}
+
+#pst-primary-sidebar p.caption:first-child {
+    margin-top: 0.25rem;
+}
+
+/* Remove the caption span role styling */
+#pst-primary-sidebar p.caption span.caption-text {
+    font-size: inherit;
+    font-weight: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+}
