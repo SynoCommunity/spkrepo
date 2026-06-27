@@ -14,23 +14,23 @@
 # serve to show the default.
 
 import os
-import re
 import sys
-
-import spkrepo
+import tomllib
 
 sys.path.insert(0, os.path.abspath(".."))
 
-# Read version from pyproject.toml to stay in sync with releases
-_pyproject = os.path.join(os.path.dirname(__file__), "..", "pyproject.toml")
-with open(_pyproject) as _f:
-    _m = re.search(r'^version\s*=\s*"([^"]+)"', _f.read(), re.M)
-_project_version = _m.group(1) if _m else "0.0"
+# Read package metadata from pyproject.toml without importing spkrepo
+# (which triggers a circular import chain on ReadTheDocs).
+_pyproject_path = os.path.join(os.path.dirname(__file__), "..", "pyproject.toml")
+with open(_pyproject_path, "rb") as _f:
+    _pyproject = tomllib.load(_f)
+_project_title = _pyproject["project"]["name"]
+_project_version = _pyproject["project"]["version"]
+_project_author = _pyproject["project"]["authors"][0]["name"]
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-sys.path.insert(0, os.path.abspath(".."))
 
 # -- General configuration ------------------------------------------------
 
@@ -60,13 +60,9 @@ source_suffix = ".rst"
 master_doc = "index"
 
 # General information about the project.
-project = spkrepo.__title__
-_copyright_raw = spkrepo.__copyright__.split()
-_copyright_start = _copyright_raw[1] if len(_copyright_raw) > 1 else "2014"
+project = _project_title
 _this_year = str(__import__("datetime").datetime.now().year)
-copyright = (
-    _copyright_start + "\u2013" + _this_year + " " + " ".join(_copyright_raw[2:])
-)
+copyright = f"2014\u2013{_this_year} SynoCommunity"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -197,7 +193,7 @@ html_static_path = ["_static"]
 # html_file_suffix = None
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = spkrepo.__title__ + "doc"
+htmlhelp_basename = _project_title + "doc"
 
 
 # -- Options for LaTeX output ---------------------------------------------
@@ -217,9 +213,9 @@ latex_elements = {
 latex_documents = [
     (
         "index",
-        "%s.tex" % spkrepo.__title__,
-        "%s Documentation" % spkrepo.__title__,
-        spkrepo.__author__,
+        "%s.tex" % _project_title,
+        "%s Documentation" % _project_title,
+        _project_author,
         "manual",
     ),
 ]
@@ -252,9 +248,9 @@ latex_documents = [
 man_pages = [
     (
         "index",
-        spkrepo.__title__,
-        "%s Documentation" % spkrepo.__title__,
-        [spkrepo.__author__],
+        _project_title,
+        "%s Documentation" % _project_title,
+        [_project_author],
         1,
     )
 ]
@@ -271,11 +267,11 @@ man_pages = [
 texinfo_documents = [
     (
         "index",
-        spkrepo.__title__,
-        "%s Documentation" % spkrepo.__title__,
-        spkrepo.__author__,
-        spkrepo.__title__,
-        spkrepo.__description__,
+        _project_title,
+        "%s Documentation" % _project_title,
+        _project_author,
+        _project_title,
+        "Synology Package Repository",
         "Miscellaneous",
     ),
 ]
@@ -296,9 +292,9 @@ texinfo_documents = [
 # -- Options for Epub output ----------------------------------------------
 
 # Bibliographic Dublin Core info.
-epub_title = spkrepo.__title__
-epub_author = spkrepo.__author__
-epub_publisher = spkrepo.__author__
+epub_title = _project_title
+epub_author = _project_author
+epub_publisher = _project_author
 epub_copyright = copyright
 
 # The basename for the epub file. It defaults to the project name.
