@@ -350,7 +350,7 @@ class SPK(object):
             response = requests.post(
                 timestamp_url, files={"file": signature.data}, timeout=2
             )
-        except requests.Timeout:
+        except requests.RequestException:
             raise SPKSignError("Timestamp server did not respond in time")
 
         if response.status_code != 200:

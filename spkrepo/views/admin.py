@@ -898,7 +898,6 @@ class PackageView(ModelView):
         "name",
         "author",
         "maintainers",
-        "has_active_builds",
         "download_count",
         "recent_download_count",
         "last_download_date",
@@ -918,11 +917,6 @@ class PackageView(ModelView):
     column_formatters = {
         "insert_date": lambda v, c, m, p: (
             m.insert_date.strftime("%Y-%m-%d") if m.insert_date else None
-        ),
-        "has_active_builds": lambda v, c, m, p: (
-            Markup('<i class="fa fa-check-circle text-success"></i>')
-            if not m.has_active_builds
-            else Markup('<i class="fa fa-times-circle text-danger"></i>')
         ),
         "download_count": lambda v, c, m, p: (
             f"{m.download_counts.download_count:,}"
