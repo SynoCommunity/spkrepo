@@ -56,25 +56,29 @@ html_theme_options = {
         },
     ],
     "secondary_sidebar_items": ["page-toc"],
-    # Prevent RTD addon system from taking over the sidebar
     "logo": {
         "text": _project_title,
     },
+    # Explicitly declare sidebar contents so pydata owns the slot entirely,
+    # preventing RTD's addon JS from clearing it.
+    "primary_sidebar_end": [],
+    "article_footer_items": [],
+    "content_footer_items": [],
+    "footer_start": ["copyright"],
+    "footer_end": [],
 }
 html_context = {
     "github_user": "SynoCommunity",
     "github_repo": "spkrepo",
     "github_version": "main",
     "doc_path": "docs",
-    # Tell pydata this is an RTD build so it uses compatible sidebar mode
-    "READTHEDOCS": True,
-    "readthedocs_url": "https://spkrepo.readthedocs.io",
 }
 
 html_static_path = ["_static"]
 
-# Left sidebar: site-wide navigation tree.
-# The in-page TOC is in the right sidebar via secondary_sidebar_items above.
+# Use pydata's built-in sidebar component. If RTD addon JS continues to
+# interfere, the fallback is to swap "sidebar-nav-bs" for "globaltoc.html"
+# which RTD does not target.
 html_sidebars = {
     "**": ["sidebar-nav-bs"],
 }
