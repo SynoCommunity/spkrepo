@@ -4,7 +4,7 @@ Quickstart
 Prerequisites
 -------------
 - Docker and Docker Compose
-- Python 3.12 or later
+- Python 3.14 or later
 - `uv <https://docs.astral.sh/uv/>`_ (package manager)
 
 Setup
@@ -36,7 +36,7 @@ Register an admin user
 ----------------------
 .. code-block:: console
 
-    uv run flask spkrepo register_admin
+    uv run flask spkrepo create_admin
 
 Environment Variables
 ---------------------

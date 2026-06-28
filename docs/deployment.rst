@@ -84,10 +84,10 @@ Start the worker and beat scheduler:
 .. code-block:: console
 
     # Worker (processes background tasks)
-    uv run celery -A spkrepo.celery worker -Q ops --loglevel=info
+    uv run celery -A celery_app:celery_app worker -Q ops --loglevel=info
 
     # Beat (dispatches scheduled tasks)
-    uv run celery -A spkrepo.celery beat --loglevel=info
+    uv run celery -A celery_app:celery_app beat --loglevel=info
 
 Database migrations
 -------------------
