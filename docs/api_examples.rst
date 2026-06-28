@@ -28,7 +28,7 @@ and firmware version. Parameters are sent as POST form data:
 
 .. code-block:: console
 
-    http POST http://packages.synocommunity.com/ \
+    http POST http://packages.example.com/ \
         arch=apollolake \
         build=25556 \
         major=7 \
@@ -39,15 +39,3 @@ and firmware version. Parameters are sent as POST form data:
 
 The response is a JSON array of package entries with download URLs,
 descriptions, screenshots, and download counts.
-
-List architectures
-------------------
-.. code-block:: console
-
-    http http://localhost:5000/api/architectures
-
-List firmware
--------------
-.. code-block:: console
-
-    http http://localhost:5000/api/firmware
