@@ -6,6 +6,7 @@ from flask import (
     abort,
     current_app,
     json,
+    redirect,
     request,
     send_from_directory,
     url_for,
@@ -268,6 +269,8 @@ def catalog():
         or "arch" not in request.values
         or "language" not in request.values
     ):
+        if request.accept_mimetypes.accept_html:
+            return redirect(url_for("frontend.packages"))
         abort(400)
 
     language = request.values["language"]
