@@ -414,8 +414,8 @@ class DownloadStat(db.Model):
 class PackageDownloadCounts(db.Model):
     """Read-only model backed by the package_download_counts materialized view.
 
-    Refreshed periodically by the refresh_download_counts Celery task.
-    Never written to directly — use REFRESH MATERIALIZED VIEW instead.
+    Refreshed after each ingest_logs run via REFRESH MATERIALIZED VIEW CONCURRENTLY.
+    Never written to directly.
     """
 
     __tablename__ = "package_download_counts"

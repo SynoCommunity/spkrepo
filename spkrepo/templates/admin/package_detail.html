@@ -56,7 +56,7 @@
                   {% endfor %}
                 </table>
               {% else %}
-                <span class="text-muted">No downloads in the last 90 days</span>
+                <span class="text-muted">No NAS downloads in the last 90 days</span>
               {% endif %}
             {% elif c == 'firmware_breakdown' %}
               {% if firmware_breakdown %}
@@ -78,7 +78,7 @@
                   {% endfor %}
                 </table>
               {% else %}
-                <span class="text-muted">No downloads in the last 90 days</span>
+                <span class="text-muted">No NAS downloads in the last 90 days</span>
               {% endif %}
             {% else %}
               {{ get_value(model, c) }}
