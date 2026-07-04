@@ -9,7 +9,6 @@ The production stack consists of:
 - **Redis** — Celery broker and Flask cache backend
 - **Gunicorn** — WSGI server, reverse-proxied behind **nginx**
 - **Celery worker** — processes background tasks on the ``ops`` queue
-- **Celery beat** — scheduled task dispatcher
 - **nginx** — reverse proxy and static file server
 - **CDN** — edge caching for the NAS catalog endpoint
 - **Object Storage** — S3-compatible storage (e.g. Fastly Object Storage) for SPK packages
@@ -79,15 +78,11 @@ A minimal nginx reverse proxy configuration:
 
 Celery workers
 --------------
-Start the worker and beat scheduler:
+Start the worker:
 
 .. code-block:: console
 
-    # Worker (processes background tasks)
     uv run celery -A celery_app:celery_app worker -Q ops --loglevel=info
-
-    # Beat (dispatches scheduled tasks)
-    uv run celery -A celery_app:celery_app beat --loglevel=info
 
 Database migrations
 -------------------

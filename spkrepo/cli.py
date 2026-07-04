@@ -505,3 +505,18 @@ def ingest_logs():
         skipped_no_build,
         manual_downloads,
     )
+
+    # Refresh the materialized view so download counts and badges reflect
+    # the newly ingested data immediately rather than waiting for a
+    # scheduled task.
+    if db.engine.dialect.name == "postgresql":
+        try:
+            db.session.execute(
+                db.text(
+                    "REFRESH MATERIALIZED VIEW CONCURRENTLY package_download_counts"
+                )
+            )
+            db.session.commit()
+            logger.info("Refreshed package_download_counts materialized view.")
+        except Exception as e:
+            logger.error("Failed to refresh package_download_counts: %s", e)
