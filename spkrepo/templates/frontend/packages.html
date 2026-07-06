@@ -2,23 +2,23 @@
 {% block title %}Packages - {{ super() }}{% endblock %}
 {% block content %}
 
-{% macro installs_badge(counts) %}
+{% macro downloads_badge(counts) %}
   {% if counts %}
     {% set n = counts.recent_download_count %}
     {% if n >= 100000 %}
-      <span class="badge badge-dark" title="Based on downloads in last 90 days">100k+ installs</span>
+      <span class="badge badge-dark" title="Based on downloads in last 90 days">100k+ downloads</span>
     {% elif n >= 50000 %}
-      <span class="badge badge-primary" title="Based on downloads in last 90 days">50k+ installs</span>
+      <span class="badge badge-primary" title="Based on downloads in last 90 days">50k+ downloads</span>
     {% elif n >= 25000 %}
-      <span class="badge badge-primary" title="Based on downloads in last 90 days">25k+ installs</span>
+      <span class="badge badge-primary" title="Based on downloads in last 90 days">25k+ downloads</span>
     {% elif n >= 10000 %}
-      <span class="badge badge-info" title="Based on downloads in last 90 days">10k+ installs</span>
+      <span class="badge badge-info" title="Based on downloads in last 90 days">10k+ downloads</span>
     {% elif n >= 5000 %}
-      <span class="badge badge-success" title="Based on downloads in last 90 days">5k+ installs</span>
+      <span class="badge badge-success" title="Based on downloads in last 90 days">5k+ downloads</span>
     {% elif n >= 2500 %}
-      <span class="badge badge-success" title="Based on downloads in last 90 days">2.5k+ installs</span>
+      <span class="badge badge-success" title="Based on downloads in last 90 days">2.5k+ downloads</span>
     {% elif n >= 1000 %}
-      <span class="badge badge-secondary" title="Based on downloads in last 90 days">1k+ installs</span>
+      <span class="badge badge-secondary" title="Based on downloads in last 90 days">1k+ downloads</span>
     {% endif %}
   {% endif %}
 {% endmacro %}
@@ -28,19 +28,18 @@
   <div class="d-flex{% if archived %}" style="opacity: 0.6;{% endif %}">
     <div class="flex-shrink-0 mr-3" style="width: 72px;">
       <a href="{{ url_for('frontend.package', name=version.package.name) }}">
-        <img src="{{ url_for('nas.data', path=version.icons['72'].path) }}" alt="Icon"
-             {% if archived %}style="filter: grayscale(60%);"{% endif %}>
+        <img src="{{ url_for('nas.data', path=version.icons['72'].path) }}" alt="Icon"{% if archived %} style="filter: grayscale(60%);"{% endif %}>
       </a>
     </div>
     <div class="flex-grow-1">
-      <h5>{{ version.displaynames['enu'].displayname }}
+      <h2 class="h5">{{ version.displaynames['enu'].displayname }}
         <small class="text-muted">v{{ version.version_string }}</small>
         {% if archived %}
           <span class="badge badge-secondary ml-1">Archived</span>
         {% endif %}
-      </h5>
+      </h2>
       {% if not archived %}
-        {{ installs_badge(version.package.download_counts) }}
+        {{ downloads_badge(version.package.download_counts) }}
       {% endif %}
       <div class="ellipsis package-description">
         <p>{{ version.builds[0].descriptions['enu'].description }}</p>
@@ -64,6 +63,7 @@
   {% endif %}
 {% endfor %}
 
+<h1 class="sr-only">Packages</h1>
 <div id="packages">
 
   {# ── Active packages ── #}
@@ -79,9 +79,9 @@
   {% if archived_versions %}
   <div class="row mt-5 mb-2">
     <div class="col-12">
-      <h4 class="text-muted">
+      <h1 class="h4 text-muted">
         <i class="bi bi-archive mr-2"></i>Archived Packages
-      </h4>
+      </h1>
       <p class="text-muted small">
         These packages are no longer in the active catalog and are not actively maintained.
       </p>
