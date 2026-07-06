@@ -114,6 +114,10 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
     if debug_toolbar is not None:
         debug_toolbar.init_app(app)
 
+    # Jinja2 whitespace control
+    app.jinja_env.trim_blocks = True
+    app.jinja_env.lstrip_blocks = True
+
     # Jinja2 filters
     register_filters(app)
 
