@@ -76,10 +76,10 @@ def packages():
             .options(
                 db.joinedload(Version.package).joinedload(Package.download_counts),
                 db.joinedload(Version.package).undefer(Package.has_active_builds),
-                db.joinedload(Version.icons),
-                db.joinedload(Version.displaynames).joinedload(DisplayName.language),
-                db.joinedload(Version.builds)
-                .joinedload(Build.descriptions)
+                db.selectinload(Version.icons),
+                db.selectinload(Version.displaynames).joinedload(DisplayName.language),
+                db.selectinload(Version.builds)
+                .selectinload(Build.descriptions)
                 .joinedload(BuildDescription.language),
             )
             .join(
@@ -102,11 +102,11 @@ def package(name):
         Package.query.filter_by(name=name)
         .options(
             db.joinedload(Package.download_counts),
-            db.joinedload(Package.versions).joinedload(Version.icons),
-            db.joinedload(Package.versions).joinedload(Version.displaynames),
-            db.joinedload(Package.versions)
-            .joinedload(Version.builds)
-            .joinedload(Build.descriptions),
+            db.selectinload(Package.versions).selectinload(Version.icons),
+            db.selectinload(Package.versions).selectinload(Version.displaynames),
+            db.selectinload(Package.versions)
+            .selectinload(Version.builds)
+            .selectinload(Build.descriptions),
         )
         .first()
     )
