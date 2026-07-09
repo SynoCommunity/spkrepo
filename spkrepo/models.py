@@ -823,12 +823,32 @@ class Version(db.Model):
 
     @property
     def builds_per_dsm(self):
-        result = {}
-        for build in self.builds:
-            result.setdefault(build.firmware_min.version.split(".")[0], []).append(
-                build
+        """Group builds by DSM/SRM major version, newest-first, with each
+        group's builds also ordered by full firmware version, newest-first,
+        so e.g. 7.2.x builds don't interleave with 7.1.x builds.
+        """
+
+        def _firmware_sort_key(build):
+            return tuple(
+                int(part) if part.isdigit() else part
+                for part in build.firmware_min.version.split(".")
             )
-        return result
+
+        groups = {}
+        for build in self.builds:
+            major = build.firmware_min.version.split(".")[0]
+            groups.setdefault(major, []).append(build)
+
+        for builds in groups.values():
+            builds.sort(key=_firmware_sort_key, reverse=True)
+
+        return dict(
+            sorted(
+                groups.items(),
+                key=lambda item: int(item[0]) if item[0].isdigit() else item[0],
+                reverse=True,
+            )
+        )
 
     @hybrid_property
     def total_size(self):
