@@ -121,16 +121,18 @@ def get_catalog(arch, build, major, language, beta):
     firmware_min_for_build = aliased(Firmware)
     latest_build = (
         Build.query.options(
-            db.joinedload(Build.architectures),
+            db.selectinload(Build.architectures),
             db.joinedload(Build.firmware_min),
             db.joinedload(Build.firmware_max),
             db.joinedload(Build.version).joinedload(Version.package),
-            db.joinedload(Build.version).joinedload(Version.icons),
+            db.joinedload(Build.version).selectinload(Version.icons),
             db.joinedload(Build.version)
-            .joinedload(Version.displaynames)
+            .selectinload(Version.displaynames)
             .joinedload(DisplayName.language),
-            db.joinedload(Build.descriptions).joinedload(BuildDescription.language),
-            db.joinedload(Build.version, Version.package, Package.screenshots),
+            db.selectinload(Build.descriptions).joinedload(BuildDescription.language),
+            db.joinedload(Build.version, Version.package).selectinload(
+                Package.screenshots
+            ),
             db.joinedload(Build.buildmanifest),
         )
         .join(Build.architectures)
