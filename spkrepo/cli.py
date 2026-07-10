@@ -211,34 +211,33 @@ def depopulate_db():
 
 @spkrepo.command("create_admin")
 @click.option("-u", "--username", prompt=True, default="admin", help="username")
-@click.option("-e", "--email", prompt=True, default="admin@synocommunity.com", help="email")
+@click.option(
+    "-e", "--email", prompt=True, default="admin@synocommunity.com", help="email"
+)
 @click.option("-p", "--password", prompt=True, hide_input=True, help="password")
 @with_appcontext
 def create_admin(username, email, password):
     """Create a new super admin user."""
-    click.echo("Creating admin user…")
-    existing_admin = (
+    existing_user = (
         db.session.execute(db.select(User).filter_by(email=email)).scalars().first()
     )
-    if existing_admin:
-        click.echo(f"'{username}' user already exists, skipping creation")
-    else:
-        _create_user(
-            username=username,
-            email=email,
-            password=password,
-        )
+    if existing_user:
+        click.echo(f"User '{username}' already exists. No changes made.")
+        return
+
+    click.echo("Creating admin user…")
+    _create_user(
+        username=username,
+        email=email,
+        password=password,
+    )
 
     user = db.session.execute(db.select(User).filter_by(email=email)).scalars().first()
     if not user:
         raise ValueError(f"No user with email {email}")
 
     for role_name in ("admin", "package_admin", "developer"):
-        role = (
-            db.session.execute(db.select(Role).filter_by(name=role_name))
-            .scalars()
-            .first()
-        )
+        role = Role.find(role_name)
         if not role:
             raise ValueError(f"No role with name '{role_name}'")
 
