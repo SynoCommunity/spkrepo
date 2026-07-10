@@ -243,18 +243,16 @@ class CatalogTestCase(BaseTestCase):
         # Populate the package_download_counts materialized view used by
         # the catalog, matching what the production Celery task does.
         ninety_days_ago = datetime.now().date() - timedelta(days=90)
-        total = (
-            db.session.query(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
-            .filter(DownloadStat.package_id == package.id)
-            .scalar()
+        total = db.session.scalar(
+            db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0)).filter(
+                DownloadStat.package_id == package.id
+            )
         )
-        recent = (
-            db.session.query(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
-            .filter(
+        recent = db.session.scalar(
+            db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0)).filter(
                 DownloadStat.package_id == package.id,
                 DownloadStat.date >= ninety_days_ago,
             )
-            .scalar()
         )
         db.session.add(
             PackageDownloadCounts(

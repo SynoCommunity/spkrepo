@@ -29,6 +29,7 @@ and comes with an API, advanced permission management and an admin interface.
    utils
    operations
    admin
+   cli
    migrations
 
 .. toctree::

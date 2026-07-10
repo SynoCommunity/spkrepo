@@ -42,6 +42,7 @@ Available actions appear in the dropdown after selecting items in a list view.
 
 **04 Rehome (Versions / Builds)**
     Downloads a build from object storage back to local disk for editing.
+    Build must be inactive and in Object Storage.
 
 **05 Resync Info (Versions / Builds)**
     Re-reads metadata (changelog, description, icons) from the local SPK file.

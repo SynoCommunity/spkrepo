@@ -24,9 +24,10 @@ from spkrepo.utils import (
 
 class SPKParseTestCase(BaseTestCase):
     def test_generic(self):
+        architectures = db.session.execute(db.select(Architecture)).scalars().all()
         build = BuildFactory.build(
             version__upgrade_wizard=True,
-            architectures=[Architecture.query.all()[0], Architecture.query.all()[1]],
+            architectures=[architectures[0], architectures[1]],
         )
         with create_spk(build, signature="signature") as f:
             spk = SPK(f)

@@ -349,14 +349,14 @@ class VersionTestCase(_AdminActionTestMixin, BaseTestCase):
     def test_on_model_delete(self):
         version = VersionFactory()
         db.session.commit()
-        self.assertEqual(len(Version.query.all()), 1)
+        self.assertEqual(len(db.session.execute(db.select(Version)).scalars().all()), 1)
         version_path = os.path.join(
             current_app.config["DATA_PATH"], version.package.name, str(version.version)
         )
         self.assertTrue(os.path.exists(version_path))
         with self.logged_user("package_admin", "admin"):
             self.client.post(url_for("version.delete_view", id=str(version.id)))
-        self.assertEqual(len(Version.query.all()), 0)
+        self.assertEqual(len(db.session.execute(db.select(Version)).scalars().all()), 0)
         self.assertTrue(not os.path.exists(version_path))
 
     def test_action_resync_info_visible_to_package_admin(self):
@@ -425,8 +425,16 @@ class VersionTestCase(_AdminActionTestMixin, BaseTestCase):
 
     def test_action_resync_info_refreshes_build_metadata(self):
         build = BuildFactory(
-            firmware_min=Firmware.query.order_by(Firmware.build.asc()).first(),
-            firmware_max=Firmware.query.order_by(Firmware.build.desc()).first(),
+            firmware_min=db.session.execute(
+                db.select(Firmware).order_by(Firmware.build.asc())
+            )
+            .scalars()
+            .first(),
+            firmware_max=db.session.execute(
+                db.select(Firmware).order_by(Firmware.build.desc())
+            )
+            .scalars()
+            .first(),
         )
         db.session.commit()
 
@@ -437,9 +445,13 @@ class VersionTestCase(_AdminActionTestMixin, BaseTestCase):
         original_dependencies = build.buildmanifest.dependencies
         original_conf_privilege = build.buildmanifest.conf_privilege
 
-        corrupting_firmware = Firmware.query.filter(
-            Firmware.id != original_firmware_min.id
-        ).first()
+        corrupting_firmware = (
+            db.session.execute(
+                db.select(Firmware).filter(Firmware.id != original_firmware_min.id)
+            )
+            .scalars()
+            .first()
+        )
         self.assertIsNotNone(corrupting_firmware, "Need at least 2 firmware entries")
         build.firmware_min = corrupting_firmware
         build.firmware_max = None
