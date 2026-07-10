@@ -328,7 +328,7 @@ def catalog():
                     "version": "2.1.2-4",
                     "dname": "Git",
                     "desc": "Distributed version control system.",
-                    "link": "https://example.com/nas/git/4/git.v4.f64570%5Bx86_64%5D.spk?arch=x86_64&build=64570",
+                    "link": "https://example.com/.../git.v4.f64570%5Bx86_64%5D.spk",
                     "thumbnail": ["https://example.com/nas/git/4/icon_72.png"],
                     "qinst": true,
                     "qupgrade": true,
