@@ -21,6 +21,8 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinxcontrib.httpdomain",
     "sphinxcontrib.autohttp.flask",
+    # Needed so @celery.task-decorated functions in tasks.py get autodoc'd.
+    "celery.contrib.sphinx",
 ]
 
 templates_path = ["_templates"]

@@ -68,23 +68,23 @@ class PackageTestCase(BaseTestCase):
             self.assert403(self.client.get(url_for("package.index_view")))
 
     def test_on_model_create(self):
-        self.assertEqual(len(Package.query.all()), 0)
+        self.assertEqual(len(db.session.execute(db.select(Package)).scalars().all()), 0)
         with self.logged_user("package_admin"):
             self.client.post(url_for("package.create_view"), data=dict(name="test"))
-        self.assertEqual(len(Package.query.all()), 1)
-        package = Package.query.one()
+        self.assertEqual(len(db.session.execute(db.select(Package)).scalars().all()), 1)
+        package = db.session.execute(db.select(Package)).scalars().one()
         package_path = os.path.join(current_app.config["DATA_PATH"], package.name)
         self.assertTrue(os.path.exists(package_path))
 
     def test_on_model_delete(self):
         package = PackageFactory()
         db.session.commit()
-        self.assertEqual(len(Package.query.all()), 1)
+        self.assertEqual(len(db.session.execute(db.select(Package)).scalars().all()), 1)
         package_path = os.path.join(current_app.config["DATA_PATH"], package.name)
         self.assertTrue(os.path.exists(package_path))
         with self.logged_user("package_admin", "admin"):
             self.client.post(url_for("package.delete_view", id=str(package.id)))
-        self.assertEqual(len(Package.query.all()), 0)
+        self.assertEqual(len(db.session.execute(db.select(Package)).scalars().all()), 0)
         self.assertTrue(not os.path.exists(package_path))
 
 

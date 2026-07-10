@@ -1448,26 +1448,52 @@ class IndexView(AdminIndexView):
             return q.join(Package.maintainers).filter(User.id == current_user.id)
 
         if is_privileged:
-            package_count = Package.query.count()
-            build_count = Build.query.count()
-            inactive_build_count = Build.query.filter_by(active=False).count()
+            package_count = db.session.scalar(
+                db.select(db.func.count()).select_from(Package)
+            )
+            build_count = db.session.scalar(
+                db.select(db.func.count()).select_from(Build)
+            )
+            inactive_build_count = db.session.scalar(
+                db.select(db.func.count()).select_from(Build).filter_by(active=False)
+            )
             recent_versions = (
-                Version.query.order_by(Version.insert_date.desc()).limit(5).all()
+                db.session.execute(
+                    db.select(Version).order_by(Version.insert_date.desc()).limit(5)
+                )
+                .scalars()
+                .all()
             )
         else:
-            package_count = _maintainer_filter(Package.query).count()
-            build_count = _maintainer_filter(
-                Build.query.join(Build.version).join(Version.package)
-            ).count()
-            inactive_build_count = _maintainer_filter(
-                Build.query.filter_by(active=False)
-                .join(Build.version)
-                .join(Version.package)
-            ).count()
+            package_count = db.session.scalar(
+                db.select(db.func.count()).select_from(
+                    _maintainer_filter(db.select(Package)).subquery()
+                )
+            )
+            build_count = db.session.scalar(
+                db.select(db.func.count()).select_from(
+                    _maintainer_filter(
+                        db.select(Build).join(Build.version).join(Version.package)
+                    ).subquery()
+                )
+            )
+            inactive_build_count = db.session.scalar(
+                db.select(db.func.count()).select_from(
+                    _maintainer_filter(
+                        db.select(Build)
+                        .filter_by(active=False)
+                        .join(Build.version)
+                        .join(Version.package)
+                    ).subquery()
+                )
+            )
             recent_versions = (
-                _maintainer_filter(Version.query.join(Version.package))
-                .order_by(Version.insert_date.desc())
-                .limit(5)
+                db.session.execute(
+                    _maintainer_filter(db.select(Version).join(Version.package))
+                    .order_by(Version.insert_date.desc())
+                    .limit(5)
+                )
+                .scalars()
                 .all()
             )
 
@@ -1497,7 +1523,11 @@ class IndexView(AdminIndexView):
             build_count=build_count,
             inactive_build_count=inactive_build_count,
             unconfirmed_user_count=(
-                User.query.filter_by(confirmed_at=None).count()
+                db.session.scalar(
+                    db.select(db.func.count())
+                    .select_from(User)
+                    .filter_by(confirmed_at=None)
+                )
                 if current_user.has_role("admin")
                 else None
             ),

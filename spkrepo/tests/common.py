@@ -50,18 +50,27 @@ fake = faker.Faker()
 class QueryFactory(factory.DictFactory):
     timezone = fake.timezone().split("/")[1]
     language = factory.LazyAttribute(
-        lambda x: random.choice([language.code for language in Language.query.all()])
+        lambda x: random.choice(
+            [
+                language.code
+                for language in db.session.execute(db.select(Language)).scalars()
+            ]
+        )
     )
     arch = factory.LazyAttribute(
         lambda x: random.choice(
             [
                 Architecture.to_syno.get(a.code, a.code)
-                for a in Architecture.query.filter(Architecture.code != "noarch").all()
+                for a in db.session.execute(
+                    db.select(Architecture).filter(Architecture.code != "noarch")
+                ).scalars()
             ]
         )
     )
     build = factory.LazyAttribute(
-        lambda x: random.choice([f.build for f in Firmware.query.all()])
+        lambda x: random.choice(
+            [f.build for f in db.session.execute(db.select(Firmware)).scalars()]
+        )
     )
     major = factory.LazyAttribute(
         lambda x: int(Firmware.find(x.build).version.split(".")[0])
@@ -186,7 +195,9 @@ class VersionFactory(SQLAlchemyModelFactory):
     startable = None
     license = factory.LazyAttribute(lambda x: fake.text())
     service_dependencies = factory.LazyAttribute(
-        lambda x: [random.choice(Service.query.all())]
+        lambda x: [
+            random.choice(db.session.execute(db.select(Service)).scalars().all())
+        ]
     )
 
     @factory.post_generation
@@ -230,13 +241,19 @@ class BuildFactory(SQLAlchemyModelFactory):
         model = Build
 
     version = factory.SubFactory(VersionFactory)
-    firmware_min = factory.LazyAttribute(lambda x: random.choice(Firmware.query.all()))
+    firmware_min = factory.LazyAttribute(
+        lambda x: random.choice(db.session.execute(db.select(Firmware)).scalars().all())
+    )
     firmware_max = None
     changelog = factory.LazyAttribute(lambda x: fake.sentence())
     architectures = factory.LazyAttribute(
         lambda x: [
             random.choice(
-                Architecture.query.filter(Architecture.code != "noarch").all()
+                db.session.execute(
+                    db.select(Architecture).filter(Architecture.code != "noarch")
+                )
+                .scalars()
+                .all()
             )
         ]
     )
@@ -310,8 +327,12 @@ class BuildFactory(SQLAlchemyModelFactory):
             and "architectures" not in kwargs
         ):
             combinations = itertools.product(
-                Firmware.query.all(),
-                Architecture.query.filter(Architecture.code != "noarch").all(),
+                db.session.execute(db.select(Firmware)).scalars().all(),
+                db.session.execute(
+                    db.select(Architecture).filter(Architecture.code != "noarch")
+                )
+                .scalars()
+                .all(),
             )
             batch = []
             for _ in range(size):
@@ -336,7 +357,9 @@ class DownloadStatFactory(SQLAlchemyModelFactory):
     build = factory.SubFactory(BuildFactory)
     architecture = factory.LazyAttribute(lambda x: x.build.architectures[0])
     firmware_build = factory.LazyAttribute(
-        lambda x: random.choice([f.build for f in Firmware.query.all()])
+        lambda x: random.choice(
+            [f.build for f in db.session.execute(db.select(Firmware)).scalars()]
+        )
     )
     date = factory.LazyAttribute(lambda x: fake.date_this_month())
     count = factory.LazyAttribute(lambda x: random.randint(1, 1000))
@@ -380,7 +403,11 @@ class BaseTestCase(TestCase):
 
     def create_user(self, *args, **kwargs):
         user = UserFactory(
-            roles=[Role.query.filter_by(name=role).one() for role in args], **kwargs
+            roles=[
+                db.session.execute(db.select(Role).filter_by(name=role)).scalars().one()
+                for role in args
+            ],
+            **kwargs,
         )
         db.session.commit()
         return user

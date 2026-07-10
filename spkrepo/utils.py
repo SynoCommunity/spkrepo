@@ -540,8 +540,11 @@ def assert_version_metadata_matches_db(version, spk):
 
 def apply_info_from_spk(session, build, spk, md5_hash):
     """Apply all metadata from a parsed SPK onto the given build and its parent
-    version. This is the single source of truth for writing SPK metadata to the
-    database, used by both the upload path (api.py) and the resync path (admin.py).
+    version. Used by the resync path (tasks.py's resync_build_metadata,
+    triggered from admin.py). NOT currently used by the upload path
+    (api.py's Packages.post), which has its own separate, inline
+    implementation of similar logic for creating new Package/Version/Build
+    records — see that function if you need to keep both in sync.
 
     Version-level fields (shared across all builds of a version) are written
     unconditionally — callers must ensure consistency has already been checked

@@ -31,16 +31,26 @@ nas = Blueprint("nas", __name__)
 
 @cache.memoize(timeout=600)
 def is_valid_arch(arch):
+    """Return True if arch is a known Architecture code."""
     return Architecture.find(arch) is not None
 
 
 @cache.memoize(timeout=600)
 def is_valid_language(language):
+    """Return True if language is a known Language code."""
     return Language.find(language) is not None
 
 
 @cache.memoize(timeout=600)
 def get_catalog(arch, build, major, language, beta):
+    """Build the package catalog for one (arch, build, major, language,
+    beta) combination.
+
+    Returns a list of package dicts for DSM < 5.1, or a dict with
+    "packages" (and "keyrings" for DSM 6 only) otherwise. Memoized for
+    10 minutes; clear_catalog_cache() invalidates all entries when build
+    or version data changes.
+    """
     # Raise work_mem for this transaction only to avoid the catalog sort
     # spilling to disk (observed: 6.9 MB spill with default work_mem).
     if db.engine.dialect.name == "postgresql":
@@ -50,7 +60,7 @@ def get_catalog(arch, build, major, language, beta):
     firmware_max_alias = aliased(Firmware)
 
     # Step 1: Get the latest version for each package
-    latest_version = db.session.query(
+    latest_version = db.select(
         Version.package_id, db.func.max(Version.version).label("latest_version")
     ).select_from(Version)
 
@@ -86,7 +96,7 @@ def get_catalog(arch, build, major, language, beta):
 
     # Step 2: Get the latest firmware for each version
     latest_firmware = (
-        db.session.query(
+        db.select(
             Version.package_id,
             latest_version.c.latest_version,
             db.func.max(firmware_min_alias.build).label("latest_firmware"),
@@ -120,33 +130,49 @@ def get_catalog(arch, build, major, language, beta):
     # times per catalog request.
     firmware_min_for_build = aliased(Firmware)
     latest_build = (
-        Build.query.options(
-            db.selectinload(Build.architectures),
-            db.joinedload(Build.firmware_min),
-            db.joinedload(Build.firmware_max),
-            db.joinedload(Build.version).joinedload(Version.package),
-            db.joinedload(Build.version).selectinload(Version.icons),
-            db.joinedload(Build.version)
-            .selectinload(Version.displaynames)
-            .joinedload(DisplayName.language),
-            db.selectinload(Build.descriptions).joinedload(BuildDescription.language),
-            db.joinedload(Build.version, Version.package).selectinload(
-                Package.screenshots
-            ),
-            db.joinedload(Build.buildmanifest),
+        db.session.execute(
+            db.select(Build)
+            .options(
+                # Build.architectures/version/firmware_min/firmware_max are
+                # lazy=False (models.py), so joined by default. Collections
+                # below use selectinload, not joinedload, to avoid Cartesian-
+                # product row multiplication when eager-loading several at once.
+                db.selectinload(Build.architectures),
+                db.joinedload(Build.firmware_min),
+                db.joinedload(Build.firmware_max),
+                db.joinedload(Build.version).joinedload(Version.package),
+                db.joinedload(Build.version).selectinload(Version.icons),
+                db.joinedload(Build.version)
+                .selectinload(Version.displaynames)
+                .joinedload(DisplayName.language),
+                db.selectinload(Build.descriptions).joinedload(
+                    BuildDescription.language
+                ),
+                db.joinedload(Build.version, Version.package).selectinload(
+                    Package.screenshots
+                ),
+                db.joinedload(Build.buildmanifest),
+            )
+            .join(Build.architectures)
+            .filter(db.or_(Architecture.code == arch, Architecture.code == "noarch"))
+            .join(firmware_min_for_build, Build.firmware_min)
+            .join(Version)
+            .join(
+                latest_firmware,
+                db.and_(
+                    Version.package_id == latest_firmware.c.package_id,
+                    Version.version == latest_firmware.c.latest_version,
+                    firmware_min_for_build.build == latest_firmware.c.latest_firmware,
+                ),
+            )
         )
-        .join(Build.architectures)
-        .filter(db.or_(Architecture.code == arch, Architecture.code == "noarch"))
-        .join(firmware_min_for_build, Build.firmware_min)
-        .join(Version)
-        .join(
-            latest_firmware,
-            db.and_(
-                Version.package_id == latest_firmware.c.package_id,
-                Version.version == latest_firmware.c.latest_version,
-                firmware_min_for_build.build == latest_firmware.c.latest_firmware,
-            ),
-        )
+        # unique() is required (and good practice generally) whenever a
+        # query's joins could yield more than one row per Build — here,
+        # joining the many-to-many Build.architectures for filtering can
+        # do that — so entities are de-duplicated by identity before
+        # converting to a plain list.
+        .unique()
+        .scalars()
         .all()
     )
 
@@ -155,9 +181,11 @@ def get_catalog(arch, build, major, language, beta):
     package_ids = [b.version.package_id for b in latest_build]
     counts_by_package = {
         row.package_id: row
-        for row in PackageDownloadCounts.query.filter(
-            PackageDownloadCounts.package_id.in_(package_ids)
-        )
+        for row in db.session.execute(
+            db.select(PackageDownloadCounts).filter(
+                PackageDownloadCounts.package_id.in_(package_ids)
+            )
+        ).scalars()
     }
 
     # Step 5: Construct response with "packages"
@@ -191,6 +219,8 @@ def _set_if_truthy(entry, key, value):
 
 
 def build_package_entry(b, language, arch, build, counts_by_package):
+    """Build one package's catalog dict entry from a Build, in the shape
+    expected by DSM/SRM package_update clients."""
     counts = counts_by_package.get(b.version.package_id)
     entry = {
         "package": b.version.package.name,
@@ -266,6 +296,54 @@ def clear_catalog_cache():
 
 @nas.route("/", methods=["POST", "GET"])
 def catalog():
+    """Return the package catalog for a DSM/SRM device.
+
+    This is the endpoint DSM/SRM devices poll to discover packages
+    available for their architecture, firmware, and language. The
+    response shape depends on the ``build`` firmware number: builds
+    below ``5004`` get a bare list, builds from ``5004`` up to (but not
+    including) ``40000`` (DSM 6) additionally get a ``keyrings`` entry,
+    and DSM 7+ builds (``40000`` and above) get ``packages`` only.
+
+    :query build: the device's firmware build number (required)
+    :query arch: the device's CPU architecture code, as reported by
+        DSM/SRM (required)
+    :query language: the device's language code, e.g. ``enu`` (required)
+    :query major: the DSM/SRM major version; inferred from ``build``
+        against known firmware if omitted
+    :query package_update_channel: set to ``beta`` to include beta
+        packages (DSM < 7 only; ignored otherwise)
+
+    **Example response** (DSM 7+):
+
+    .. sourcecode:: http
+
+        HTTP/1.1 200 OK
+        Content-Type: application/json
+
+        {
+            "packages": [
+                {
+                    "package": "git",
+                    "version": "2.1.2-4",
+                    "dname": "Git",
+                    "desc": "Distributed version control system.",
+                    "link": "https://example.com/nas/git/4/git.v4.f64570%5Bx86_64%5D.spk?arch=x86_64&build=64570",
+                    "thumbnail": ["https://example.com/nas/git/4/icon_72.png"],
+                    "qinst": true,
+                    "qupgrade": true,
+                    "qstart": false,
+                    "download_count": 1024,
+                    "recent_download_count": 87
+                }
+            ]
+        }
+
+    :statuscode 200: catalog returned
+    :statuscode 400: a required parameter is missing and the client did
+        not request an HTML response (browsers are redirected instead)
+    :statuscode 422: ``language``, ``arch``, or ``build`` is invalid
+    """
     if (
         "build" not in request.values
         or "arch" not in request.values
@@ -299,8 +377,12 @@ def catalog():
             abort(422)
     else:
         closest_firmware = (
-            Firmware.query.filter(Firmware.build <= build, Firmware.type == "dsm")
-            .order_by(Firmware.build.desc())
+            db.session.execute(
+                db.select(Firmware)
+                .filter(Firmware.build <= build, Firmware.type == "dsm")
+                .order_by(Firmware.build.desc())
+            )
+            .scalars()
             .first()
         )
         if not closest_firmware or not closest_firmware.version:
@@ -313,4 +395,11 @@ def catalog():
 
 @nas.route("/<path:path>")
 def data(path):
+    """Serve a file (SPK, icon, or screenshot) from local storage.
+
+    :param path: relative file path under DATA_PATH, as returned by the
+        catalog's ``link``/``thumbnail``/``snapshot`` URLs
+    :statuscode 200: file returned
+    :statuscode 404: no file exists at the given path
+    """
     return send_from_directory(current_app.config["DATA_PATH"], path)

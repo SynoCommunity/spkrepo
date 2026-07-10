@@ -21,6 +21,11 @@ from spkrepo.tests.common import (
 )
 
 
+def get_only_build():
+    """Return the single Build row expected to exist after a test upload."""
+    return db.session.execute(db.select(Build)).unique().scalars().one()
+
+
 def authorization_header(user):
     auth_str = user.api_key + ":"
     encoded_auth = base64.b64encode(auth_str.encode("utf-8")).decode("ascii")
@@ -179,7 +184,7 @@ class PackagesTestCase(BaseTestCase):
                     data=spk.read(),
                 )
             )
-        self.assertBuildInserted(Build.query.one(), build, user)
+        self.assertBuildInserted(get_only_build(), build, user)
 
     def test_post_conflict(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -214,7 +219,11 @@ class PackagesTestCase(BaseTestCase):
         # Pin to the lowest seeded firmware so newer_firmware is always strictly higher.
         base_build = BuildFactory.build(
             architectures=[Architecture.find("noarch")],
-            firmware_min=Firmware.query.order_by(Firmware.build.asc()).first(),
+            firmware_min=db.session.execute(
+                db.select(Firmware).order_by(Firmware.build.asc())
+            )
+            .scalars()
+            .first(),
         )
         with (
             create_spk(base_build) as spk,
@@ -238,7 +247,11 @@ class PackagesTestCase(BaseTestCase):
 
         # Always use the highest seeded firmware to guarantee it is genuinely newer
         # than whatever the factory picked for base_build, avoiding a flaky fixture.
-        newer_firmware = Firmware.query.order_by(Firmware.build.desc()).first()
+        newer_firmware = (
+            db.session.execute(db.select(Firmware).order_by(Firmware.build.desc()))
+            .scalars()
+            .first()
+        )
         self.assertIsNotNone(newer_firmware)
         self.assertGreater(
             newer_firmware.build,
@@ -376,7 +389,7 @@ class PackagesTestCase(BaseTestCase):
                     data=spk.read(),
                 )
             )
-        self.assertBuildInserted(Build.query.one(), build, user)
+        self.assertBuildInserted(get_only_build(), build, user)
 
     def test_post_icons_in_both(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -391,7 +404,7 @@ class PackagesTestCase(BaseTestCase):
                     data=spk.read(),
                 )
             )
-        self.assertBuildInserted(Build.query.one(), build, user)
+        self.assertBuildInserted(get_only_build(), build, user)
 
     def test_post_no_license(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -406,7 +419,7 @@ class PackagesTestCase(BaseTestCase):
                     data=spk.read(),
                 )
             )
-        self.assertBuildInserted(Build.query.one(), build, user)
+        self.assertBuildInserted(get_only_build(), build, user)
 
     def test_post_install_wizard(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -421,7 +434,7 @@ class PackagesTestCase(BaseTestCase):
                     data=spk.read(),
                 )
             )
-        self.assertBuildInserted(Build.query.one(), build, user)
+        self.assertBuildInserted(get_only_build(), build, user)
 
     def test_post_upgrade_wizard(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -436,7 +449,7 @@ class PackagesTestCase(BaseTestCase):
                     data=spk.read(),
                 )
             )
-        self.assertBuildInserted(Build.query.one(), build, user)
+        self.assertBuildInserted(get_only_build(), build, user)
 
     def test_post_120_icon(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -453,7 +466,7 @@ class PackagesTestCase(BaseTestCase):
                     data=spk.read(),
                 )
             )
-        self.assertBuildInserted(Build.query.one(), build, user)
+        self.assertBuildInserted(get_only_build(), build, user)
 
     def test_post_startable(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -468,7 +481,7 @@ class PackagesTestCase(BaseTestCase):
                     data=spk.read(),
                 )
             )
-        self.assertBuildInserted(Build.query.one(), build, user)
+        self.assertBuildInserted(get_only_build(), build, user)
 
     def test_post_not_startable(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -483,7 +496,7 @@ class PackagesTestCase(BaseTestCase):
                     data=spk.read(),
                 )
             )
-        self.assertBuildInserted(Build.query.one(), build, user)
+        self.assertBuildInserted(get_only_build(), build, user)
 
     def test_post_wrong_displayname_language(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -645,7 +658,7 @@ class PackagesTestCase(BaseTestCase):
             )
 
         # Fetch the persisted version from the DB.
-        persisted_version = Build.query.one().version
+        persisted_version = get_only_build().version
         existing_displayname = persisted_version.displaynames["enu"].displayname
 
         # Second build: different arch to avoid conflict, modified displayname.
@@ -667,7 +680,7 @@ class PackagesTestCase(BaseTestCase):
 
         db.session.expire_all()
         self.assertEqual(
-            Build.query.one().version.displaynames["enu"].displayname,
+            get_only_build().version.displaynames["enu"].displayname,
             existing_displayname,
         )
 
@@ -690,7 +703,7 @@ class PackagesTestCase(BaseTestCase):
                 )
             )
 
-        persisted_build = Build.query.one()
+        persisted_build = get_only_build()
         existing_changelog = persisted_build.changelog or ""
 
         new_build = BuildFactory.build(
@@ -727,7 +740,7 @@ class PackagesTestCase(BaseTestCase):
                 )
             )
 
-        persisted_build = Build.query.one()
+        persisted_build = get_only_build()
         existing_description = persisted_build.descriptions["enu"].description
 
         new_build = BuildFactory.build(
@@ -785,7 +798,7 @@ class PackagesTestCase(BaseTestCase):
                     data=spk.read(),
                 )
             )
-        self.assertBuildInserted(Build.query.one(), build, user)
+        self.assertBuildInserted(get_only_build(), build, user)
 
     def test_post_invalid_firmware_max(self):
         # os_max_ver that doesn't match the firmware regex returns 422.

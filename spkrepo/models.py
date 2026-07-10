@@ -65,6 +65,9 @@ def _utcnow():
 
 
 class User(db.Model, UserMixin):
+    """A registered user, including authentication credentials and their
+    authored/maintained package relationships."""
+
     __tablename__ = "user"
 
     # Columns
@@ -95,6 +98,9 @@ class User(db.Model, UserMixin):
 
 
 class Role(db.Model, RoleMixin):
+    """A named permission role (e.g. admin, developer, package_admin)
+    assignable to users."""
+
     __tablename__ = "role"
 
     # Columns
@@ -107,6 +113,7 @@ class Role(db.Model, RoleMixin):
 
     @classmethod
     def find(cls, name):
+        """Look up a role by its name, or return None if not found."""
         return (
             db.session.execute(select(cls).filter(cls.name == name)).scalars().first()
         )
@@ -122,6 +129,9 @@ user_datastore = SQLAlchemyUserDatastore(db, User, Role)
 
 
 class Architecture(db.Model):
+    """A supported NAS CPU architecture (e.g. x86_64, apollolake) that a
+    build can target."""
+
     __tablename__ = "architecture"
 
     __table_args__ = (db.Index("ix_architecture_id_code", "id", "code"),)
@@ -141,6 +151,9 @@ class Architecture(db.Model):
 
     @classmethod
     def find(cls, code, syno=False):
+        """Look up an architecture by its code, or return None if not
+        found. If syno=True, code is first translated from its Synology
+        DSM/SRM spelling (e.g. "88f6281") to its canonical form."""
         if syno:
             code = _ARCH_FROM_SYNO.get(code, code)
         return (
@@ -155,6 +168,9 @@ class Architecture(db.Model):
 
 
 class Language(db.Model):
+    """A supported language/locale code (e.g. enu, chs) used for version
+    display names and build descriptions."""
+
     __tablename__ = "language"
 
     # Columns
@@ -164,6 +180,7 @@ class Language(db.Model):
 
     @classmethod
     def find(cls, code):
+        """Look up a language by its code, or return None if not found."""
         return (
             db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
         )
@@ -176,6 +193,9 @@ class Language(db.Model):
 
 
 class Firmware(db.Model):
+    """A specific DSM/SRM firmware release, identified by its build
+    number, used to define a build's supported firmware range."""
+
     __tablename__ = "firmware"
 
     __table_args__ = (
@@ -200,12 +220,15 @@ class Firmware(db.Model):
 
     @classmethod
     def find(cls, build):
+        """Look up a firmware by its build number, or return None if not
+        found."""
         return (
             db.session.execute(select(cls).filter(cls.build == build)).scalars().first()
         )
 
     @property
     def firmware_string(self):
+        """Combined "version-build" string, e.g. "7.2-64570"."""
         return f"{self.version}-{self.build}"
 
     def __str__(self):
@@ -216,6 +239,8 @@ class Firmware(db.Model):
 
 
 class Screenshot(db.Model):
+    """A package screenshot image, stored on disk under DATA_PATH."""
+
     __tablename__ = "screenshot"
 
     # Columns
@@ -229,6 +254,8 @@ class Screenshot(db.Model):
     package = db.relationship("Package", back_populates="screenshots")
 
     def save(self, stream):
+        """Write the given binary stream to this screenshot's file on
+        disk at self.path."""
         with io.open(
             os.path.join(current_app.config["DATA_PATH"], self.path), "wb"
         ) as f:
@@ -252,6 +279,9 @@ class Screenshot(db.Model):
 
 
 class Icon(db.Model):
+    """A package icon image at a specific size (72/120/256px), stored on
+    disk under DATA_PATH."""
+
     __tablename__ = "icon"
 
     # Columns
@@ -267,6 +297,8 @@ class Icon(db.Model):
     version = db.relationship("Version", back_populates="icons")
 
     def save(self, stream):
+        """Write the given binary stream to this icon's file on disk at
+        self.path."""
         with io.open(
             os.path.join(current_app.config["DATA_PATH"], self.path), "wb"
         ) as f:
@@ -290,6 +322,9 @@ class Icon(db.Model):
 
 
 class Service(db.Model):
+    """A named system service that a version can declare as an
+    install-time dependency (INFO's install_dep_services)."""
+
     __tablename__ = "service"
 
     # Columns
@@ -298,6 +333,7 @@ class Service(db.Model):
 
     @classmethod
     def find(cls, code):
+        """Look up a service by its code, or return None if not found."""
         return (
             db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
         )
@@ -310,6 +346,8 @@ class Service(db.Model):
 
 
 class DisplayName(db.Model):
+    """A version's localized display name for a single language."""
+
     __tablename__ = "displayname"
 
     # Columns
@@ -331,6 +369,8 @@ class DisplayName(db.Model):
 
 
 class BuildDescription(db.Model):
+    """A build's localized description text for a single language."""
+
     __tablename__ = "build_description"
 
     # Columns
@@ -359,6 +399,10 @@ version_service_dependency = db.Table(
 
 
 class DownloadStat(db.Model):
+    """A single day's download count for a package, optionally broken
+    down by build, architecture, and/or firmware. Aggregated into
+    PackageDownloadCounts via a materialized view refresh."""
+
     __tablename__ = "download_stat"
 
     # Columns
@@ -451,6 +495,9 @@ build_architecture = db.Table(
 
 
 class Build(db.Model):
+    """A single compiled package artifact for one Version, targeting a
+    specific firmware range and set of architectures."""
+
     __tablename__ = "build"
 
     # Columns
@@ -517,20 +564,28 @@ class Build(db.Model):
 
     @classmethod
     def generate_filename(cls, package, version, firmware, architectures):
-        """
-        Backward-compatible signature.
-        Pass the intended firmware (typically firmware_min) from the caller.
+        """Build a Build's .spk filename from its constituent parts.
+
+        Takes package/version/firmware/architectures explicitly, rather
+        than reading them off an instance, because callers need the
+        filename to construct Build.path *before* the Build itself
+        exists (see api.py's upload handler). Pass the intended firmware
+        (typically firmware_min).
         """
         arch_codes = "-".join(a.code for a in architectures)
         return f"{package.name}.v{version.version}.f{firmware.build}[{arch_codes}].spk"
 
     def save(self, stream):
+        """Write the given binary stream to this build's file on disk at
+        self.path."""
         with io.open(
             os.path.join(current_app.config["DATA_PATH"], self.path), "wb"
         ) as f:
             f.write(stream.read())
 
     def calculate_md5(self):
+        """Compute and return this build's file's MD5 checksum by reading
+        it from disk in chunks."""
         if not self.path:
             raise ValueError("Path cannot be empty.")
         file_path = os.path.join(current_app.config["DATA_PATH"], self.path)
@@ -543,23 +598,13 @@ class Build(db.Model):
             return md5_hash.hexdigest()
 
     def calculate_size(self):
+        """Return this build's file size in bytes, read from disk."""
         if not self.path:
             raise ValueError("Path cannot be empty.")
         file_path = os.path.join(current_app.config["DATA_PATH"], self.path)
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found at path: {file_path}")
         return os.path.getsize(file_path)
-
-    @property
-    def storage_location(self):
-        """Returns 'remote', 'local', or 'missing' based on filesystem."""
-        sidecar = os.path.join(current_app.config["DATA_PATH"], self.path + ".json")
-        local = os.path.join(current_app.config["DATA_PATH"], self.path)
-        if os.path.exists(sidecar):
-            return "remote"
-        if os.path.exists(local):
-            return "local"
-        return "missing"
 
     def _before_insert(self):
         self._insert_path = os.path.join(current_app.config["DATA_PATH"], self.path)
@@ -694,6 +739,9 @@ Firmware.recent_target_download_count = db.column_property(
 
 
 class BuildManifest(db.Model):
+    """A build's install-time dependency/conflict/permission manifest,
+    parsed from its SPK INFO/conf files."""
+
     __tablename__ = "buildmanifest"
 
     # Columns
@@ -716,6 +764,9 @@ class BuildManifest(db.Model):
 
 
 class Version(db.Model):
+    """A single released version of a package, grouping one or more
+    architecture/firmware-specific Builds."""
+
     __tablename__ = "version"
 
     # Columns
@@ -765,6 +816,8 @@ class Version(db.Model):
 
     @hybrid_property
     def beta(self):
+        """True if this version has a report_url set, marking it as a
+        beta/testing release."""
         return bool(self.report_url)  # Treats None and "" as False
 
     @beta.expression
@@ -773,6 +826,7 @@ class Version(db.Model):
 
     @hybrid_property
     def all_builds_active(self):
+        """True if every build of this version is marked active."""
         return all(b.active for b in self.builds)
 
     @all_builds_active.expression
@@ -783,6 +837,8 @@ class Version(db.Model):
 
     @hybrid_property
     def all_builds_uploaded(self):
+        """True if every build of this version has been uploaded to
+        remote storage."""
         return all(b.storage == "remote" for b in self.builds)
 
     @all_builds_uploaded.expression
@@ -793,10 +849,12 @@ class Version(db.Model):
 
     @property
     def path(self):
+        """This version's directory path on disk, relative to DATA_PATH."""
         return os.path.join(self.package.name, str(self.version))
 
     @property
     def version_string(self):
+        """Combined "upstream_version-version" string, e.g. "1.4.103-10"."""
         return self.upstream_version + "-" + str(self.version)
 
     def _before_insert(self):
@@ -852,6 +910,8 @@ class Version(db.Model):
 
     @hybrid_property
     def total_size(self):
+        """Combined file size in bytes across all builds with a known
+        size, or None if no build has one."""
         # Returns None if no builds have a known size, rather than 0
         total = sum(b.size for b in self.builds if b.size is not None)
         return total or None
@@ -891,6 +951,8 @@ Version.recent_download_count = db.column_property(
 
 
 class Package(db.Model):
+    """A SynoCommunity package, grouping all of its released Versions."""
+
     __tablename__ = "package"
 
     # Columns
@@ -970,6 +1032,7 @@ class Package(db.Model):
 
     @classmethod
     def find(cls, name):
+        """Look up a package by its name, or return None if not found."""
         return (
             db.session.execute(select(cls).filter(cls.name == name)).scalars().first()
         )

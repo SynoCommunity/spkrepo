@@ -191,10 +191,14 @@ def populate_db():
 @with_appcontext
 def depopulate_db():
     """Delete all packages from database and file system."""
-    if db.session.query(Build).filter(Build.storage != "local").first():
+    if (
+        db.session.execute(db.select(Build).filter(Build.storage != "local"))
+        .scalars()
+        .first()
+    ):
         click.echo("Refusing: builds in Object Storage. Use local-only DB.")
         return
-    for package in Package.query.all():
+    for package in db.session.execute(db.select(Package)).scalars().all():
         db.session.delete(package)
         shutil.rmtree(
             os.path.join(current_app.config["DATA_PATH"], package.name),
@@ -213,7 +217,9 @@ def depopulate_db():
 def create_admin(username, email, password):
     """Create a new super admin user."""
     click.echo("Creating admin user…")
-    existing_admin = User.query.filter_by(email=email).first()
+    existing_admin = (
+        db.session.execute(db.select(User).filter_by(email=email)).scalars().first()
+    )
     if existing_admin:
         click.echo(f"'{username}' user already exists, skipping creation")
     else:
@@ -223,12 +229,16 @@ def create_admin(username, email, password):
             password=password,
         )
 
-    user = User.query.filter_by(email=email).first()
+    user = db.session.execute(db.select(User).filter_by(email=email)).scalars().first()
     if not user:
         raise ValueError(f"No user with email {email}")
 
     for role_name in ("admin", "package_admin", "developer"):
-        role = Role.query.filter_by(name=role_name).first()
+        role = (
+            db.session.execute(db.select(Role).filter_by(name=role_name))
+            .scalars()
+            .first()
+        )
         if not role:
             raise ValueError(f"No role with name '{role_name}'")
 
@@ -244,7 +254,11 @@ def create_admin(username, email, password):
 @with_appcontext
 def clean():
     """Clean data path, removes all packages on filesystem."""
-    if db.session.query(Build).filter(Build.storage != "local").first():
+    if (
+        db.session.execute(db.select(Build).filter(Build.storage != "local"))
+        .scalars()
+        .first()
+    ):
         click.echo("Refusing: builds in Object Storage. Use local-only DB.")
         return
     # do not remove and recreate the path since it may be a docker volume
@@ -397,7 +411,11 @@ def ingest_logs():
 
                 if url_path not in build_cache:
                     build = (
-                        db.session.query(Build).filter(Build.path == url_path).first()
+                        db.session.execute(
+                            db.select(Build).filter(Build.path == url_path)
+                        )
+                        .scalars()
+                        .first()
                     )
                     if build:
                         build_cache[url_path] = (build.id, build.version.package_id)
