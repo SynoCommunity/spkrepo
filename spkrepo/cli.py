@@ -210,8 +210,8 @@ def depopulate_db():
 
 
 @spkrepo.command("create_admin")
-@click.option("-u", "--username", default="admin", help="username")
-@click.option("-e", "--email", default="admin@synocommunity.com", help="email")
+@click.option("-u", "--username", prompt=True, default="admin", help="username")
+@click.option("-e", "--email", prompt=True, default="admin@synocommunity.com", help="email")
 @click.option("-p", "--password", prompt=True, hide_input=True, help="password")
 @with_appcontext
 def create_admin(username, email, password):
