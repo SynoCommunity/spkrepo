@@ -1517,6 +1517,167 @@ class IndexView(AdminIndexView):
                 )
             ).scalar()
 
+        fw_chart = {}
+        arch_chart = {}
+        pkg_chart = {}
+        today = date.today()
+        for label, days in (("7d", 7), ("30d", 30), ("90d", 90)):
+            cutoff = today - timedelta(days=days)
+
+            q = (
+                db.select(
+                    Firmware.version,
+                    db.func.coalesce(db.func.sum(DownloadStat.count), 0),
+                )
+                .select_from(Firmware)
+                .join(
+                    DownloadStat,
+                    DownloadStat.firmware_build == Firmware.build,
+                    isouter=True,
+                )
+            )
+            if not is_privileged:
+                q = (
+                    q.join(Package, Package.id == DownloadStat.package_id)
+                    .join(Package.maintainers)
+                    .where(User.id == current_user.id)
+                )
+            fw_chart[label] = [
+                (ver, int(total))
+                for ver, total in db.session.execute(
+                    q.where(DownloadStat.date >= cutoff)
+                    .group_by(Firmware.version)
+                    .order_by(
+                        db.desc(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+                    )
+                    .limit(10)
+                ).all()
+                if total
+            ]
+
+            # Step 1: get top-10 packages by total downloads
+            pq = (
+                db.select(
+                    Package.name,
+                    Package.id,
+                    db.func.coalesce(db.func.sum(DownloadStat.count), 0),
+                )
+                .select_from(Package)
+                .join(
+                    DownloadStat,
+                    DownloadStat.package_id == Package.id,
+                    isouter=True,
+                )
+            )
+            if not is_privileged:
+                pq = pq.join(Package.maintainers).where(User.id == current_user.id)
+            top_pkgs = [
+                (name, pid)
+                for name, pid, total in db.session.execute(
+                    pq.where(DownloadStat.date >= cutoff)
+                    .group_by(Package.name, Package.id)
+                    .order_by(
+                        db.desc(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+                    )
+                    .limit(10)
+                ).all()
+                if total
+            ]
+
+            # Step 2: version breakdown for those packages
+            pkg_ids = [pid for _, pid in top_pkgs]
+            pkg_names = [name for name, _ in top_pkgs]
+            _ver_str = db.func.coalesce(
+                Version.upstream_version + "-" + db.cast(Version.version, db.Unicode),
+                "Unknown",
+            )
+            _ver_sort = db.func.coalesce(Version.version, 0)
+            rows = db.session.execute(
+                db.select(
+                    Package.name,
+                    _ver_str,
+                    db.func.coalesce(db.func.sum(DownloadStat.count), 0),
+                )
+                .join(
+                    DownloadStat,
+                    DownloadStat.package_id == Package.id,
+                )
+                .outerjoin(Build, Build.id == DownloadStat.build_id)
+                .outerjoin(Version, Version.id == Build.version_id)
+                .where(
+                    Package.id.in_(pkg_ids),
+                    DownloadStat.date >= cutoff,
+                )
+                .group_by(Package.name, _ver_str, _ver_sort)
+                .order_by(Package.name, db.desc(_ver_sort))
+            ).all()
+
+            # Build version -> colour mapping
+            all_versions = sorted(set(r[1] for r in rows))
+            palette = [
+                "rgba(91,155,213,0.8)",
+                "rgba(230,126,34,0.8)",
+                "rgba(46,204,113,0.8)",
+                "rgba(155,89,182,0.8)",
+                "rgba(231,76,60,0.8)",
+                "rgba(52,152,219,0.8)",
+                "rgba(26,188,156,0.8)",
+                "rgba(241,196,15,0.8)",
+                "rgba(149,165,166,0.8)",
+                "rgba(44,62,80,0.8)",
+                "rgba(231,76,60,0.6)",
+                "rgba(52,152,219,0.6)",
+                "rgba(46,204,113,0.6)",
+                "rgba(155,89,182,0.6)",
+                "rgba(241,196,15,0.6)",
+                "rgba(230,126,34,0.6)",
+            ]
+            ver_colors = {
+                v: palette[i % len(palette)] for i, v in enumerate(all_versions)
+            }
+            ver_data = {v: [0] * len(pkg_names) for v in all_versions}
+            for name, ver, cnt in rows:
+                idx = pkg_names.index(name)
+                ver_data[ver][idx] = int(cnt)
+
+            pkg_chart[label] = {
+                "packages": pkg_names,
+                "versions": all_versions,
+                "segments": [ver_data[v] for v in all_versions],
+                "colors": [ver_colors[v] for v in all_versions],
+            }
+
+            q = (
+                db.select(
+                    Architecture.code,
+                    db.func.coalesce(db.func.sum(DownloadStat.count), 0),
+                )
+                .select_from(Architecture)
+                .join(
+                    DownloadStat,
+                    DownloadStat.architecture_id == Architecture.id,
+                    isouter=True,
+                )
+            )
+            if not is_privileged:
+                q = (
+                    q.join(Package, Package.id == DownloadStat.package_id)
+                    .join(Package.maintainers)
+                    .where(User.id == current_user.id)
+                )
+            arch_chart[label] = [
+                (code, int(total))
+                for code, total in db.session.execute(
+                    q.where(DownloadStat.date >= cutoff)
+                    .group_by(Architecture.code)
+                    .order_by(
+                        db.desc(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+                    )
+                    .limit(10)
+                ).all()
+                if total
+            ]
+
         return self.render(
             "admin/index.html",
             package_count=package_count,
@@ -1533,6 +1694,9 @@ class IndexView(AdminIndexView):
             ),
             recent_versions=recent_versions,
             recent_downloads=recent_downloads,
+            fw_chart=fw_chart,
+            arch_chart=arch_chart,
+            pkg_chart=pkg_chart,
         )
 
 
