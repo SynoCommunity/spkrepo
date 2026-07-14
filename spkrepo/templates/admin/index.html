@@ -111,5 +111,149 @@
     </div>
   </div>
 
+  {# ── Analytics charts ── #}
+  <div class="row mt-4">
+    <div class="col-lg-6 mb-4">
+      <div class="card border-info h-100">
+        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center" style="font-size: 0.85em;">
+          <span>Top 10 — NAS Downloads by DSM Version</span>
+          <span class="btn-group btn-group-sm" role="group" id="fw-range">
+            <button type="button" class="btn btn-outline-light active" data-range="7d">7d</button>
+            <button type="button" class="btn btn-outline-light" data-range="30d">30d</button>
+            <button type="button" class="btn btn-outline-light" data-range="90d">90d</button>
+          </span>
+        </div>
+        <div class="card-body">
+          <canvas id="fwChart" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6 mb-4">
+      <div class="card border-info h-100">
+        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center" style="font-size: 0.85em;">
+          <span>Top 10 — NAS Downloads by Architecture</span>
+          <span class="btn-group btn-group-sm" role="group" id="arch-range">
+            <button type="button" class="btn btn-outline-light active" data-range="7d">7d</button>
+            <button type="button" class="btn btn-outline-light" data-range="30d">30d</button>
+            <button type="button" class="btn btn-outline-light" data-range="90d">90d</button>
+          </span>
+        </div>
+        <div class="card-body">
+          <canvas id="archChart" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col">
+      <div class="card border-info">
+        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center" style="font-size: 0.85em;">
+          <span>Top 10 — NAS Downloads by Package</span>
+          <span class="btn-group btn-group-sm" role="group" id="pkg-range">
+            <button type="button" class="btn btn-outline-light active" data-range="7d">7d</button>
+            <button type="button" class="btn btn-outline-light" data-range="30d">30d</button>
+            <button type="button" class="btn btn-outline-light" data-range="90d">90d</button>
+          </span>
+        </div>
+        <div class="card-body">
+          <canvas id="pkgChart" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
+{% endblock %}
+
+{% block tail %}
+  {{ super() }}
+  <script src="{{ url_for('static', filename='js/chart.umd.js') }}"></script>
+  <script>
+  const fwData = {{ fw_chart | tojson }};
+  const archData = {{ arch_chart | tojson }};
+  const pkgData = {{ pkg_chart | tojson }};
+
+  const chartOptions = {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: function(ctx) {
+            return (ctx.dataset.label ? ctx.dataset.label + ': ' : '') + ctx.parsed.x.toLocaleString();
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        beginAtZero: true,
+        ticks: { callback: function(v) { return v >= 1000 ? (v/1000).toFixed(1)+'k' : v; } }
+      },
+      y: {
+        ticks: { font: { size: 11 } }
+      }
+    }
+  };
+
+  function makeChart(canvasId, data, rangeKey) {
+    const isPkg = canvasId === 'pkgChart';
+    const labels = data[rangeKey].packages || data[rangeKey].map(function(d) { return d[0]; });
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    var datasets;
+    if (isPkg) {
+      datasets = data[rangeKey].versions.map(function(v, i) {
+        return {
+          label: v,
+          data: data[rangeKey].segments[i],
+          backgroundColor: data[rangeKey].colors[i],
+          borderWidth: 0
+        };
+      });
+    } else {
+      datasets = [{
+        data: data[rangeKey].map(function(d) { return d[1]; }),
+        backgroundColor: 'rgba(91, 155, 213, 0.7)',
+        borderColor: 'rgba(91, 155, 213, 1)',
+        borderWidth: 1
+      }];
+    }
+    return new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: datasets
+      },
+      options: Object.assign({}, chartOptions, isPkg ? {
+        plugins: {
+          legend: { display: false },
+          tooltip: chartOptions.plugins.tooltip
+        },
+        scales: {
+          x: { stacked: true, beginAtZero: true,
+            ticks: { callback: function(v) { return v >= 1000 ? (v/1000).toFixed(1)+'k' : v; } }
+          },
+          y: { stacked: true, ticks: { font: { size: 11 } } }
+        }
+      } : {})
+    });
+  }
+
+  function bindRangeToggle(btnGroupId, canvasId, data) {
+    var chart = makeChart(canvasId, data, '7d');
+    document.getElementById(btnGroupId).addEventListener('click', function(e) {
+      if (e.target.dataset.range) {
+        this.querySelectorAll('.active').forEach(function(b) { b.classList.remove('active'); });
+        e.target.classList.add('active');
+        chart.destroy();
+        chart = makeChart(canvasId, data, e.target.dataset.range);
+      }
+    });
+  }
+
+  bindRangeToggle('fw-range', 'fwChart', fwData);
+  bindRangeToggle('arch-range', 'archChart', archData);
+  bindRangeToggle('pkg-range', 'pkgChart', pkgData);
+  </script>
 {% endblock %}
