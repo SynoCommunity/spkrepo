@@ -5,6 +5,7 @@ import sys
 import jinja2
 from flask import Flask, request
 from flask_admin import Admin
+from flask_security.signals import user_registered
 
 from . import config as default_config
 from .cli import spkrepo as spkrepo_cli
@@ -104,6 +105,12 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
 
     # Auth
     security.init_app(app, user_datastore, register_form=SpkrepoRegisterForm)
+
+    @user_registered.connect_via(app)
+    def _on_user_registered(sender, user, **extra):
+        """New registrations start inactive — an admin must activate them."""
+        user.active = False
+        db.session.commit()
 
     # Services
     mail.init_app(app)
