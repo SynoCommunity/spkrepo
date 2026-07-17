@@ -181,7 +181,18 @@
       tooltip: {
         callbacks: {
           label: function(ctx) {
-            return (ctx.dataset.label ? ctx.dataset.label + ': ' : '') + ctx.parsed.x.toLocaleString();
+            var val = ctx.parsed.x;
+            var total;
+            if (ctx.dataset.label) {
+              var i = ctx.dataIndex;
+              total = 0;
+              ctx.chart.data.datasets.forEach(function(ds) { total += ds.data[i]; });
+            } else {
+              total = ctx.dataset.data.reduce(function(a, b) { return a + b; }, 0);
+            }
+            var pct = total > 0 ? (val / total * 100).toFixed(1) : 0;
+            return (ctx.dataset.label ? ctx.dataset.label + ': ' : '') +
+              val.toLocaleString() + ' (' + pct + '%)';
           }
         }
       }
