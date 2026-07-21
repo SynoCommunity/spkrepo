@@ -61,7 +61,7 @@ dev = [
     "mock>=5.2.0",
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
-    "setuptools>=80.9.0",
+    "setuptools>=83.0.0",
 ]
 
 [project.optional-dependencies]
