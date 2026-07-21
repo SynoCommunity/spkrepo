@@ -1329,7 +1329,7 @@ requires-dist = [
     { name = "flask-sqlalchemy", specifier = ">=3.1.1" },
     { name = "flask-wtf", specifier = ">=1.2.2" },
     { name = "gunicorn", specifier = ">=23.0.0" },
-    { name = "pillow", specifier = ">=12.0.0" },
+    { name = "pillow", specifier = ">=12.3.0" },
     { name = "psycopg2", specifier = ">=2.9.11" },
     { name = "pydata-sphinx-theme", marker = "extra == 'docs'", specifier = ">=0.16.0" },
     { name = "python-gnupg", specifier = ">=0.5.5" },
@@ -1350,7 +1350,7 @@ dev = [
     { name = "mock", specifier = ">=5.2.0" },
     { name = "pre-commit", specifier = ">=4.5.1" },
     { name = "pytest", specifier = ">=9.0.2" },
-    { name = "setuptools", specifier = ">=80.9.0" },
+    { name = "setuptools", specifier = ">=83.0.0" },
 ]
 
 [[package]]
