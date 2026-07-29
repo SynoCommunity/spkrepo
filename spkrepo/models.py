@@ -949,6 +949,15 @@ Version.recent_download_count = db.column_property(
     deferred=True,
 )
 
+Version.last_download_date = db.column_property(
+    db.select(db.func.max(DownloadStat.date))
+    .join(Build, Build.id == DownloadStat.build_id)
+    .where(Build.version_id == Version.id)
+    .correlate(Version)
+    .scalar_subquery(),
+    deferred=True,
+)
+
 
 class Package(db.Model):
     """A SynoCommunity package, grouping all of its released Versions."""

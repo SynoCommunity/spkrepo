@@ -501,7 +501,7 @@ class UserView(ModelView):
     column_formatters = {
         "active": _bool_formatter,
         "confirmed_at": lambda v, c, m, p: (
-            m.confirmed_at.strftime("%Y-%m-%d %H:%M:%S") if m.confirmed_at else None
+            m.confirmed_at.strftime("%Y-%m-%d %H:%M:%S") if m.confirmed_at else "—"
         ),
     }
 
@@ -930,7 +930,7 @@ class PackageView(ModelView):
             else "0"
         ),
         "last_download_date": lambda v, c, m, p: (
-            m.last_download_date.strftime("%Y-%m-%d") if m.last_download_date else None
+            m.last_download_date.strftime("%Y-%m-%d") if m.last_download_date else "—"
         ),
     }
 
@@ -1033,6 +1033,24 @@ class VersionView(SignResyncMixin, ModelView):
         "total_size",
         "insert_date",
     )
+    column_details_list = (
+        "package",
+        "version",
+        "upstream_version",
+        "report_url",
+        "distributor",
+        "distributor_url",
+        "maintainer",
+        "maintainer_url",
+        "install_wizard",
+        "upgrade_wizard",
+        "startable",
+        "license",
+        "insert_date",
+        "download_count",
+        "recent_download_count",
+        "last_download_date",
+    )
     column_labels = {
         "package.name": "Package Name",
         "version_string": "Version",
@@ -1044,6 +1062,7 @@ class VersionView(SignResyncMixin, ModelView):
         "total_size": "Total Size",
         "download_count": "Downloads",
         "recent_download_count": "Downloads (90d)",
+        "last_download_date": "Last Download",
     }
     column_filters = (
         "package.name",
@@ -1089,6 +1108,9 @@ class VersionView(SignResyncMixin, ModelView):
         ),
         "recent_download_count": lambda v, c, m, p: (
             f"{m.recent_download_count:,}" if m.recent_download_count else "0"
+        ),
+        "last_download_date": lambda v, c, m, p: (
+            m.last_download_date.strftime("%Y-%m-%d") if m.last_download_date else "—"
         ),
     }
     column_default_sort = (Version.insert_date, True)
