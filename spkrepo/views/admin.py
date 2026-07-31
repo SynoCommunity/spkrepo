@@ -915,6 +915,7 @@ class PackageView(ModelView):
         ),
         ("last_download_date", "last_download_date"),
     )
+    column_default_sort = "name"
     column_formatters = {
         "insert_date": lambda v, c, m, p: (
             m.insert_date.strftime("%Y-%m-%d") if m.insert_date else None
