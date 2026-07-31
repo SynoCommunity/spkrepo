@@ -1137,8 +1137,8 @@ class VersionView(DetailsNavigationMixin, SignResyncMixin, ModelView):
 
     column_list = (
         "package",
-        "upstream_version",
         "version",
+        "upstream_version",
         "beta",
         "startable",
         "all_builds_active",
@@ -1396,9 +1396,9 @@ class BuildView(DetailsNavigationMixin, SignResyncMixin, ModelView):
         "architectures",
         "firmware_min",
         "publisher",
-        "insert_date",
-        "storage",
         "active",
+        "storage",
+        "insert_date",
     )
     column_labels = {
         "version.package": "Package",
