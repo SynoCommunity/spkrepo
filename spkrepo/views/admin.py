@@ -815,6 +815,21 @@ class DetailsNavigationMixin:
         self._current_total = len(ids)
         return prev_id, next_id
 
+    def _details_sections(self):
+        """Build [(title, [(column, label), ...]), ...] for the template.
+
+        Groups ``column_details_list`` by the view's ``details_sections``
+        mapping, preserving column order and resolving labels.
+        """
+        labels = dict(self._details_columns)
+        sections = getattr(self, "details_sections", None)
+        if not sections:
+            return [("", labels.items())]
+        result = []
+        for title, cols in sections.items():
+            result.append((title, [(c, labels[c]) for c in cols if c in labels]))
+        return result
+
     @expose("/details/")
     def details_view(self):
         obj_id = request.args.get("id", type=int)
@@ -825,6 +840,7 @@ class DetailsNavigationMixin:
         self._template_args["next_id"] = next_id
         self._template_args["current_pos"] = self._current_pos
         self._template_args["current_total"] = self._current_total
+        self._template_args["details_sections"] = self._details_sections()
         return super().details_view()
 
 
@@ -1051,6 +1067,19 @@ class PackageView(DetailsNavigationMixin, ModelView):
         "arch_breakdown",
         "firmware_breakdown",
     )
+    details_sections = {
+        "Identity": ("name",),
+        "People": ("author", "maintainers"),
+        "Status": ("has_active_builds",),
+        "Date": ("insert_date",),
+        "Analytics": (
+            "download_count",
+            "recent_download_count",
+            "last_download_date",
+            "arch_breakdown",
+            "firmware_breakdown",
+        ),
+    }
 
     form_columns = ("name", "author", "maintainers")
     form_args = {"name": {"validators": [Regexp(SPK.package_re)]}}
@@ -1135,6 +1164,23 @@ class VersionView(DetailsNavigationMixin, SignResyncMixin, ModelView):
         "recent_download_count",
         "last_download_date",
     )
+    details_sections = {
+        "Identity": ("package", "version", "upstream_version"),
+        "Metadata": (
+            "report_url",
+            "distributor",
+            "distributor_url",
+            "maintainer",
+            "maintainer_url",
+        ),
+        "Features": ("install_wizard", "upgrade_wizard", "startable", "license"),
+        "Date": ("insert_date",),
+        "Analytics": (
+            "download_count",
+            "recent_download_count",
+            "last_download_date",
+        ),
+    }
     column_labels = {
         "package.name": "Package Name",
         "version_string": "Version",
@@ -1413,6 +1459,14 @@ class BuildView(DetailsNavigationMixin, SignResyncMixin, ModelView):
         "storage",
         "insert_date",
     )
+    details_sections = {
+        "Identity": ("version.package", "version.version", "version.upstream_version"),
+        "Targets": ("architectures", "firmware_min", "firmware_max"),
+        "People": ("publisher",),
+        "File": ("path", "size", "md5", "checksum", "changelog"),
+        "Status": ("signed", "active", "storage"),
+        "Date": ("insert_date",),
+    }
     column_formatters_detail = {
         "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),
         "size": lambda v, c, m, p: (
