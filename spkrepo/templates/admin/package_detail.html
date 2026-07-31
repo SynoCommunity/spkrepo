@@ -23,6 +23,10 @@
   </ul>
   {% endblock %}
 
+  {% block details_nav %}
+    {% include 'admin/_details_nav.html' %}
+  {% endblock %}
+
   {% block details_search %}
     <div class="form-inline fa_filter_container col-lg-6">
       <label for="fa_filter">{{ _gettext('Filter') }}</label>
@@ -31,62 +35,68 @@
   {% endblock %}
 
   {% block details_table %}
-    <table class="table table-hover table-bordered searchable">
-      {% for c, name in details_columns %}
-        <tr>
-          <td><b>{% if c == 'recent_download_count' %}Downloads (90d){% else %}{{ name }}{% endif %}</b></td>
-          <td>
-            {% if c == 'arch_breakdown' %}
-              {% if arch_breakdown %}
-                <table style="width: 100%; max-width: 380px; border: none; border-spacing: 0">
-                  {% for code, count, pct in arch_breakdown %}
-                    <tr>
-                      <td style="white-space: nowrap; padding-right: 10px; font-family: monospace; width: 1%">
-                        {{ code }}
-                      </td>
-                      <td style="width: 100%; padding-right: 10px">
-                        <div style="background: #e9ecef; border-radius: 3px; height: 14px">
-                          <div style="background: #5b9bd5; border-radius: 3px; height: 14px; width: {{ pct | round(1) }}%"></div>
-                        </div>
-                      </td>
-                      <td style="white-space: nowrap; color: #666; font-size: 0.9em">
-                        {{ "{:,}".format(count) }} ({{ pct | round | int }}%)
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </table>
-              {% else %}
-                <span class="text-muted">No NAS downloads in the last 90 days</span>
-              {% endif %}
-            {% elif c == 'firmware_breakdown' %}
-              {% if firmware_breakdown %}
-                <table style="width: 100%; max-width: 380px; border: none; border-spacing: 0">
-                  {% for label, count, pct in firmware_breakdown %}
-                    <tr>
-                      <td style="white-space: nowrap; padding-right: 10px; font-family: monospace; width: 1%">
-                        {{ label }}
-                      </td>
-                      <td style="width: 100%; padding-right: 10px">
-                        <div style="background: #e9ecef; border-radius: 3px; height: 14px">
-                          <div style="background: #e67e22; border-radius: 3px; height: 14px; width: {{ pct | round(1) }}%"></div>
-                        </div>
-                      </td>
-                      <td style="white-space: nowrap; color: #666; font-size: 0.9em">
-                        {{ "{:,}".format(count) }} ({{ pct | round | int }}%)
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </table>
-              {% else %}
-                <span class="text-muted">No NAS downloads in the last 90 days</span>
-              {% endif %}
-            {% else %}
-              {{ get_value(model, c) }}
-            {% endif %}
-          </td>
-        </tr>
+  {% macro detail_row(c, name) %}
+    <td><b>{% if c == 'recent_download_count' %}Downloads (90d){% else %}{{ name }}{% endif %}</b></td>
+    <td>
+      {% if c == 'arch_breakdown' %}
+        {% if arch_breakdown %}
+          <table style="width: 100%; max-width: 380px; border: none; border-spacing: 0">
+            {% for code, count, pct in arch_breakdown %}
+              <tr>
+                <td style="white-space: nowrap; padding-right: 10px; font-family: monospace; width: 1%">{{ code }}</td>
+                <td style="width: 100%; padding-right: 10px">
+                  <div style="background: #e9ecef; border-radius: 3px; height: 14px">
+                    <div style="background: #5b9bd5; border-radius: 3px; height: 14px; width: {{ pct | round(1) }}%"></div>
+                  </div>
+                </td>
+                <td style="white-space: nowrap; color: #666; font-size: 0.9em">
+                  {{ "{:,}".format(count) }} ({{ pct | round | int }}%)
+                </td>
+              </tr>
+            {% endfor %}
+          </table>
+        {% else %}
+          <span class="text-muted">No NAS downloads in the last 90 days</span>
+        {% endif %}
+      {% elif c == 'firmware_breakdown' %}
+        {% if firmware_breakdown %}
+          <table style="width: 100%; max-width: 380px; border: none; border-spacing: 0">
+            {% for label, count, pct in firmware_breakdown %}
+              <tr>
+                <td style="white-space: nowrap; padding-right: 10px; font-family: monospace; width: 1%">{{ label }}</td>
+                <td style="width: 100%; padding-right: 10px">
+                  <div style="background: #e9ecef; border-radius: 3px; height: 14px">
+                    <div style="background: #e67e22; border-radius: 3px; height: 14px; width: {{ pct | round(1) }}%"></div>
+                  </div>
+                </td>
+                <td style="white-space: nowrap; color: #666; font-size: 0.9em">
+                  {{ "{:,}".format(count) }} ({{ pct | round | int }}%)
+                </td>
+              </tr>
+            {% endfor %}
+          </table>
+        {% else %}
+          <span class="text-muted">No NAS downloads in the last 90 days</span>
+        {% endif %}
+      {% else %}
+        {{ get_value(model, c) }}
+      {% endif %}
+    </td>
+  {% endmacro %}
+
+  <table class="table table-hover table-bordered searchable">
+    {% for title, cols in details_sections %}
+      <tr>
+        <td rowspan="{{ cols|length }}" class="align-middle font-weight-bold table-secondary" style="width: 140px;{% if not loop.last %} border-bottom: 1px solid #adb5bd;{% endif %}">{{ title }}</td>
+        {% for c, name in cols %}
+          {% if loop.first %}{{ detail_row(c, name) }}{% endif %}
+        {% endfor %}
+      </tr>
+      {% for c, name in cols %}
+        {% if not loop.first %}<tr>{{ detail_row(c, name) }}</tr>{% endif %}
       {% endfor %}
-    </table>
+    {% endfor %}
+  </table>
   {% endblock %}
 {% endblock %}
 

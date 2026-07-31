@@ -5,6 +5,7 @@ import os
 import shutil
 import uuid
 from datetime import date, timedelta
+from urllib.parse import parse_qs, urlparse
 
 from celery.result import AsyncResult
 from flask import (
@@ -745,7 +746,105 @@ class ScreenshotView(ModelView):
     }
 
 
-class PackageView(ModelView):
+class DetailsNavigationMixin:
+    """Add prev/next navigation to the admin details view.
+
+    Computes the previous and next record IDs relative to the current
+    one, honoring the originating list view's sort, filters, and search.
+    Exposes them to the template as ``prev_id`` / ``next_id``.
+    """
+
+    def _active_filters(self):
+        """Return the filters active on the originating list view.
+
+        The details URL carries the list view's URL (with its ``flt*``
+        query params) in the ``url`` argument; parse those back into the
+        (index, name, value) tuples Flask-Admin expects.
+        """
+        return_url = request.args.get("url", "")
+        if not return_url or not self._filter_args:
+            return []
+        qs = parse_qs(urlparse(return_url).query)
+        filters = []
+        for arg, values in qs.items():
+            if not arg.startswith("flt") or "_" not in arg or not values:
+                continue
+            pos, key = arg[3:].split("_", 1)
+            if key in self._filter_args:
+                idx, flt = self._filter_args[key]
+                value = values[0]
+                if flt.validate(value):
+                    filters.append((int(pos), (idx, flt.name, value)))
+        return [f[1] for f in sorted(filters, key=lambda n: n[0])]
+
+    def _list_args(self):
+        """Return (sort_idx, desc, search) from the list view's return URL."""
+        return_url = request.args.get("url", "")
+        sort_idx = None
+        desc = False
+        search = None
+        if return_url:
+            qs = parse_qs(urlparse(return_url).query)
+            if "sort" in qs and qs["sort"][0]:
+                sort_idx = int(qs["sort"][0])
+                desc = "desc" in qs and qs["desc"][0] == "1"
+            if "search" in qs and qs["search"][0]:
+                search = qs["search"][0]
+        return sort_idx, desc, search
+
+    def _adjacent_ids(self, obj_id):
+        query = self.get_query()
+        joins = {}
+
+        filters = self._active_filters()
+        if filters:
+            query, _, joins, _ = self._apply_filters(query, None, joins, {}, filters)
+
+        sort_idx, desc, search = self._list_args()
+        if search:
+            query, _, joins, _ = self._apply_search(query, None, joins, {}, search)
+        query, joins = self._apply_sorting(query, joins, sort_idx, desc)
+
+        ids = [row[0] for row in query.with_entities(self.model.id).all()]
+        if obj_id not in ids:
+            return None, None
+        pos = ids.index(obj_id)
+        prev_id = ids[pos - 1] if pos > 0 else None
+        next_id = ids[pos + 1] if pos < len(ids) - 1 else None
+        self._current_pos = pos + 1
+        self._current_total = len(ids)
+        return prev_id, next_id
+
+    def _details_sections(self):
+        """Build [(title, [(column, label), ...]), ...] for the template.
+
+        Groups ``column_details_list`` by the view's ``details_sections``
+        mapping, preserving column order and resolving labels.
+        """
+        labels = dict(self._details_columns)
+        sections = getattr(self, "details_sections", None)
+        if not sections:
+            return [("", labels.items())]
+        result = []
+        for title, cols in sections.items():
+            result.append((title, [(c, labels[c]) for c in cols if c in labels]))
+        return result
+
+    @expose("/details/")
+    def details_view(self):
+        obj_id = request.args.get("id", type=int)
+        self._current_pos = None
+        self._current_total = None
+        prev_id, next_id = self._adjacent_ids(obj_id) if obj_id else (None, None)
+        self._template_args["prev_id"] = prev_id
+        self._template_args["next_id"] = next_id
+        self._template_args["current_pos"] = self._current_pos
+        self._template_args["current_total"] = self._current_total
+        self._template_args["details_sections"] = self._details_sections()
+        return super().details_view()
+
+
+class PackageView(DetailsNavigationMixin, ModelView):
     """View for :class:`~spkrepo.models.Package`"""
 
     def __init__(self, **kwargs):
@@ -968,12 +1067,25 @@ class PackageView(ModelView):
         "arch_breakdown",
         "firmware_breakdown",
     )
+    details_sections = {
+        "Identity": ("name",),
+        "People": ("author", "maintainers"),
+        "Status": ("has_active_builds",),
+        "Date": ("insert_date",),
+        "Analytics": (
+            "download_count",
+            "recent_download_count",
+            "last_download_date",
+            "arch_breakdown",
+            "firmware_breakdown",
+        ),
+    }
 
     form_columns = ("name", "author", "maintainers")
     form_args = {"name": {"validators": [Regexp(SPK.package_re)]}}
 
 
-class VersionView(SignResyncMixin, ModelView):
+class VersionView(DetailsNavigationMixin, SignResyncMixin, ModelView):
     """View for :class:`~spkrepo.models.Version`"""
 
     def __init__(self, **kwargs):
@@ -1025,8 +1137,8 @@ class VersionView(SignResyncMixin, ModelView):
 
     column_list = (
         "package",
-        "upstream_version",
         "version",
+        "upstream_version",
         "beta",
         "startable",
         "all_builds_active",
@@ -1052,6 +1164,23 @@ class VersionView(SignResyncMixin, ModelView):
         "recent_download_count",
         "last_download_date",
     )
+    details_sections = {
+        "Identity": ("package", "version", "upstream_version"),
+        "Metadata": (
+            "report_url",
+            "distributor",
+            "distributor_url",
+            "maintainer",
+            "maintainer_url",
+        ),
+        "Features": ("install_wizard", "upgrade_wizard", "startable", "license"),
+        "Date": ("insert_date",),
+        "Analytics": (
+            "download_count",
+            "recent_download_count",
+            "last_download_date",
+        ),
+    }
     column_labels = {
         "package.name": "Package Name",
         "version_string": "Version",
@@ -1231,7 +1360,7 @@ class VersionView(SignResyncMixin, ModelView):
             )
 
 
-class BuildView(SignResyncMixin, ModelView):
+class BuildView(DetailsNavigationMixin, SignResyncMixin, ModelView):
     """View for :class:`~spkrepo.models.Build`"""
 
     def __init__(self, **kwargs):
@@ -1267,9 +1396,9 @@ class BuildView(SignResyncMixin, ModelView):
         "architectures",
         "firmware_min",
         "publisher",
-        "insert_date",
-        "storage",
         "active",
+        "storage",
+        "insert_date",
     )
     column_labels = {
         "version.package": "Package",
@@ -1311,6 +1440,32 @@ class BuildView(SignResyncMixin, ModelView):
         ),
         "storage": _storage_formatter,
         "active": _bool_formatter,
+    }
+    column_details_list = (
+        "version.package",
+        "version.version",
+        "version.upstream_version",
+        "architectures",
+        "firmware_min",
+        "firmware_max",
+        "publisher",
+        "path",
+        "size",
+        "md5",
+        "checksum",
+        "changelog",
+        "signed",
+        "active",
+        "storage",
+        "insert_date",
+    )
+    details_sections = {
+        "Identity": ("version.package", "version.version", "version.upstream_version"),
+        "Targets": ("architectures", "firmware_min", "firmware_max"),
+        "People": ("publisher",),
+        "File": ("path", "size", "md5", "checksum", "changelog"),
+        "Status": ("signed", "active", "storage"),
+        "Date": ("insert_date",),
     }
     column_formatters_detail = {
         "insert_date": lambda v, c, m, p: m.insert_date.strftime("%Y-%m-%d %H:%M:%S"),

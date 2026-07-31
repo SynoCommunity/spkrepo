@@ -1,0 +1,13 @@
+{% if prev_id or next_id %}
+<div class="d-flex justify-content-between align-items-center mt-3 mb-3">
+  <a class="btn btn-secondary btn-sm{% if not prev_id %} disabled{% endif %}"
+     href="{% if prev_id %}{{ get_url('.details_view', id=prev_id, url=return_url) }}{% else %}javascript:void(0){% endif %}">
+    &larr; Previous
+  </a>
+  <span class="text-muted">{{ current_pos }} / {{ current_total }}</span>
+  <a class="btn btn-secondary btn-sm{% if not next_id %} disabled{% endif %}"
+     href="{% if next_id %}{{ get_url('.details_view', id=next_id, url=return_url) }}{% else %}javascript:void(0){% endif %}">
+    Next &rarr;
+  </a>
+</div>
+{% endif %}
