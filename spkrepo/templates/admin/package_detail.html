@@ -23,6 +23,10 @@
   </ul>
   {% endblock %}
 
+  {% block details_nav %}
+    {% include 'admin/_details_nav.html' %}
+  {% endblock %}
+
   {% block details_search %}
     <div class="form-inline fa_filter_container col-lg-6">
       <label for="fa_filter">{{ _gettext('Filter') }}</label>
