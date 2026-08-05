@@ -38,7 +38,8 @@ Available actions appear in the dropdown after selecting items in a list view.
 
 **03 Upload (Versions / Builds)**
     Uploads local SPK files to object storage (S3-compatible).
-    Build must be local, active, and signed.
+    Build must be local and signed. Inactive builds may be uploaded to
+    free local disk space without appearing in the catalog.
 
 **04 Rehome (Versions / Builds)**
     Downloads a build from object storage back to local disk for editing.

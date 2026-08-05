@@ -383,8 +383,6 @@ class SignResyncMixin:
         for label, build in self._iter_builds(ids):
             if build.storage != "local":
                 continue
-            if not build.active:
-                continue
             if not build.signed and not _detect_and_fix_signed(build):
                 continue
             result = upload_to_storage.delay(build.id, str(build))
@@ -401,7 +399,7 @@ class SignResyncMixin:
             )
         else:
             flash(
-                "No builds found to upload (must be local, active, and signed).",
+                "No builds found to upload (must be local and signed).",
                 "warning",
             )
 
