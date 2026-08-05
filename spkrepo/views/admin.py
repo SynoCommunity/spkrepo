@@ -744,8 +744,14 @@ class ScreenshotView(ModelView):
     }
 
 
+# ---------------------------------------------------------------------------
+# Mixin for prev/next navigation on admin details views
+# ---------------------------------------------------------------------------
+
+
 class DetailsNavigationMixin:
-    """Add prev/next navigation to the admin details view.
+    """
+    Mixin that adds prev/next navigation to the admin details view.
 
     Computes the previous and next record IDs relative to the current
     one, honoring the originating list view's sort, filters, and search.
@@ -791,6 +797,7 @@ class DetailsNavigationMixin:
         return sort_idx, desc, search
 
     def _adjacent_ids(self, obj_id):
+        """Return (prev_id, next_id) relative to obj_id in the list order."""
         qs = self._list_url_args()
         query = self.get_query()
         joins = {}
@@ -845,6 +852,7 @@ class DetailsNavigationMixin:
 
     @expose("/details/")
     def details_view(self):
+        """Render the details view with prev/next nav and sectioned layout."""
         obj_id = request.args.get("id", type=int)
         self._current_pos = None
         self._current_total = None
