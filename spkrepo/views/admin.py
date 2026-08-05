@@ -744,25 +744,34 @@ class ScreenshotView(ModelView):
     }
 
 
+# ---------------------------------------------------------------------------
+# Mixin for prev/next navigation on admin details views
+# ---------------------------------------------------------------------------
+
+
 class DetailsNavigationMixin:
-    """Add prev/next navigation to the admin details view.
+    """
+    Mixin that adds prev/next navigation to the admin details view.
 
     Computes the previous and next record IDs relative to the current
     one, honoring the originating list view's sort, filters, and search.
     Exposes them to the template as ``prev_id`` / ``next_id``.
     """
 
-    def _active_filters(self):
-        """Return the filters active on the originating list view.
-
-        The details URL carries the list view's URL (with its ``flt*``
-        query params) in the ``url`` argument; parse those back into the
-        (index, name, value) tuples Flask-Admin expects.
-        """
+    def _list_url_args(self):
+        """Return the originating list view's URL query parameters."""
         return_url = request.args.get("url", "")
-        if not return_url or not self._filter_args:
+        if not return_url:
+            return {}
+        return parse_qs(urlparse(return_url).query)
+
+    def _active_filters(self, qs):
+        """Return the ``flt*`` filters active on the originating list view.
+
+        Parses them into the (index, name, value) tuples Flask-Admin expects.
+        """
+        if not qs or not self._filter_args:
             return []
-        qs = parse_qs(urlparse(return_url).query)
         filters = []
         for arg, values in qs.items():
             if not arg.startswith("flt") or "_" not in arg or not values:
@@ -775,33 +784,46 @@ class DetailsNavigationMixin:
                     filters.append((int(pos), (idx, flt.name, value)))
         return [f[1] for f in sorted(filters, key=lambda n: n[0])]
 
-    def _list_args(self):
-        """Return (sort_idx, desc, search) from the list view's return URL."""
-        return_url = request.args.get("url", "")
+    def _list_args(self, qs):
+        """Return (sort_idx, desc, search) from the list view's URL query."""
         sort_idx = None
         desc = False
         search = None
-        if return_url:
-            qs = parse_qs(urlparse(return_url).query)
-            if "sort" in qs and qs["sort"][0]:
-                sort_idx = int(qs["sort"][0])
-                desc = "desc" in qs and qs["desc"][0] == "1"
-            if "search" in qs and qs["search"][0]:
-                search = qs["search"][0]
+        if "sort" in qs and qs["sort"][0]:
+            sort_idx = int(qs["sort"][0])
+            desc = "desc" in qs and qs["desc"][0] == "1"
+        if "search" in qs and qs["search"][0]:
+            search = qs["search"][0]
         return sort_idx, desc, search
 
     def _adjacent_ids(self, obj_id):
+        """Return (prev_id, next_id) relative to obj_id in the list order."""
+        qs = self._list_url_args()
         query = self.get_query()
         joins = {}
 
-        filters = self._active_filters()
+        filters = self._active_filters(qs)
         if filters:
             query, _, joins, _ = self._apply_filters(query, None, joins, {}, filters)
 
-        sort_idx, desc, search = self._list_args()
-        if search:
+        sort_idx, desc, search = self._list_args(qs)
+        if search and self._search_supported:
             query, _, joins, _ = self._apply_search(query, None, joins, {}, search)
-        query, joins = self._apply_sorting(query, joins, sort_idx, desc)
+
+        sort_column = None
+        if sort_idx is not None:
+            col_tuple = self._get_column_by_idx(sort_idx)
+            if col_tuple:
+                sort_column = col_tuple[0]
+        query, joins = self._apply_sorting(query, joins, sort_column, desc)
+
+        # Custom archived filter on PackageView is not a standard flt* filter
+        if hasattr(self.model, "has_active_builds"):
+            archived = qs.get("archived", [None])[0]
+            if archived == "yes":
+                query = query.filter(~self.model.has_active_builds)
+            elif archived == "no":
+                query = query.filter(self.model.has_active_builds)
 
         ids = [row[0] for row in query.with_entities(self.model.id).all()]
         if obj_id not in ids:
@@ -830,6 +852,7 @@ class DetailsNavigationMixin:
 
     @expose("/details/")
     def details_view(self):
+        """Render the details view with prev/next nav and sectioned layout."""
         obj_id = request.args.get("id", type=int)
         self._current_pos = None
         self._current_total = None
