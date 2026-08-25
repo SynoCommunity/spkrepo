@@ -62,7 +62,7 @@ MIGRATE_DIRECTORY = os.path.abspath(
 )
 
 # Cache
-CACHE_TYPE = "redis"
+CACHE_TYPE = "flask_caching.backends.RedisCache"
 CACHE_REDIS_HOST = "localhost"
 
 # Tasks
