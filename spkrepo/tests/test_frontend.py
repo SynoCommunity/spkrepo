@@ -203,7 +203,10 @@ class RegisterTestCase(BaseTestCase):
         response = self.client.post(url_for_security("register"), data=data)
         self.assertIn("Invalid email address", response.data.decode())
 
-    def test_unique_user_username(self):
+    def test_unique_user_username_no_enumeration(self):
+        # Registering an already-taken username must NOT reveal that it exists
+        # (SECURITY_RETURN_GENERIC_RESPONSES) — the response is the same
+        # generic redirect as a successful submission.
         data = dict(
             username="test",
             email="test@gmail.com",
@@ -212,7 +215,8 @@ class RegisterTestCase(BaseTestCase):
         )
         self.client.post(url_for_security("register"), data=data)
         response = self.client.post(url_for_security("register"), data=data)
-        self.assertIn("Username already taken", response.data.decode())
+        self.assertNotIn("Username already taken", response.data.decode())
+        self.assertNotIn("Email already registered", response.data.decode())
 
     def test_username_too_short(self):
         # Length(min=4) validator on SpkrepoRegisterForm.username
@@ -240,3 +244,16 @@ class RegisterTestCase(BaseTestCase):
         user = user_datastore.find_user(username="newuser")
         self.assertIsNotNone(user)
         self.assertEqual(user.email, "newuser@gmail.com")
+
+    def test_honeypot_rejects_bot(self):
+        # A filled honeypot field means an automated bot — the submitted
+        # registration must be rejected and no user created.
+        data = dict(
+            username="botuser",
+            email="bot@gmail.com",
+            password="password",
+            password_confirm="password",
+            website="http://spam.example.com",
+        )
+        self.client.post(url_for_security("register"), data=data)
+        self.assertIsNone(user_datastore.find_user(username="botuser"))

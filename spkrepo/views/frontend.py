@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
+import logging
 import secrets
 
-from flask import Blueprint, abort, redirect, render_template, url_for
+from flask import Blueprint, abort, redirect, render_template, request, url_for
 from flask_security import RegisterFormV2, current_user, login_required
 from flask_security.forms import ChangePasswordForm
 from flask_wtf import FlaskForm
@@ -19,6 +20,8 @@ from ..models import (
 )
 
 frontend = Blueprint("frontend", __name__)
+
+logger = logging.getLogger(__name__)
 
 
 @frontend.route("/")
@@ -145,15 +148,46 @@ def package(name):
 
 
 def unique_user_username(form, field):
-    """WTForms validator: reject usernames that are already taken."""
-    if user_datastore.find_user(username=field.data) is not None:
+    """WTForms validator: reject usernames that are already taken.
+
+    Records the existing user on ``form.existing_username_user`` so that
+    :py:data:`SECURITY_RETURN_GENERIC_RESPONSES` can squash the error and avoid
+    leaking which usernames are registered.
+    """
+    form.existing_username_user = user_datastore.find_user(username=field.data)
+    if form.existing_username_user is not None:
         raise ValidationError("Username already taken")
+
+
+def _honeypot_must_be_empty(form, field):
+    """WTForms validator: reject submissions that filled the hidden honeypot.
+
+    The field is hidden from human visitors via CSS, so any content means an
+    automated bot auto-filled every text input.
+    """
+    if field.data:
+        logger.warning(
+            "Registration honeypot triggered (client IP %s, username %r, email %r)",
+            request.remote_addr,
+            form.username.data,
+            form.email.data,
+        )
+        raise ValidationError("Please leave this field empty")
 
 
 class SpkrepoRegisterForm(RegisterFormV2):
     """Flask-Security registration form extended with a required, unique
-    username field."""
+    username field and a CSS-hidden honeypot to reject scripted bots."""
 
     username = StringField(
         "Username", [InputRequired(), Length(min=4), unique_user_username]
+    )
+    website = StringField(
+        "Website",
+        [_honeypot_must_be_empty],
+        render_kw={
+            "tabindex": "-1",
+            "autocomplete": "off",
+            "aria-hidden": "true",
+        },
     )

@@ -44,6 +44,9 @@ SECURITY_CHANGEABLE = True
 SECURITY_PASSWORD_HASH = "sha512_crypt"
 SECURITY_PASSWORD_SALT = "password-salt"
 SECURITY_PASSWORD_CONFIRM_REQUIRED = False
+# Return generic responses for auth endpoints so bots can't enumerate which
+# emails/usernames are registered (and email owners when attempts occur).
+SECURITY_RETURN_GENERIC_RESPONSES = True
 
 # SQLAlchemy
 SQLALCHEMY_ECHO = False
