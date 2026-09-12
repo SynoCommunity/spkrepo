@@ -37,6 +37,8 @@ A minimal production config file looks like this:
     # Turnstile widget dashboard, "Add widget manually"
     TURNSTILE_SITE_KEY = "your-turnstile-site-key"
     TURNSTILE_SECRET_KEY = "your-turnstile-secret-key"
+    # Must match the hostname the widget is registered for
+    TURNSTILE_HOSTNAME = "synocommunity.com"
 
     # S3-compatible object storage
     OBJECT_STORAGE_PACKAGES_ENDPOINT = "https://s3.example.com"

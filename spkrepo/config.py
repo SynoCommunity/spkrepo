@@ -40,6 +40,10 @@ PACKAGES_CDN_HOST = None
 # When unset, registration fail-closes (see SpkrepoRegisterForm).
 TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY")
 TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY")
+# Hostname the Turnstile widget is registered for (e.g. "synocommunity.com").
+# When set, the siteverify response hostname must match; when unset the
+# check is skipped (dev/test).
+TURNSTILE_HOSTNAME = os.environ.get("TURNSTILE_HOSTNAME")
 
 # Security
 SECURITY_CACHE_CONTROL = {}

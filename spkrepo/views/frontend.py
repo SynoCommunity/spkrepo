@@ -189,7 +189,12 @@ TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverif
 
 
 def _verify_turnstile_token(token, remote_ip):
-    """Verify a Turnstile token with Cloudflare. Returns True on success."""
+    """Verify a Turnstile token with Cloudflare. Returns True on success.
+
+    When TURNSTILE_HOSTNAME is configured, the hostname Cloudflare reports
+    the challenge was solved on must also match (defense against tokens
+    minted for a different site).
+    """
     secret = current_app.config.get("TURNSTILE_SECRET_KEY")
     if not secret:
         logger.error("TURNSTILE_SECRET_KEY is not configured; rejecting registration")
@@ -200,7 +205,18 @@ def _verify_turnstile_token(token, remote_ip):
             data={"secret": secret, "response": token, "remoteip": remote_ip},
             timeout=10,
         )
-        return bool(response.json().get("success", False))
+        result = response.json()
+        if not result.get("success", False):
+            return False
+        expected_hostname = current_app.config.get("TURNSTILE_HOSTNAME")
+        if expected_hostname and result.get("hostname") != expected_hostname:
+            logger.warning(
+                "Turnstile hostname mismatch: expected %r, got %r",
+                expected_hostname,
+                result.get("hostname"),
+            )
+            return False
+        return True
     except Exception:
         logger.exception("Turnstile verification request failed")
         return False
