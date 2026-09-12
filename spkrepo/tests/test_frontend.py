@@ -265,6 +265,14 @@ class RegisterTestCase(BaseTestCase):
 
 
 class TurnstileTestCase(BaseTestCase):
+    def test_no_turnstile_id_collision(self):
+        # Regression guard: browsers expose every id as a window global, so
+        # an element with id="turnstile" would shadow window.turnstile and
+        # stop the Cloudflare library from initializing ("already loaded").
+        response = self.client.get(url_for_security("register"))
+        self.assert200(response)
+        self.assertNotIn('id="turnstile"', response.data.decode())
+
     def _enable_enforcement(self):
         # Flip off the TESTING bypass so server-side verification actually
         # runs (CSRF stays disabled, mail stays suppressed).

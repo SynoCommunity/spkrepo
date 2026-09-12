@@ -254,6 +254,10 @@ class SpkrepoRegisterForm(RegisterFormV2):
             "aria-hidden": "true",
         },
     )
-    # Carries Turnstile failures so the error renders via form_errors;
-    # the widget posts its token as cf-turnstile-response (see validator).
-    turnstile = HiddenField("Turnstile", [_turnstile_must_verify])
+    # NOTE: the field name must NOT be "turnstile" — browsers expose every
+    # id as a window global, so <input id="turnstile"> shadows window.turnstile
+    # and the Cloudflare library refuses to initialize ("already loaded"),
+    # silently killing the widget. Carries Turnstile failures so the error
+    # renders via form_errors; the widget posts its token as
+    # cf-turnstile-response (see validator).
+    turnstile_check = HiddenField("Turnstile", [_turnstile_must_verify])
