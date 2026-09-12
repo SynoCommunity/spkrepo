@@ -412,15 +412,34 @@ class GetClientIpTestCase(BaseTestCase):
         with self.app.test_request_context(
             headers={
                 "CF-Connecting-IP": "9.9.9.9",
+                "Fastly-Client-IP": "8.8.8.8",
                 "X-Forwarded-For": "1.2.3.4, 5.6.7.8",
             }
         ):
             self.assertEqual(get_client_ip(), "9.9.9.9")
 
-    def test_last_forwarded_for_entry(self):
-        # nginx appends the direct peer; earlier entries are client-spoofable.
+    def test_fastly_client_ip(self):
+        # Set by Fastly to its connecting client; beats XFF parsing.
+        with self.app.test_request_context(
+            headers={
+                "Fastly-Client-IP": "8.8.8.8",
+                "X-Forwarded-For": "1.2.3.4, 5.6.7.8",
+            }
+        ):
+            self.assertEqual(get_client_ip(), "8.8.8.8")
+
+    def test_second_to_last_forwarded_for_entry(self):
+        # Fastly appends the real client, nginx appends its peer; anything
+        # left of those two is client-spoofable.
         with self.app.test_request_context(
             headers={"X-Forwarded-For": "1.2.3.4, 5.6.7.8"}
+        ):
+            self.assertEqual(get_client_ip(), "1.2.3.4")
+
+    def test_single_forwarded_for_entry(self):
+        # Direct-to-nginx traffic: the lone entry is nginx's peer.
+        with self.app.test_request_context(
+            headers={"X-Forwarded-For": "5.6.7.8"}
         ):
             self.assertEqual(get_client_ip(), "5.6.7.8")
 
