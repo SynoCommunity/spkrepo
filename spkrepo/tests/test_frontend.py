@@ -316,12 +316,12 @@ class TurnstileTestCase(BaseTestCase):
 
     def test_verify_token_hostname_match(self):
         self.app.config["TURNSTILE_SECRET_KEY"] = "test-secret"
-        self.app.config["TURNSTILE_HOSTNAME"] = "synocommunity.com"
+        self.app.config["TURNSTILE_HOSTNAME"] = "example.com"
         try:
             with mock.patch("spkrepo.views.frontend.requests.post") as mock_post:
                 mock_post.return_value.json.return_value = {
                     "success": True,
-                    "hostname": "synocommunity.com",
+                    "hostname": "example.com",
                 }
                 with self.app.test_request_context():
                     self.assertTrue(_verify_turnstile_token("tok", "127.0.0.1"))
@@ -332,7 +332,7 @@ class TurnstileTestCase(BaseTestCase):
     def test_verify_token_hostname_mismatch(self):
         # Token minted for a different site must be rejected.
         self.app.config["TURNSTILE_SECRET_KEY"] = "test-secret"
-        self.app.config["TURNSTILE_HOSTNAME"] = "synocommunity.com"
+        self.app.config["TURNSTILE_HOSTNAME"] = "example.com"
         try:
             with mock.patch("spkrepo.views.frontend.requests.post") as mock_post:
                 mock_post.return_value.json.return_value = {
