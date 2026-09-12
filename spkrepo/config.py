@@ -35,15 +35,16 @@ OBJECT_STORAGE_PACKAGES_SECRET_KEY = None
 CDN_PURGE_TOKEN = None
 PACKAGES_CDN_HOST = None
 
-# Cloudflare Turnstile (bot protection on registration). Keys live in the
-# production config / environment only — never commit real values here.
-# When unset, registration fail-closes (see SpkrepoRegisterForm).
-TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY")
+# Cloudflare Turnstile (bot protection on registration). Only the secret is
+# sensitive — the site key and hostname are public. Set real values in the
+# production config; when unset, registration fail-closes (see
+# SpkrepoRegisterForm).
+TURNSTILE_SITE_KEY = None
 TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY")
-# Hostname the Turnstile widget is registered for (e.g. "synocommunity.com").
+# Hostname the Turnstile widget is registered for (e.g. "example.com").
 # When set, the siteverify response hostname must match; when unset the
 # check is skipped (dev/test).
-TURNSTILE_HOSTNAME = os.environ.get("TURNSTILE_HOSTNAME")
+TURNSTILE_HOSTNAME = None
 
 # Security
 SECURITY_CACHE_CONTROL = {}
@@ -82,9 +83,7 @@ CACHE_REDIS_HOST = "localhost"
 # counters isolated from the cache (DB 0) and Celery (DB 1); shared across
 # gunicorn workers, with memory fallback covering redis outages. Tests
 # override the URI to memory:// (see tests/common.py).
-RATELIMIT_STORAGE_URI = os.environ.get(
-    "RATELIMIT_STORAGE_URI", "redis://localhost:6379/2"
-)
+RATELIMIT_STORAGE_URI = "redis://localhost:6379/2"
 RATELIMIT_IN_MEMORY_FALLBACK_ENABLED = True
 
 # Tasks
