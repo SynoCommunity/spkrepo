@@ -17,6 +17,11 @@
   {% if register_user_form.password_confirm %}
     {{ wtf.form_field(register_user_form.password_confirm) }}
   {% endif %}
+  {% if config.get("TURNSTILE_SITE_KEY") %}
+    {# Cloudflare Turnstile bot challenge — token is verified server-side. #}
+    <div class="cf-turnstile" data-sitekey="{{ config['TURNSTILE_SITE_KEY'] }}"></div>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  {% endif %}
   {{ wtf.form_field(register_user_form.submit, button_map={'submit': 'primary'}) }}
 </form>
 {% endblock %}

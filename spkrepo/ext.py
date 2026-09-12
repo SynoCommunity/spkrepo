@@ -7,6 +7,8 @@ from flask_migrate import Migrate
 from flask_security import Security
 from flask_sqlalchemy import SQLAlchemy
 
+from .mail import SpkrepoMailUtil
+
 # Flask-Babel
 babel = Babel()
 # Cache
@@ -17,8 +19,8 @@ celery = Celery()
 mail = Mail()
 # Migrate
 migrate = Migrate()
-# Security
-security = Security()
+# Security (custom MailUtil suppresses bot-triggered registration emails)
+security = Security(mail_util_cls=SpkrepoMailUtil)
 # SQLAlchemy
 db = SQLAlchemy()
 

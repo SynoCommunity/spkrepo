@@ -35,6 +35,12 @@ OBJECT_STORAGE_PACKAGES_SECRET_KEY = None
 CDN_PURGE_TOKEN = None
 PACKAGES_CDN_HOST = None
 
+# Cloudflare Turnstile (bot protection on registration). Keys live in the
+# production config / environment only — never commit real values here.
+# When unset, registration fail-closes (see SpkrepoRegisterForm).
+TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY")
+TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY")
+
 # Security
 SECURITY_CACHE_CONTROL = {}
 SECURITY_CONFIRMABLE = True

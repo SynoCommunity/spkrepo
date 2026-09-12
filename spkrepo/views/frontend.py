@@ -2,11 +2,20 @@
 import logging
 import secrets
 
-from flask import Blueprint, abort, redirect, render_template, request, url_for
+import requests
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_security import RegisterFormV2, current_user, login_required
 from flask_security.forms import ChangePasswordForm
 from flask_wtf import FlaskForm
-from wtforms import StringField, SubmitField, ValidationError
+from wtforms import HiddenField, StringField, SubmitField, ValidationError
 from wtforms.validators import InputRequired, Length
 
 from ..ext import cache, db
@@ -175,9 +184,46 @@ def _honeypot_must_be_empty(form, field):
         raise ValidationError("Please leave this field empty")
 
 
+TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+
+def _verify_turnstile_token(token, remote_ip):
+    """Verify a Turnstile token with Cloudflare. Returns True on success."""
+    secret = current_app.config.get("TURNSTILE_SECRET_KEY")
+    if not secret:
+        logger.error("TURNSTILE_SECRET_KEY is not configured; rejecting registration")
+        return False
+    try:
+        response = requests.post(
+            TURNSTILE_VERIFY_URL,
+            data={"secret": secret, "response": token, "remoteip": remote_ip},
+            timeout=10,
+        )
+        return bool(response.json().get("success", False))
+    except Exception:
+        logger.exception("Turnstile verification request failed")
+        return False
+
+
+def _turnstile_must_verify(form, field):
+    """WTForms validator: verify the Cloudflare Turnstile challenge token.
+
+    The widget posts its token as ``cf-turnstile-response``. Skipped when
+    TESTING (same pattern flask-security itself uses). Fail-closed: a missing
+    token, missing secret, provider error, or explicit failure all reject the
+    registration — no user is created and no email is sent.
+    """
+    if current_app.config.get("TESTING"):
+        return
+    token = request.form.get("cf-turnstile-response")
+    if not token or not _verify_turnstile_token(token, request.remote_addr):
+        raise ValidationError("Bot verification failed. Please try again.")
+
+
 class SpkrepoRegisterForm(RegisterFormV2):
     """Flask-Security registration form extended with a required, unique
-    username field and a CSS-hidden honeypot to reject scripted bots."""
+    username field, a CSS-hidden honeypot, and Cloudflare Turnstile
+    verification to reject scripted bots."""
 
     username = StringField(
         "Username", [InputRequired(), Length(min=4), unique_user_username]
@@ -191,3 +237,6 @@ class SpkrepoRegisterForm(RegisterFormV2):
             "aria-hidden": "true",
         },
     )
+    # Carries Turnstile failures so the error renders via form_errors;
+    # the widget posts its token as cf-turnstile-response (see validator).
+    turnstile = HiddenField("Turnstile", [_turnstile_must_verify])

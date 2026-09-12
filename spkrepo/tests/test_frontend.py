@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
+from unittest import mock
+
 from flask import url_for
 from flask_security import url_for_security
 from lxml.html import fromstring
 
 from spkrepo.ext import db
+from spkrepo.mail import SUPPRESSED_BOT_TEMPLATES, SpkrepoMailUtil
 from spkrepo.models import Package as PackageModel
 from spkrepo.models import user_datastore
 from spkrepo.tests.common import BaseTestCase, BuildFactory, UserFactory
+from spkrepo.views.frontend import _verify_turnstile_token
 
 
 class IndexTestCase(BaseTestCase):
@@ -257,3 +261,146 @@ class RegisterTestCase(BaseTestCase):
         )
         self.client.post(url_for_security("register"), data=data)
         self.assertIsNone(user_datastore.find_user(username="botuser"))
+
+
+class TurnstileTestCase(BaseTestCase):
+    def _enable_enforcement(self):
+        # Flip off the TESTING bypass so server-side verification actually
+        # runs (CSRF stays disabled, mail stays suppressed).
+        self.app.config["TESTING"] = False
+        self.app.config["MAIL_SUPPRESS_SEND"] = True
+        self.app.config["TURNSTILE_SECRET_KEY"] = "test-secret"
+
+    def _disable_enforcement(self):
+        self.app.config["TESTING"] = True
+
+    def test_verify_token_success(self):
+        self.app.config["TURNSTILE_SECRET_KEY"] = "test-secret"
+        try:
+            with mock.patch("spkrepo.views.frontend.requests.post") as mock_post:
+                mock_post.return_value.json.return_value = {"success": True}
+                with self.app.test_request_context():
+                    self.assertTrue(_verify_turnstile_token("tok", "127.0.0.1"))
+                mock_post.assert_called_once()
+        finally:
+            del self.app.config["TURNSTILE_SECRET_KEY"]
+
+    def test_verify_token_failure(self):
+        self.app.config["TURNSTILE_SECRET_KEY"] = "test-secret"
+        try:
+            with mock.patch("spkrepo.views.frontend.requests.post") as mock_post:
+                mock_post.return_value.json.return_value = {"success": False}
+                with self.app.test_request_context():
+                    self.assertFalse(_verify_turnstile_token("tok", "127.0.0.1"))
+        finally:
+            del self.app.config["TURNSTILE_SECRET_KEY"]
+
+    def test_verify_token_request_error(self):
+        import requests as requests_module
+
+        self.app.config["TURNSTILE_SECRET_KEY"] = "test-secret"
+        try:
+            with mock.patch(
+                "spkrepo.views.frontend.requests.post",
+                side_effect=requests_module.ConnectionError("down"),
+            ):
+                with self.app.test_request_context():
+                    self.assertFalse(_verify_turnstile_token("tok", "127.0.0.1"))
+        finally:
+            del self.app.config["TURNSTILE_SECRET_KEY"]
+
+    def test_verify_token_missing_secret(self):
+        with self.app.test_request_context():
+            self.assertFalse(_verify_turnstile_token("tok", "127.0.0.1"))
+
+    def test_registration_blocked_without_token(self):
+        # Fail-closed: no cf-turnstile-response token, no user created.
+        self._enable_enforcement()
+        try:
+            data = dict(
+                username="notabot",
+                email="notabot@gmail.com",
+                password="password",
+                password_confirm="password",
+            )
+            response = self.client.post(url_for_security("register"), data=data)
+            self.assertIn("Bot verification failed", response.data.decode())
+            self.assertIsNone(user_datastore.find_user(username="notabot"))
+        finally:
+            self._disable_enforcement()
+
+    def test_registration_succeeds_with_valid_token(self):
+        with mock.patch("spkrepo.views.frontend.requests.post") as mock_post:
+            mock_post.return_value.json.return_value = {"success": True}
+            self._enable_enforcement()
+            try:
+                data = dict(
+                    username="realuser",
+                    email="realuser@gmail.com",
+                    password="password",
+                    password_confirm="password",
+                    **{"cf-turnstile-response": "valid-token"},
+                )
+                self.client.post(url_for_security("register"), data=data)
+                user = user_datastore.find_user(username="realuser")
+                self.assertIsNotNone(user)
+                self.assertEqual(user.email, "realuser@gmail.com")
+            finally:
+                self._disable_enforcement()
+
+
+class BotMailSuppressionTestCase(BaseTestCase):
+    def test_duplicate_registration_sends_no_mail(self):
+        # Second registration with an already-taken email must not send any
+        # mail (suppressed bot template), while keeping the generic response.
+        data = dict(
+            username="dupuser",
+            email="dupuser@gmail.com",
+            password="password",
+            password_confirm="password",
+        )
+        self.client.post(url_for_security("register"), data=data)
+        with mock.patch("flask_security.MailUtil.send_mail") as mock_send:
+            with self.assertLogs("spkrepo.mail", level="WARNING") as logs:
+                response = self.client.post(url_for_security("register"), data=data)
+        mock_send.assert_not_called()
+        self.assertTrue(
+            any("Suppressed bot registration email" in line for line in logs.output)
+        )
+        self.assertNotIn("Email already registered", response.data.decode())
+
+    def test_taken_username_sends_no_mail(self):
+        # New email + taken username: the stranger-directed notice must be
+        # suppressed as well.
+        data = dict(
+            username="takenname",
+            email="takenname@gmail.com",
+            password="password",
+            password_confirm="password",
+        )
+        self.client.post(url_for_security("register"), data=data)
+        retry = dict(
+            username="takenname",
+            email="other@gmail.com",
+            password="password",
+            password_confirm="password",
+        )
+        with mock.patch("flask_security.MailUtil.send_mail") as mock_send:
+            with self.assertLogs("spkrepo.mail", level="WARNING"):
+                self.client.post(url_for_security("register"), data=retry)
+        mock_send.assert_not_called()
+
+    def test_legit_templates_still_send(self):
+        # Non-bot templates must delegate to the parent implementation.
+        util = SpkrepoMailUtil(app=None)
+        with mock.patch("flask_security.MailUtil.send_mail") as mock_send:
+            util.send_mail(
+                "welcome", "Welcome", "new@gmail.com", "sender@x.com", "body", None
+            )
+        mock_send.assert_called_once()
+        for template in SUPPRESSED_BOT_TEMPLATES:
+            with mock.patch("flask_security.MailUtil.send_mail") as mock_send:
+                util.send_mail(
+                    template, "Welcome", "x@y.com", "sender@x.com", "body", None
+                )
+            mock_send.assert_not_called()
