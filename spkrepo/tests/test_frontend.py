@@ -439,15 +439,16 @@ class BotMailSuppressionTestCase(BaseTestCase):
 
 
 class GetClientIpTestCase(BaseTestCase):
-    def test_cf_connecting_ip_wins(self):
+    def test_cf_connecting_ip_ignored(self):
+        # Cloudflare is DNS-only here, so this header can never arrive
+        # legitimately — it must not be trusted (rate-limit bypass).
         with self.app.test_request_context(
             headers={
                 "CF-Connecting-IP": "9.9.9.9",
-                "Fastly-Client-IP": "8.8.8.8",
                 "X-Forwarded-For": "1.2.3.4, 5.6.7.8",
             }
         ):
-            self.assertEqual(get_client_ip(), "9.9.9.9")
+            self.assertEqual(get_client_ip(), "1.2.3.4")
 
     def test_fastly_client_ip(self):
         # Set by Fastly to its connecting client; beats XFF parsing.
