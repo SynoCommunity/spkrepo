@@ -372,6 +372,12 @@ class BaseTestCase(TestCase):
     LOGIN_DISABLED = False
     WTF_CSRF_ENABLED = False
     CACHE_NO_NULL_WARNING = True
+    # Rate limiter uses isolated in-memory storage per test app (each test
+    # builds a fresh app, so counters never leak between tests).
+    RATELIMIT_STORAGE_URI = "memory://"
+    # Rate limiter uses isolated in-memory storage per test app (each test
+    # builds a fresh app, so counters never leak between tests).
+    RATELIMIT_STORAGE_URI = "memory://"
 
     def create_app(self):
         self.DATA_PATH = tempfile.mkdtemp("spkrepo")

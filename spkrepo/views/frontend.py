@@ -27,6 +27,7 @@ from ..models import (
     Version,
     user_datastore,
 )
+from ..net import get_client_ip
 
 frontend = Blueprint("frontend", __name__)
 
@@ -177,7 +178,7 @@ def _honeypot_must_be_empty(form, field):
     if field.data:
         logger.warning(
             "Registration honeypot triggered (client IP %s, username %r, email %r)",
-            request.remote_addr,
+            get_client_ip(),
             form.username.data,
             form.email.data,
         )
@@ -216,7 +217,7 @@ def _turnstile_must_verify(form, field):
     if current_app.config.get("TESTING"):
         return
     token = request.form.get("cf-turnstile-response")
-    if not token or not _verify_turnstile_token(token, request.remote_addr):
+    if not token or not _verify_turnstile_token(token, get_client_ip()):
         raise ValidationError("Bot verification failed. Please try again.")
 
 

@@ -34,6 +34,7 @@ dependencies = [
     "flask-babel>=4.0.0",
     "flask-caching>=2.3.1",
     "flask-debugtoolbar>=0.16.0",
+    "flask-limiter>=4.1.1",
     "flask-mail>=0.10.0",
     "flask-migrate>=4.1.0",
     "flask-principal>=0.4.0",

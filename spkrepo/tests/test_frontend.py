@@ -9,6 +9,7 @@ from spkrepo.ext import db
 from spkrepo.mail import SUPPRESSED_BOT_TEMPLATES, SpkrepoMailUtil
 from spkrepo.models import Package as PackageModel
 from spkrepo.models import user_datastore
+from spkrepo.net import get_client_ip
 from spkrepo.tests.common import BaseTestCase, BuildFactory, UserFactory
 from spkrepo.views.frontend import _verify_turnstile_token
 
@@ -404,3 +405,55 @@ class BotMailSuppressionTestCase(BaseTestCase):
                     template, "Welcome", "x@y.com", "sender@x.com", "body", None
                 )
             mock_send.assert_not_called()
+
+
+class GetClientIpTestCase(BaseTestCase):
+    def test_cf_connecting_ip_wins(self):
+        with self.app.test_request_context(
+            headers={
+                "CF-Connecting-IP": "9.9.9.9",
+                "X-Forwarded-For": "1.2.3.4, 5.6.7.8",
+            }
+        ):
+            self.assertEqual(get_client_ip(), "9.9.9.9")
+
+    def test_last_forwarded_for_entry(self):
+        # nginx appends the direct peer; earlier entries are client-spoofable.
+        with self.app.test_request_context(
+            headers={"X-Forwarded-For": "1.2.3.4, 5.6.7.8"}
+        ):
+            self.assertEqual(get_client_ip(), "5.6.7.8")
+
+    def test_remote_addr_fallback(self):
+        with self.app.test_request_context(environ_base={"REMOTE_ADDR": "10.0.0.1"}):
+            self.assertEqual(get_client_ip(), "10.0.0.1")
+
+
+class RateLimitTestCase(BaseTestCase):
+    def test_register_rate_limited(self):
+        # 10/hour per IP: the 11th POST to the register endpoint is refused
+        # with 429 while earlier ones go through.
+        data = dict(
+            username="ratelimituser",
+            email="ratelimit@gmail.com",
+            password="password",
+            password_confirm="password",
+        )
+        for _ in range(10):
+            response = self.client.post(url_for_security("register"), data=data)
+            self.assertNotEqual(response.status_code, 429)
+        response = self.client.post(url_for_security("register"), data=data)
+        self.assertEqual(response.status_code, 429)
+
+    def test_other_endpoints_unaffected(self):
+        # Breaching the register limit must not spill over to other routes.
+        data = dict(
+            username="otheruser",
+            email="other@gmail.com",
+            password="password",
+            password_confirm="password",
+        )
+        for _ in range(11):
+            self.client.post(url_for_security("register"), data=data)
+        response = self.client.get(url_for("frontend.index"))
+        self.assert200(response)

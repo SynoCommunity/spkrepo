@@ -9,7 +9,17 @@ from flask_security.signals import user_registered
 
 from . import config as default_config
 from .cli import spkrepo as spkrepo_cli
-from .ext import babel, cache, celery, db, debug_toolbar, mail, migrate, security
+from .ext import (
+    babel,
+    cache,
+    celery,
+    db,
+    debug_toolbar,
+    limiter,
+    mail,
+    migrate,
+    security,
+)
 from .filters import register_filters
 from .models import user_datastore
 from .views import (
@@ -116,6 +126,20 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
     mail.init_app(app)
     cache.init_app(app)
     babel.init_app(app)
+    limiter.init_app(app)
+
+    # Rate-limit the mail-emitting auth endpoints per client IP. The views
+    # belong to flask-security (registered above), so limits are applied by
+    # wrapping the registered view functions. Generous for humans (a real
+    # user rarely hits these twice in an hour); fatal for mail-relay abuse.
+    for _endpoint, _limit in {
+        "security.register": "10/hour",
+        "security.forgot_password": "10/hour",
+        "security.send_confirmation": "10/hour",
+    }.items():
+        app.view_functions[_endpoint] = limiter.limit(_limit)(
+            app.view_functions[_endpoint]
+        )
 
     # Dev only
     if debug_toolbar is not None:

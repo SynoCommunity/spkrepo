@@ -26,9 +26,7 @@ class SpkrepoMailUtil(MailUtil):
     Wired in via ``Security(mail_util_cls=SpkrepoMailUtil)`` (see ext.py).
     """
 
-    def send_mail(
-        self, template, subject, recipient, sender, body, html, **kwargs
-    ):
+    def send_mail(self, template, subject, recipient, sender, body, html, **kwargs):
         if template in SUPPRESSED_BOT_TEMPLATES:
             logger.warning(
                 "Suppressed bot registration email %r to %r", template, recipient
