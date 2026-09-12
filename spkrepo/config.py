@@ -74,11 +74,12 @@ MIGRATE_DIRECTORY = os.path.abspath(
 CACHE_TYPE = "flask_caching.backends.RedisCache"
 CACHE_REDIS_HOST = "localhost"
 
-# Rate limiting (per-IP, proxy-aware via get_client_ip). Redis keeps the
-# counters shared across gunicorn workers; memory fallback covers redis
-# outages. Tests override the URI to memory:// (see tests/common.py).
+# Rate limiting (per-IP, proxy-aware via get_client_ip). Dedicated DB 2 keeps
+# counters isolated from the cache (DB 0) and Celery (DB 1); shared across
+# gunicorn workers, with memory fallback covering redis outages. Tests
+# override the URI to memory:// (see tests/common.py).
 RATELIMIT_STORAGE_URI = os.environ.get(
-    "RATELIMIT_STORAGE_URI", "redis://localhost:6379"
+    "RATELIMIT_STORAGE_URI", "redis://localhost:6379/2"
 )
 RATELIMIT_IN_MEMORY_FALLBACK_ENABLED = True
 

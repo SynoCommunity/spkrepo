@@ -31,7 +31,7 @@ A minimal production config file looks like this:
 
     # Rate limiting (per-IP counters shared across workers; memory fallback
     # covers redis outages)
-    RATELIMIT_STORAGE_URI = "redis://redis:6379"
+    RATELIMIT_STORAGE_URI = "redis://redis:6379/2"
 
     # Cloudflare Turnstile (bot protection on registration) — keys from the
     # Turnstile widget dashboard, "Add widget manually"
