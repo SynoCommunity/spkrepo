@@ -88,10 +88,8 @@ RATELIMIT_IN_MEMORY_FALLBACK_ENABLED = True
 
 # Tasks
 CELERY = {
-    "broker_url": os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/1"),
-    "result_backend": os.environ.get(
-        "CELERY_RESULT_BACKEND", "redis://localhost:6379/1"
-    ),
+    "broker_url": "redis://localhost:6379/1",
+    "result_backend": "redis://localhost:6379/1",
     "result_expires": 86400,  # clean up task results after 24 hours
     "task_queues": {
         "celery": {},  # default queue for anything else
