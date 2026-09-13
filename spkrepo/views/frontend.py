@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 #: Cookie persisting the selected frontend architecture filter.
 ARCH_COOKIE = "spk_arch"
-#: How long the architecture list is cached ( NAS catalog uses 600s too).
+#: How long the architecture list is cached (nas catalog uses 600s too).
 ARCH_LIST_TIMEOUT = 600
 
 

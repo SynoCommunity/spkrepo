@@ -27,7 +27,11 @@
 <div class="col-md-4">
   <div class="d-flex{% if archived %}" style="opacity: 0.6;{% endif %}">
     <div class="flex-shrink-0 mr-3" style="width: 72px;">
-      <a href="{{ url_for('frontend.package', name=version.package.name, arch=selected_arch) if selected_arch|default(None) else url_for('frontend.package', name=version.package.name) }}">
+      {% if selected_arch|default(None) %}
+      <a href="{{ url_for('frontend.package', name=version.package.name, arch=selected_arch) }}">
+      {% else %}
+      <a href="{{ url_for('frontend.package', name=version.package.name) }}">
+      {% endif %}
         <img src="{{ url_for('nas.data', path=version.icons['72'].path) }}" alt="Icon"{% if archived %} style="filter: grayscale(60%);"{% endif %}>
       </a>
     </div>
@@ -72,8 +76,8 @@
     <option value="{{ code }}"{% if code == (selected_arch|default(None)) %} selected{% endif %}>{{ code }}</option>
     {% endfor %}
   </select>
-  {# Model search (issue #23): curated Synology model to architecture mapping,
-     baseline Synology KB via spksrc docs/reference/model-architecture. #}
+  {# Model search: curated Synology model to architecture mapping
+     in static/data/syno-models.json, baseline the Synology KB CPU page. #}
   <label class="sr-only" for="modelSearch">Find your model</label>
   <input class="form-control form-control-sm mr-2" id="modelSearch" list="modelList"
          placeholder="Find your model (e.g. DS920+)" autocomplete="off">
