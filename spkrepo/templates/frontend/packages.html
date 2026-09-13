@@ -66,13 +66,22 @@
 <h1 class="sr-only">Packages</h1>
 <div class="form-inline mb-3">
   <label class="mr-2" for="archSelector">Architecture</label>
-  <select class="form-control form-control-sm" id="archSelector" title="Filter packages by architecture">
+  <select class="form-control form-control-sm mr-2" id="archSelector" title="Filter packages by architecture">
     <option value="">All architectures</option>
     {% for code in architectures|default([]) %}
     <option value="{{ code }}"{% if code == (selected_arch|default(None)) %} selected{% endif %}>{{ code }}</option>
     {% endfor %}
   </select>
+  {# Model search (issue #23): curated Synology model to architecture mapping,
+     baseline Synology KB via spksrc docs/reference/model-architecture. #}
+  <label class="sr-only" for="modelSearch">Find your model</label>
+  <input class="form-control form-control-sm mr-2" id="modelSearch" list="modelList"
+         placeholder="Find your model (e.g. DS920+)" autocomplete="off">
+  <datalist id="modelList"></datalist>
+  <button class="btn btn-sm btn-outline-primary mr-2" id="modelGo" type="button">Go</button>
+  <small class="text-muted">Model list: <a href="https://docs.synocommunity.com/reference/model-architecture" target="_blank" rel="noopener">model ↔ architecture docs</a></small>
 </div>
+<div class="alert alert-warning d-none" id="modelAlert" role="alert"></div>
 {% if selected_arch|default(None) %}
 <div class="alert alert-info">
   Showing packages for <strong>{{ selected_arch }}</strong> (including universal builds).
@@ -119,18 +128,80 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   var sel = document.getElementById('archSelector');
-  if (!sel) return;
-  sel.addEventListener('change', function () {
+  function navigate(arch) {
     var params = new URLSearchParams(window.location.search);
-    if (sel.value) {
-      params.set('arch', sel.value);
+    if (arch) {
+      params.set('arch', arch);
     } else {
       // Explicit "all" so the server clears the persistence cookie;
       // dropping the param would fall back to the stale cookie value.
       params.set('arch', 'all');
     }
     window.location.search = params.toString();
-  });
+  }
+  if (sel) {
+    sel.addEventListener('change', function () {
+      try { localStorage.removeItem('spk_model'); } catch (e) {}
+      navigate(sel.value);
+    });
+  }
+  // Model search: curated model to architecture mapping (see
+  // static/data/syno-models.json). Validates against the server-provided
+  // architecture list so models for arches with no published builds
+  // show a hint instead of landing on a 404.
+  var modelInput = document.getElementById('modelSearch');
+  var modelList = document.getElementById('modelList');
+  var modelAlert = document.getElementById('modelAlert');
+  function showModelAlert(msg) {
+    if (!modelAlert) return;
+    modelAlert.textContent = msg;
+    modelAlert.classList.remove('d-none');
+  }
+  if (modelInput && modelList) {
+    try {
+      var savedModel = localStorage.getItem('spk_model');
+      if (savedModel) modelInput.value = savedModel;
+    } catch (e) {}
+    fetch("{{ url_for('static', filename='data/syno-models.json') }}")
+      .then(function (resp) { return resp.json(); })
+      .then(function (mapping) {
+        var models = Object.keys(mapping).filter(function (k) {
+          return k.charAt(0) !== '_';
+        }).sort();
+        models.forEach(function (model) {
+          var opt = document.createElement('option');
+          opt.value = model;
+          modelList.appendChild(opt);
+        });
+        modelInput.addEventListener('change', applyModel);
+        var modelGo = document.getElementById('modelGo');
+        if (modelGo) modelGo.addEventListener('click', applyModel);
+        function applyModel() {
+          var wanted = modelInput.value.trim().toUpperCase();
+          var match = models.find(function (m) { return m.toUpperCase() === wanted; });
+          if (!match) {
+            showModelAlert(
+              'Unknown model "' + modelInput.value.trim() +
+              '" — pick one from the list or choose an architecture directly.'
+            );
+            return;
+          }
+          var arch = mapping[match];
+          var known = sel && Array.prototype.some.call(sel.options, function (o) {
+            return o.value === arch;
+          });
+          if (!known) {
+            showModelAlert(
+              'No packages published for ' + match + ' (' + arch + ' architecture).'
+            );
+            return;
+          }
+          try { localStorage.setItem('spk_model', match); } catch (e) {}
+          navigate(arch);
+        }
+      })
+      .catch(function () { /* mapping unavailable: arch dropdown still works */ });
+  }
 });
 </script>
 {% endblock %}

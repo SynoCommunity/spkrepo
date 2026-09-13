@@ -48,6 +48,7 @@ docs/_build
 
 # spkrepo
 data/
+!/spkrepo/static/data/
 config.py
 
 # direnv

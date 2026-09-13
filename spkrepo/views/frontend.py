@@ -70,11 +70,14 @@ def _resolve_arch_filter():
     if param is not None:
         if param in ("", "all"):
             return None, True
+        # Accept Synology DSM/SRM spellings (e.g. 88f6281) like nas.py does.
+        param = Architecture.from_syno.get(param, param)
         if Architecture.find(param) is None:
             abort(404)
         return param, False
     cookie = request.cookies.get(ARCH_COOKIE)
     if cookie and cookie not in ("", "all"):
+        cookie = Architecture.from_syno.get(cookie, cookie)
         if Architecture.find(cookie) is not None:
             return cookie, False
     return None, False
@@ -95,8 +98,9 @@ def _arch_response(template, param_present, clear_cookie, selected_arch, **conte
 
 @frontend.context_processor
 def inject_arch_selector():
-    """Expose the architecture list + current selection to all frontend
-    templates (layout.html renders the selector)."""
+    """Expose the architecture list + current selection to frontend
+    templates (packages.html renders the selector; other pages ignore
+    the extra variables)."""
     try:
         architectures = get_architectures()
     except Exception:
@@ -105,6 +109,15 @@ def inject_arch_selector():
         "architectures": architectures,
         "selected_arch": getattr(g, "selected_arch", None),
     }
+
+
+def _arch_request_context():
+    """Resolve the arch filter for this request and stash it on g for
+    the context processor. Returns (selected_arch, clear_cookie,
+    param_present)."""
+    selected_arch, clear_cookie = _resolve_arch_filter()
+    g.selected_arch = selected_arch
+    return selected_arch, clear_cookie, "arch" in request.args
 
 
 @frontend.route("/")
@@ -162,9 +175,7 @@ def packages():
     Filtered views bypass the cache; the unfiltered list stays cached
     so existing invalidation logic is untouched.
     """
-    selected_arch, clear_cookie = _resolve_arch_filter()
-    g.selected_arch = selected_arch
-    param_present = "arch" in request.args
+    selected_arch, clear_cookie, param_present = _arch_request_context()
 
     if selected_arch is None:
         versions = cache.get("packages_versions")
@@ -235,9 +246,7 @@ def package(name):
     When an architecture filter is active, the full history is still
     shown but a banner notes when no build targets the selected arch.
     """
-    selected_arch, clear_cookie = _resolve_arch_filter()
-    g.selected_arch = selected_arch
-    param_present = "arch" in request.args
+    selected_arch, clear_cookie, param_present = _arch_request_context()
     pkg = (
         db.session.execute(
             db.select(Package)
@@ -265,8 +274,7 @@ def package(name):
     arch_available = True
     if selected_arch is not None:
         arch_available = any(
-            selected_arch in {a.code for a in build.architectures}
-            or "noarch" in {a.code for a in build.architectures}
+            {a.code for a in build.architectures} & {selected_arch, "noarch"}
             for version in pkg.versions
             for build in version.builds
         )

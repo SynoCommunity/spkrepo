@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
+import json
+import os
 from unittest import mock
 
-from flask import url_for
+from flask import current_app, url_for
 from flask_security import url_for_security
 from lxml.html import fromstring
 
@@ -93,9 +95,8 @@ class PackagesTestCase(BaseTestCase):
         response = self.client.get(url_for("frontend.packages", arch="not-a-chip"))
         self.assert404(response)
 
-    def test_filter_persists_via_cookie(self):
-        # Selecting via ?arch= sets a cookie; later visits without the
-        # param stay filtered.
+    def test_filter_cookie_lifecycle(self):
+        # Selecting via ?arch= persists in a cookie; arch=all clears it.
         match = BuildFactory(
             architectures=[Architecture.find("cedarview")], active=True
         )
@@ -107,18 +108,21 @@ class PackagesTestCase(BaseTestCase):
         response_data = response.data.decode()
         self.assertIn(match.version.displaynames["enu"].displayname, response_data)
         self.assertNotIn(other.version.displaynames["enu"].displayname, response_data)
-
-    def test_filter_arch_all_clears_cookie(self):
-        BuildFactory(architectures=[Architecture.find("cedarview")], active=True)
-        BuildFactory(architectures=[Architecture.find("qoriq")], active=True)
-        db.session.commit()
-        self.client.get(url_for("frontend.packages", arch="cedarview"))
-        response = self.client.get(url_for("frontend.packages", arch="all"))
-        self.assert200(response)
-        # After clearing, an unfiltered visit shows everything again.
+        self.client.get(url_for("frontend.packages", arch="all"))
         response = self.client.get(url_for("frontend.packages"))
         self.assert200(response)
         self.assertNotIn("Showing packages for", response.data.decode())
+
+    def test_filter_accepts_syno_spelling(self):
+        # DSM/SRM spellings (e.g. 88f6281) resolve like nas.py does.
+        match = BuildFactory(architectures=[Architecture.find("88f628x")], active=True)
+        db.session.commit()
+        response = self.client.get(url_for("frontend.packages", arch="88f6281"))
+        self.assert200(response)
+        self.assertIn(
+            match.version.displaynames["enu"].displayname,
+            response.data.decode(),
+        )
 
 
 class PackageTestCase(BaseTestCase):
@@ -208,6 +212,26 @@ class PackageTestCase(BaseTestCase):
         )
         self.assert200(response)
         self.assertNotIn("No builds available for", response.data.decode())
+
+
+class ModelMapTestCase(BaseTestCase):
+    def _load_mapping(self):
+        path = os.path.join(current_app.static_folder, "data", "syno-models.json")
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_mapping_is_valid_json_with_spot_checks(self):
+        mapping = self._load_mapping()
+        models = {k: v for k, v in mapping.items() if not k.startswith("_")}
+        self.assertGreater(len(models), 100)
+        self.assertEqual(mapping["DS920+"], "geminilake")
+        self.assertEqual(mapping["DS923+"], "r1000")
+        self.assertEqual(mapping["DS1813+"], "cedarview")
+        self.assertEqual(mapping["DS413"], "qoriq")
+        self.assertEqual(mapping["DS220+"], "geminilake")
+        # All mapped codes look like platform codenames.
+        for model, arch in models.items():
+            self.assertRegex(arch, r"^[a-z0-9]+$", f"bad arch for {model}")
 
 
 class ProfileTestCase(BaseTestCase):
