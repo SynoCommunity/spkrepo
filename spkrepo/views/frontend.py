@@ -28,6 +28,7 @@ from ..models import (
     DisplayName,
     Package,
     Version,
+    group_builds_per_dsm,
     user_datastore,
 )
 from ..net import get_client_ip
@@ -243,8 +244,10 @@ def package(name):
     """Render a single package's detail page, showing its full version
     history. Returns 404 if the package doesn't exist or has no versions.
 
-    When an architecture filter is active, the full history is still
-    shown but a banner notes when no build targets the selected arch.
+    When an architecture filter is active, only versions with a build
+    for that architecture (or a universal noarch build) are shown, and
+    only the matching builds within them. Returns 404 when nothing
+    targets the selected arch.
     """
     selected_arch, clear_cookie, param_present = _arch_request_context()
     pkg = (
@@ -271,20 +274,41 @@ def package(name):
     )
     if pkg is None or not pkg.versions:
         abort(404)
-    arch_available = True
+    display_versions = None
+    version_build_groups = None
+    header_version = pkg.versions[-1]
     if selected_arch is not None:
-        arch_available = any(
-            {a.code for a in build.architectures} & {selected_arch, "noarch"}
+        wanted = {selected_arch, "noarch"}
+        display_versions = [
+            version
             for version in pkg.versions
-            for build in version.builds
-        )
+            if any(
+                {a.code for a in build.architectures} & wanted
+                for build in version.builds
+            )
+        ]
+        if not display_versions:
+            abort(404)
+        version_build_groups = {
+            version.id: group_builds_per_dsm(
+                [
+                    build
+                    for build in version.builds
+                    if {a.code for a in build.architectures} & wanted
+                ]
+            )
+            for version in display_versions
+        }
+        header_version = display_versions[-1]
     return _arch_response(
         "frontend/package.html",
         param_present,
         clear_cookie,
         selected_arch,
         package=pkg,
-        arch_available=arch_available,
+        display_versions=display_versions,
+        version_build_groups=version_build_groups,
+        header_version=header_version,
     )
 
 

@@ -13,7 +13,13 @@ from spkrepo.models import Architecture
 from spkrepo.models import Package as PackageModel
 from spkrepo.models import user_datastore
 from spkrepo.net import get_client_ip
-from spkrepo.tests.common import BaseTestCase, BuildFactory, UserFactory
+from spkrepo.tests.common import (
+    BaseTestCase,
+    BuildFactory,
+    PackageFactory,
+    UserFactory,
+    VersionFactory,
+)
 from spkrepo.views.frontend import _verify_turnstile_token
 
 
@@ -185,7 +191,56 @@ class PackageTestCase(BaseTestCase):
         response = self.client.get(url_for("frontend.package", name="empty-package"))
         self.assert404(response)
 
-    def test_detail_shows_banner_when_arch_unavailable(self):
+    def test_detail_filters_versions_by_arch(self):
+        # Only versions with a matching build are shown when filtered.
+        package = PackageFactory(name="multiversion-package")
+        match = BuildFactory(
+            version__package=package,
+            version__version=1,
+            architectures=[Architecture.find("cedarview")],
+            active=True,
+        )
+        other = BuildFactory(
+            version__package=package,
+            version__version=2,
+            architectures=[Architecture.find("qoriq")],
+            active=True,
+        )
+        db.session.commit()
+        response = self.client.get(
+            url_for("frontend.package", name=package.name, arch="cedarview")
+        )
+        self.assert200(response)
+        response_data = response.data.decode()
+        self.assertIn(match.version.version_string, response_data)
+        self.assertNotIn(other.version.version_string, response_data)
+
+    def test_detail_filters_builds_within_version(self):
+        # Non-matching builds of a shown version are hidden too.
+        package = PackageFactory(name="multibuild-package")
+        version = VersionFactory(package=package, version=1)
+        BuildFactory(
+            version=version,
+            architectures=[Architecture.find("cedarview")],
+            active=True,
+        )
+        BuildFactory(
+            version=version,
+            architectures=[Architecture.find("qoriq")],
+            active=True,
+        )
+        db.session.commit()
+        response = self.client.get(
+            url_for("frontend.package", name=package.name, arch="cedarview")
+        )
+        self.assert200(response)
+        response_data = response.data.decode()
+        # NOTE: assert on badge markup, not bare codes — the debug
+        # toolbar dumps the full architectures list into test responses.
+        self.assertIn("cedarview</span>", response_data)
+        self.assertNotIn("qoriq</span>", response_data)
+
+    def test_detail_no_matching_build_returns_404(self):
         build = BuildFactory(architectures=[Architecture.find("qoriq")], active=True)
         db.session.commit()
         response = self.client.get(
@@ -195,23 +250,7 @@ class PackageTestCase(BaseTestCase):
                 arch="cedarview",
             )
         )
-        self.assert200(response)
-        self.assertIn("No builds available for", response.data.decode())
-
-    def test_detail_no_banner_when_arch_available(self):
-        build = BuildFactory(
-            architectures=[Architecture.find("cedarview")], active=True
-        )
-        db.session.commit()
-        response = self.client.get(
-            url_for(
-                "frontend.package",
-                name=build.version.package.name,
-                arch="cedarview",
-            )
-        )
-        self.assert200(response)
-        self.assertNotIn("No builds available for", response.data.decode())
+        self.assert404(response)
 
 
 class ModelMapTestCase(BaseTestCase):
