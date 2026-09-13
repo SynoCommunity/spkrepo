@@ -7,6 +7,7 @@ from lxml.html import fromstring
 
 from spkrepo.ext import db
 from spkrepo.mail import SUPPRESSED_BOT_TEMPLATES, SpkrepoMailUtil
+from spkrepo.models import Architecture
 from spkrepo.models import Package as PackageModel
 from spkrepo.models import user_datastore
 from spkrepo.net import get_client_ip
@@ -62,6 +63,62 @@ class PackagesTestCase(BaseTestCase):
         # Empty packages list renders 200 with no package entries.
         response = self.client.get(url_for("frontend.packages"))
         self.assert200(response)
+
+    def test_filter_by_arch_shows_matching_hides_others(self):
+        match = BuildFactory(
+            architectures=[Architecture.find("cedarview")], active=True
+        )
+        other = BuildFactory(architectures=[Architecture.find("qoriq")], active=True)
+        db.session.commit()
+        response = self.client.get(url_for("frontend.packages", arch="cedarview"))
+        self.assert200(response)
+        response_data = response.data.decode()
+        self.assertIn(match.version.displaynames["enu"].displayname, response_data)
+        self.assertNotIn(other.version.displaynames["enu"].displayname, response_data)
+        self.assertIn("Showing packages for", response_data)
+
+    def test_filter_includes_noarch_builds(self):
+        universal = BuildFactory(
+            architectures=[Architecture.find("noarch")], active=True
+        )
+        db.session.commit()
+        response = self.client.get(url_for("frontend.packages", arch="cedarview"))
+        self.assert200(response)
+        self.assertIn(
+            universal.version.displaynames["enu"].displayname,
+            response.data.decode(),
+        )
+
+    def test_filter_invalid_arch_returns_404(self):
+        response = self.client.get(url_for("frontend.packages", arch="not-a-chip"))
+        self.assert404(response)
+
+    def test_filter_persists_via_cookie(self):
+        # Selecting via ?arch= sets a cookie; later visits without the
+        # param stay filtered.
+        match = BuildFactory(
+            architectures=[Architecture.find("cedarview")], active=True
+        )
+        other = BuildFactory(architectures=[Architecture.find("qoriq")], active=True)
+        db.session.commit()
+        self.client.get(url_for("frontend.packages", arch="cedarview"))
+        response = self.client.get(url_for("frontend.packages"))
+        self.assert200(response)
+        response_data = response.data.decode()
+        self.assertIn(match.version.displaynames["enu"].displayname, response_data)
+        self.assertNotIn(other.version.displaynames["enu"].displayname, response_data)
+
+    def test_filter_arch_all_clears_cookie(self):
+        BuildFactory(architectures=[Architecture.find("cedarview")], active=True)
+        BuildFactory(architectures=[Architecture.find("qoriq")], active=True)
+        db.session.commit()
+        self.client.get(url_for("frontend.packages", arch="cedarview"))
+        response = self.client.get(url_for("frontend.packages", arch="all"))
+        self.assert200(response)
+        # After clearing, an unfiltered visit shows everything again.
+        response = self.client.get(url_for("frontend.packages"))
+        self.assert200(response)
+        self.assertNotIn("Showing packages for", response.data.decode())
 
 
 class PackageTestCase(BaseTestCase):
@@ -123,6 +180,34 @@ class PackageTestCase(BaseTestCase):
         db.session.commit()
         response = self.client.get(url_for("frontend.package", name="empty-package"))
         self.assert404(response)
+
+    def test_detail_shows_banner_when_arch_unavailable(self):
+        build = BuildFactory(architectures=[Architecture.find("qoriq")], active=True)
+        db.session.commit()
+        response = self.client.get(
+            url_for(
+                "frontend.package",
+                name=build.version.package.name,
+                arch="cedarview",
+            )
+        )
+        self.assert200(response)
+        self.assertIn("No builds available for", response.data.decode())
+
+    def test_detail_no_banner_when_arch_available(self):
+        build = BuildFactory(
+            architectures=[Architecture.find("cedarview")], active=True
+        )
+        db.session.commit()
+        response = self.client.get(
+            url_for(
+                "frontend.package",
+                name=build.version.package.name,
+                arch="cedarview",
+            )
+        )
+        self.assert200(response)
+        self.assertNotIn("No builds available for", response.data.decode())
 
 
 class ProfileTestCase(BaseTestCase):

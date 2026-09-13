@@ -7,6 +7,8 @@ from flask import (
     Blueprint,
     abort,
     current_app,
+    g,
+    make_response,
     redirect,
     render_template,
     request,
@@ -20,6 +22,7 @@ from wtforms.validators import InputRequired, Length
 
 from ..ext import cache, db
 from ..models import (
+    Architecture,
     Build,
     BuildDescription,
     DisplayName,
@@ -32,6 +35,76 @@ from ..net import get_client_ip
 frontend = Blueprint("frontend", __name__)
 
 logger = logging.getLogger(__name__)
+
+#: Cookie persisting the selected frontend architecture filter.
+ARCH_COOKIE = "spk_arch"
+#: How long the architecture list is cached ( NAS catalog uses 600s too).
+ARCH_LIST_TIMEOUT = 600
+
+
+@cache.memoize(timeout=ARCH_LIST_TIMEOUT)
+def get_architectures():
+    """Sorted list of selectable architecture codes, excluding noarch.
+
+    noarch builds are universal so they are always included in filtered
+    results, but noarch itself is not a device architecture to select.
+    """
+    return (
+        db.session.execute(
+            db.select(Architecture.code)
+            .where(Architecture.code != "noarch")
+            .order_by(Architecture.code)
+        )
+        .scalars()
+        .all()
+    )
+
+
+def _resolve_arch_filter():
+    """Resolve the requested architecture filter.
+
+    Returns (arch_code or None, clear_cookie bool). An explicit ?arch=
+    query param wins over the cookie; unknown codes abort with 404.
+    """
+    param = request.args.get("arch")
+    if param is not None:
+        if param in ("", "all"):
+            return None, True
+        if Architecture.find(param) is None:
+            abort(404)
+        return param, False
+    cookie = request.cookies.get(ARCH_COOKIE)
+    if cookie and cookie not in ("", "all"):
+        if Architecture.find(cookie) is not None:
+            return cookie, False
+    return None, False
+
+
+def _arch_response(template, param_present, clear_cookie, selected_arch, **context):
+    """Render a template, persisting the arch selection in a cookie."""
+    response = make_response(render_template(template, **context))
+    if param_present:
+        if clear_cookie or not selected_arch:
+            response.delete_cookie(ARCH_COOKIE, path="/")
+        else:
+            response.set_cookie(
+                ARCH_COOKIE, selected_arch, max_age=31536000, path="/", samesite="Lax"
+            )
+    return response
+
+
+@frontend.context_processor
+def inject_arch_selector():
+    """Expose the architecture list + current selection to all frontend
+    templates (layout.html renders the selector)."""
+    try:
+        architectures = get_architectures()
+    except Exception:
+        architectures = []
+    return {
+        "architectures": architectures,
+        "selected_arch": getattr(g, "selected_arch", None),
+    }
 
 
 @frontend.route("/")
@@ -82,57 +155,89 @@ def profile():
 def packages():
     """Render the package list page, showing each package's latest
     version. Results are cached for 5 minutes under "packages_versions".
+
+    With ?arch=<code> (or the spk_arch cookie), only packages with a
+    build for that architecture — or a universal noarch build — are
+    shown, and "latest" means latest version carrying such a build.
+    Filtered views bypass the cache; the unfiltered list stays cached
+    so existing invalidation logic is untouched.
     """
-    versions = cache.get("packages_versions")
-    if versions is None:
-        latest_version = (
-            db.select(
-                Version.package_id, db.func.max(Version.version).label("latest_version")
+    selected_arch, clear_cookie = _resolve_arch_filter()
+    g.selected_arch = selected_arch
+    param_present = "arch" in request.args
+
+    if selected_arch is None:
+        versions = cache.get("packages_versions")
+        if versions is None:
+            versions = _latest_versions_query(None)
+            cache.set("packages_versions", versions, timeout=300)
+    else:
+        versions = _latest_versions_query(selected_arch)
+    return _arch_response(
+        "frontend/packages.html",
+        param_present,
+        clear_cookie,
+        selected_arch,
+        versions=versions,
+    )
+
+
+def _latest_versions_query(arch_code):
+    """Latest Version per package, optionally restricted to builds for
+    arch_code (universal noarch builds always count)."""
+    latest_version = db.select(
+        Version.package_id, db.func.max(Version.version).label("latest_version")
+    ).join(Build)
+    if arch_code is not None:
+        latest_version = latest_version.join(Build.architectures).filter(
+            db.or_(
+                Architecture.code == arch_code,
+                Architecture.code == "noarch",
             )
-            .join(Build)
-            .group_by(Version.package_id)
-            .subquery()
         )
-        versions = (
-            db.session.execute(
-                db.select(Version)
-                .join(Version.package)
-                .options(
-                    # Version.icons/displaynames/builds are one-to-many
-                    # collections; selectinload avoids the Cartesian-product
-                    # row multiplication joinedload would cause here.
-                    db.joinedload(Version.package).joinedload(Package.download_counts),
-                    db.joinedload(Version.package).undefer(Package.has_active_builds),
-                    db.selectinload(Version.icons),
-                    db.selectinload(Version.displaynames).joinedload(
-                        DisplayName.language
-                    ),
-                    db.selectinload(Version.builds)
-                    .selectinload(Build.descriptions)
-                    .joinedload(BuildDescription.language),
-                )
-                .join(
-                    latest_version,
-                    db.and_(
-                        Version.package_id == latest_version.c.package_id,
-                        Version.version == latest_version.c.latest_version,
-                    ),
-                )
-                .order_by(Package.name)
+    latest_version = latest_version.group_by(Version.package_id).subquery()
+    return (
+        db.session.execute(
+            db.select(Version)
+            .join(Version.package)
+            .options(
+                # Version.icons/displaynames/builds are one-to-many
+                # collections; selectinload avoids the Cartesian-product
+                # row multiplication joinedload would cause here.
+                db.joinedload(Version.package).joinedload(Package.download_counts),
+                db.joinedload(Version.package).undefer(Package.has_active_builds),
+                db.selectinload(Version.icons),
+                db.selectinload(Version.displaynames).joinedload(DisplayName.language),
+                db.selectinload(Version.builds)
+                .selectinload(Build.descriptions)
+                .joinedload(BuildDescription.language),
             )
-            .unique()
-            .scalars()
-            .all()
+            .join(
+                latest_version,
+                db.and_(
+                    Version.package_id == latest_version.c.package_id,
+                    Version.version == latest_version.c.latest_version,
+                ),
+            )
+            .order_by(Package.name)
         )
-        cache.set("packages_versions", versions, timeout=300)
-    return render_template("frontend/packages.html", versions=versions)
+        .unique()
+        .scalars()
+        .all()
+    )
 
 
 @frontend.route("/package/<name>")
 def package(name):
     """Render a single package's detail page, showing its full version
     history. Returns 404 if the package doesn't exist or has no versions.
+
+    When an architecture filter is active, the full history is still
+    shown but a banner notes when no build targets the selected arch.
     """
+    selected_arch, clear_cookie = _resolve_arch_filter()
+    g.selected_arch = selected_arch
+    param_present = "arch" in request.args
     pkg = (
         db.session.execute(
             db.select(Package)
@@ -146,6 +251,9 @@ def package(name):
                 db.selectinload(Package.versions)
                 .selectinload(Version.builds)
                 .selectinload(Build.descriptions),
+                db.selectinload(Package.versions)
+                .selectinload(Version.builds)
+                .selectinload(Build.architectures),
             )
         )
         .unique()
@@ -154,7 +262,22 @@ def package(name):
     )
     if pkg is None or not pkg.versions:
         abort(404)
-    return render_template("frontend/package.html", package=pkg)
+    arch_available = True
+    if selected_arch is not None:
+        arch_available = any(
+            selected_arch in {a.code for a in build.architectures}
+            or "noarch" in {a.code for a in build.architectures}
+            for version in pkg.versions
+            for build in version.builds
+        )
+    return _arch_response(
+        "frontend/package.html",
+        param_present,
+        clear_cookie,
+        selected_arch,
+        package=pkg,
+        arch_available=arch_available,
+    )
 
 
 def unique_user_username(form, field):

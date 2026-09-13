@@ -16,6 +16,12 @@
         {% endif %}
       </h1>
 
+      {% if selected_arch|default(None) and not arch_available|default(True) %}
+      <div class="alert alert-warning py-2" role="alert">
+        No builds available for <strong>{{ selected_arch }}</strong>. Showing all builds.
+      </div>
+      {% endif %}
+
       {% if not package.has_active_builds %}
       <div class="alert alert-secondary py-2" role="alert">
         <i class="bi bi-archive mr-2"></i>
@@ -87,11 +93,13 @@
           {% for build in builds %}
             {% if build.active %}
               {% for arch in build.architectures %}
-              <a href="{{ url_for('nas.data', path=build.path) }}"><span class="badge badge-success">{{ build.firmware_min.version }}{% if build.firmware_max %}-{{ build.firmware_max.version }}{% endif %} {{ arch.code }}</span></a>
+              {% set arch_match = (not selected_arch|default(None)) or arch.code == selected_arch or arch.code == 'noarch' %}
+              <a href="{{ url_for('nas.data', path=build.path) }}"><span class="badge badge-success"{% if not arch_match %} style="opacity: 0.45;" title="Not for {{ selected_arch }}"{% endif %}>{{ build.firmware_min.version }}{% if build.firmware_max %}-{{ build.firmware_max.version }}{% endif %} {{ arch.code }}</span></a>
               {% endfor %}
             {% else %}
               {% for arch in build.architectures %}
-              <a href="{{ url_for('nas.data', path=build.path) }}"><span class="badge badge-secondary" data-toggle="tooltip" title="Inactive: Manual installation only. This Package might be under development and have pending issues.">{{ build.firmware_min.version }}{% if build.firmware_max %}-{{ build.firmware_max.version }}{% endif %} {{ arch.code }}</span></a>
+              {% set arch_match = (not selected_arch|default(None)) or arch.code == selected_arch or arch.code == 'noarch' %}
+              <a href="{{ url_for('nas.data', path=build.path) }}"><span class="badge badge-secondary"{% if not arch_match %} style="opacity: 0.45;"{% endif %} data-toggle="tooltip" title="Inactive: Manual installation only. This Package might be under development and have pending issues.">{{ build.firmware_min.version }}{% if build.firmware_max %}-{{ build.firmware_max.version }}{% endif %} {{ arch.code }}</span></a>
               {% endfor %}
             {% endif %}
           {% endfor %}
