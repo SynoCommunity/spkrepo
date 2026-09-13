@@ -130,6 +130,24 @@ class PackagesTestCase(BaseTestCase):
             response.data.decode(),
         )
 
+    def test_filtered_card_links_carry_arch(self):
+        # Card links keep ?arch= so the detail page stays filtered even
+        # with cookies disabled.
+        build = BuildFactory(
+            architectures=[Architecture.find("cedarview")], active=True
+        )
+        db.session.commit()
+        response = self.client.get(url_for("frontend.packages", arch="cedarview"))
+        self.assert200(response)
+        self.assertIn(
+            url_for(
+                "frontend.package",
+                name=build.version.package.name,
+                arch="cedarview",
+            ),
+            response.data.decode(),
+        )
+
 
 class PackageTestCase(BaseTestCase):
     def _assert_package_page(self, active, is_stable):
