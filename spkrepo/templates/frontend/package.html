@@ -1,20 +1,26 @@
 {% extends 'layout.html' %}
-{% block title %}{{ package.versions[-1].displaynames['enu'].displayname }} Package - {{ super() }}{% endblock %}
+{% block title %}{{ header_version.displaynames['enu'].displayname }} Package - {{ super() }}{% endblock %}
 {% block content %}
 <div class="row">
   <div class="d-flex">
     <div class="flex-shrink-0 mr-3">
-      {% set _icon = package.versions[-1].icons.get("256") or package.versions[-1].icons["72"] %}
+      {% set _icon = header_version.icons.get("256") or header_version.icons["72"] %}
       <img src="{{ url_for('nas.data', path=_icon.path) }}" alt="Icon"
-           style="{% if "256" in package.versions[-1].icons %}width:128px;{% endif %}height:auto;{% if not package.has_active_builds %} filter: grayscale(60%);{% endif %}">
+           style="{% if "256" in header_version.icons %}width:128px;{% endif %}height:auto;{% if not package.has_active_builds %} filter: grayscale(60%);{% endif %}">
     </div>
     <div class="flex-grow-1">
-      <h1>{{ package.versions[-1].displaynames['enu'].displayname }}
-        <small class="text-muted">v{{ package.versions[-1].version_string }}</small>
+      <h1>{{ header_version.displaynames['enu'].displayname }}
+        <small class="text-muted">v{{ header_version.version_string }}</small>
         {% if not package.has_active_builds %}
           <span class="badge badge-secondary ml-1">Archived</span>
         {% endif %}
       </h1>
+
+      {% if selected_arch|default(None) %}
+      <div class="alert alert-info py-2" role="alert">
+        Showing builds for <strong>{{ selected_arch }}</strong> (including universal builds).
+      </div>
+      {% endif %}
 
       {% if not package.has_active_builds %}
       <div class="alert alert-secondary py-2" role="alert">
@@ -64,13 +70,17 @@
         {% endif %}
       {% endif %}
 
-      <p>{{ package.versions[-1].builds[0].descriptions['enu'].description }}</p>
+      <p>{{ header_version.builds[0].descriptions['enu'].description }}</p>
       <div class="package-screenshots">
         {% for screenshot in package.screenshots %}
         <img class="package-screenshot" src="{{ url_for('nas.data', path=screenshot.path) }}" alt="Screenshot">&nbsp;
         {% endfor %}
       </div>
-      {% for version in package.versions|reverse %}
+      {# When filtered, display_versions holds only versions with a matching
+         build and version_build_groups holds only the matching builds per
+         version; otherwise fall back to the full history. #}
+      {% for version in (display_versions if display_versions is not none else package.versions)|reverse %}
+      {% set build_groups = version_build_groups[version.id] if version_build_groups is not none else version.builds_per_dsm %}
       <dl>
         <dt>Version {{ version.version_string | safe }}{% if version.report_url %} <span class="badge badge-danger">beta</span>{% endif %}</dt>
         <dd>{{ version.builds[0].changelog | safe }}</dd>
@@ -78,7 +88,7 @@
         <dd>{{ version.insert_date.replace(microsecond=0) }}</dd>
         <dt>Architectures</dt>
         <dd>
-        {% for (dsm_version, builds) in version.builds_per_dsm.items() %}
+        {% for (dsm_version, builds) in build_groups.items() %}
           {% if dsm_version == '1' %}
             SRM {{ dsm_version }}.x:
           {% else %}

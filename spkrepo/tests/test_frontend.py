@@ -1,16 +1,25 @@
 # -*- coding: utf-8 -*-
+import json
+import os
 from unittest import mock
 
-from flask import url_for
+from flask import current_app, url_for
 from flask_security import url_for_security
 from lxml.html import fromstring
 
 from spkrepo.ext import db
 from spkrepo.mail import SUPPRESSED_BOT_TEMPLATES, SpkrepoMailUtil
+from spkrepo.models import Architecture
 from spkrepo.models import Package as PackageModel
 from spkrepo.models import user_datastore
 from spkrepo.net import get_client_ip
-from spkrepo.tests.common import BaseTestCase, BuildFactory, UserFactory
+from spkrepo.tests.common import (
+    BaseTestCase,
+    BuildFactory,
+    PackageFactory,
+    UserFactory,
+    VersionFactory,
+)
 from spkrepo.views.frontend import _verify_turnstile_token
 
 
@@ -62,6 +71,82 @@ class PackagesTestCase(BaseTestCase):
         # Empty packages list renders 200 with no package entries.
         response = self.client.get(url_for("frontend.packages"))
         self.assert200(response)
+
+    def test_filter_by_arch_shows_matching_hides_others(self):
+        match = BuildFactory(
+            architectures=[Architecture.find("cedarview")], active=True
+        )
+        other = BuildFactory(architectures=[Architecture.find("qoriq")], active=True)
+        db.session.commit()
+        response = self.client.get(url_for("frontend.packages", arch="cedarview"))
+        self.assert200(response)
+        response_data = response.data.decode()
+        self.assertIn(match.version.displaynames["enu"].displayname, response_data)
+        self.assertNotIn(other.version.displaynames["enu"].displayname, response_data)
+        self.assertIn("Showing packages for", response_data)
+
+    def test_filter_includes_noarch_builds(self):
+        universal = BuildFactory(
+            architectures=[Architecture.find("noarch")], active=True
+        )
+        db.session.commit()
+        response = self.client.get(url_for("frontend.packages", arch="cedarview"))
+        self.assert200(response)
+        self.assertIn(
+            universal.version.displaynames["enu"].displayname,
+            response.data.decode(),
+        )
+
+    def test_filter_invalid_arch_returns_404(self):
+        response = self.client.get(url_for("frontend.packages", arch="not-a-chip"))
+        self.assert404(response)
+
+    def test_filter_cookie_lifecycle(self):
+        # Selecting via ?arch= persists in a cookie; arch=all clears it.
+        match = BuildFactory(
+            architectures=[Architecture.find("cedarview")], active=True
+        )
+        other = BuildFactory(architectures=[Architecture.find("qoriq")], active=True)
+        db.session.commit()
+        self.client.get(url_for("frontend.packages", arch="cedarview"))
+        response = self.client.get(url_for("frontend.packages"))
+        self.assert200(response)
+        response_data = response.data.decode()
+        self.assertIn(match.version.displaynames["enu"].displayname, response_data)
+        self.assertNotIn(other.version.displaynames["enu"].displayname, response_data)
+        self.client.get(url_for("frontend.packages", arch="all"))
+        response = self.client.get(url_for("frontend.packages"))
+        self.assert200(response)
+        self.assertNotIn("Showing packages for", response.data.decode())
+
+    def test_filter_accepts_syno_spelling(self):
+        # DSM/SRM spellings (e.g. 88f6281) resolve like nas.py does.
+        match = BuildFactory(architectures=[Architecture.find("88f628x")], active=True)
+        db.session.commit()
+        response = self.client.get(url_for("frontend.packages", arch="88f6281"))
+        self.assert200(response)
+        self.assertIn(
+            match.version.displaynames["enu"].displayname,
+            response.data.decode(),
+        )
+
+    def test_filtered_card_links_carry_arch(self):
+        # Card links keep ?arch= so the detail page stays filtered even
+        # with cookies disabled.
+        build = BuildFactory(
+            architectures=[Architecture.find("cedarview")], active=True
+        )
+        db.session.commit()
+        response = self.client.get(url_for("frontend.packages", arch="cedarview"))
+        self.assert200(response)
+        self.assertIn(
+            url_for(
+                "frontend.package",
+                name=build.version.package.name,
+                arch="cedarview",
+            ),
+            response.data.decode(),
+        )
 
 
 class PackageTestCase(BaseTestCase):
@@ -123,6 +208,87 @@ class PackageTestCase(BaseTestCase):
         db.session.commit()
         response = self.client.get(url_for("frontend.package", name="empty-package"))
         self.assert404(response)
+
+    def test_detail_filters_versions_by_arch(self):
+        # Only versions with a matching build are shown when filtered.
+        package = PackageFactory(name="multiversion-package")
+        match = BuildFactory(
+            version__package=package,
+            version__version=1,
+            architectures=[Architecture.find("cedarview")],
+            active=True,
+        )
+        other = BuildFactory(
+            version__package=package,
+            version__version=2,
+            architectures=[Architecture.find("qoriq")],
+            active=True,
+        )
+        db.session.commit()
+        response = self.client.get(
+            url_for("frontend.package", name=package.name, arch="cedarview")
+        )
+        self.assert200(response)
+        response_data = response.data.decode()
+        self.assertIn(match.version.version_string, response_data)
+        self.assertNotIn(other.version.version_string, response_data)
+
+    def test_detail_filters_builds_within_version(self):
+        # Non-matching builds of a shown version are hidden too.
+        package = PackageFactory(name="multibuild-package")
+        version = VersionFactory(package=package, version=1)
+        BuildFactory(
+            version=version,
+            architectures=[Architecture.find("cedarview")],
+            active=True,
+        )
+        BuildFactory(
+            version=version,
+            architectures=[Architecture.find("qoriq")],
+            active=True,
+        )
+        db.session.commit()
+        response = self.client.get(
+            url_for("frontend.package", name=package.name, arch="cedarview")
+        )
+        self.assert200(response)
+        response_data = response.data.decode()
+        # NOTE: assert on badge markup, not bare codes — the debug
+        # toolbar dumps the full architectures list into test responses.
+        self.assertIn("cedarview</span>", response_data)
+        self.assertNotIn("qoriq</span>", response_data)
+
+    def test_detail_no_matching_build_returns_404(self):
+        build = BuildFactory(architectures=[Architecture.find("qoriq")], active=True)
+        db.session.commit()
+        response = self.client.get(
+            url_for(
+                "frontend.package",
+                name=build.version.package.name,
+                arch="cedarview",
+            )
+        )
+        self.assert404(response)
+
+
+class ModelMapTestCase(BaseTestCase):
+    def _load_mapping(self):
+        path = os.path.join(current_app.static_folder, "data", "syno-models.json")
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_mapping_is_valid_json_with_spot_checks(self):
+        mapping = self._load_mapping()
+        models = {k: v for k, v in mapping.items() if not k.startswith("_")}
+        self.assertGreater(len(models), 100)
+        self.assertEqual(mapping["DS920+"], "geminilake")
+        self.assertEqual(mapping["DS923+"], "r1000")
+        self.assertEqual(mapping["DS1813+"], "cedarview")
+        self.assertEqual(mapping["DS413"], "qoriq")
+        self.assertEqual(mapping["DS220+"], "geminilake")
+        # All mapped codes look like platform codenames.
+        for model, arch in models.items():
+            self.assertRegex(arch, r"^[a-z0-9]+$", f"bad arch for {model}")
 
 
 class ProfileTestCase(BaseTestCase):

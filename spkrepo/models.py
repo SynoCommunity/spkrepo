@@ -738,6 +738,38 @@ Firmware.recent_target_download_count = db.column_property(
 )
 
 
+def group_builds_per_dsm(builds):
+    """Group builds by DSM/SRM major version, newest-first, with each
+    group's builds also ordered by full firmware version, newest-first,
+    so e.g. 7.2.x builds don't interleave with 7.1.x builds.
+
+    Shared by Version.builds_per_dsm and callers that need the same
+    grouping over a filtered subset of builds.
+    """
+
+    def _firmware_sort_key(build):
+        return tuple(
+            int(part) if part.isdigit() else part
+            for part in build.firmware_min.version.split(".")
+        )
+
+    groups = {}
+    for build in builds:
+        major = build.firmware_min.version.split(".")[0]
+        groups.setdefault(major, []).append(build)
+
+    for grouped in groups.values():
+        grouped.sort(key=_firmware_sort_key, reverse=True)
+
+    return dict(
+        sorted(
+            groups.items(),
+            key=lambda item: int(item[0]) if item[0].isdigit() else item[0],
+            reverse=True,
+        )
+    )
+
+
 class BuildManifest(db.Model):
     """A build's install-time dependency/conflict/permission manifest,
     parsed from its SPK INFO/conf files."""
@@ -885,28 +917,7 @@ class Version(db.Model):
         group's builds also ordered by full firmware version, newest-first,
         so e.g. 7.2.x builds don't interleave with 7.1.x builds.
         """
-
-        def _firmware_sort_key(build):
-            return tuple(
-                int(part) if part.isdigit() else part
-                for part in build.firmware_min.version.split(".")
-            )
-
-        groups = {}
-        for build in self.builds:
-            major = build.firmware_min.version.split(".")[0]
-            groups.setdefault(major, []).append(build)
-
-        for builds in groups.values():
-            builds.sort(key=_firmware_sort_key, reverse=True)
-
-        return dict(
-            sorted(
-                groups.items(),
-                key=lambda item: int(item[0]) if item[0].isdigit() else item[0],
-                reverse=True,
-            )
-        )
+        return group_builds_per_dsm(self.builds)
 
     @hybrid_property
     def total_size(self):
