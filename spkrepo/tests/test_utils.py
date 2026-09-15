@@ -147,30 +147,91 @@ class SPKParseTestCase(BaseTestCase):
                 SPK(f)
         self.assertEqual("Missing package.tgz file", str(cm.exception))
 
-    def test_wrong_license_encoding(self):
-        build = BuildFactory.build(version__license="License française")
-        with create_spk(build, license_encoding="latin-1") as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual("Wrong LICENSE encoding", str(cm.exception))
+    def test_wrong_file_encodings(self):
+        import json as json_module
 
-    def test_wrong_syno_signature_encoding(self):
-        build = BuildFactory.build()
-        with create_spk(
-            build, signature="Signature française", signature_encoding="latin-1"
-        ) as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual("Wrong syno_signature.asc encoding", str(cm.exception))
-
-    def test_wrong_info_encoding(self):
-        build = BuildFactory.build()
-        info = create_info(build)
-        info["description"] = "Description en français"
-        with create_spk(build, info=info, info_encoding="latin-1") as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual("Wrong INFO encoding", str(cm.exception))
+        cases = [
+            (
+                "LICENSE",
+                dict(version__license="License française"),
+                dict(license_encoding="latin-1"),
+                "Wrong LICENSE encoding",
+                None,
+            ),
+            (
+                "syno_signature",
+                {},
+                dict(
+                    signature="Signature française", signature_encoding="latin-1"
+                ),
+                "Wrong syno_signature.asc encoding",
+                None,
+            ),
+            (
+                "INFO",
+                {},
+                dict(info_encoding="latin-1"),
+                "Wrong INFO encoding",
+                {"description": "Description en français"},
+            ),
+            (
+                "PKG_DEPS",
+                dict(
+                    buildmanifest__conf_dependencies=json_module.dumps(
+                        {"déçu": {"dsm_min_ver": "5.0-4300"}}
+                    )
+                ),
+                dict(conf_dependencies_encoding="latin-1"),
+                "Wrong conf/PKG_DEPS encoding",
+                None,
+            ),
+            (
+                "PKG_CONX",
+                dict(
+                    buildmanifest__conf_conflicts=json_module.dumps(
+                        {"déçu": {"dsm_min_ver": "5.0-4300"}}
+                    )
+                ),
+                dict(conf_conflicts_encoding="latin-1"),
+                "Wrong conf/PKG_CONX encoding",
+                None,
+            ),
+            (
+                "privilege",
+                dict(
+                    buildmanifest__conf_privilege=json_module.dumps(
+                        {"déçu": {"run-as": "<run-as>"}}, ensure_ascii=False
+                    )
+                ),
+                dict(conf_privilege_encoding="latin-1"),
+                "Wrong conf/privilege encoding",
+                None,
+            ),
+            (
+                "resource",
+                dict(
+                    buildmanifest__conf_resource=json_module.dumps(
+                        {"déçu": {"<resource-id>": "<specification>"}},
+                        ensure_ascii=False,
+                    )
+                ),
+                dict(conf_resource_encoding="latin-1"),
+                "Wrong conf/resource encoding",
+                None,
+            ),
+        ]
+        for name, factory_kwargs, spk_kwargs, expected, info_override in cases:
+            with self.subTest(encoding=name):
+                build = BuildFactory.build(**factory_kwargs)
+                info = None
+                if info_override is not None:
+                    info = create_info(build)
+                    info.update(info_override)
+                    spk_kwargs = dict(spk_kwargs, info=info)
+                with create_spk(build, **spk_kwargs) as f:
+                    with self.assertRaises(SPKParseError) as cm:
+                        SPK(f)
+                self.assertEqual(expected, str(cm.exception))
 
     def test_invalid_info(self):
         build = BuildFactory.build()
@@ -243,97 +304,36 @@ class SPKParseTestCase(BaseTestCase):
             SPK(invalid_spk)
         self.assertEqual("Invalid SPK", str(cm.exception))
 
-    def test_missing_conf_folder(self):
-        build = BuildFactory.build(
-            buildmanifest__conf_dependencies=None,
-            buildmanifest__conf_conflicts=None,
-            buildmanifest__conf_privilege=None,
-            buildmanifest__conf_resource=None,
-        )
-        info = create_info(build)
-        info["support_conf_folder"] = "yes"
-        with create_spk(build, info=info, with_conf=False) as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual("Missing conf folder", str(cm.exception))
+    def test_conf_folder_missing_or_empty(self):
+        for with_conf, expected in (
+            (False, "Missing conf folder"),
+            (True, "Empty conf folder"),
+        ):
+            with self.subTest(with_conf=with_conf):
+                build = BuildFactory.build(
+                    buildmanifest__conf_dependencies=None,
+                    buildmanifest__conf_conflicts=None,
+                    buildmanifest__conf_privilege=None,
+                    buildmanifest__conf_resource=None,
+                )
+                info = create_info(build)
+                info["support_conf_folder"] = "yes"
+                with create_spk(build, info=info, with_conf=with_conf) as f:
+                    with self.assertRaises(SPKParseError) as cm:
+                        SPK(f)
+                self.assertEqual(expected, str(cm.exception))
 
-    def test_wrong_conf_dependencies_encoding(self):
-        build = BuildFactory.build(
-            buildmanifest__conf_dependencies=json.dumps(
-                {"déçu": {"dsm_min_ver": "5.0-4300"}}
-            )
-        )
-        with create_spk(build, conf_dependencies_encoding="latin-1") as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual("Wrong conf/PKG_DEPS encoding", str(cm.exception))
-
-    def test_wrong_conf_conflicts_encoding(self):
-        build = BuildFactory.build(
-            buildmanifest__conf_conflicts=json.dumps(
-                {"déçu": {"dsm_min_ver": "5.0-4300"}}
-            )
-        )
-        with create_spk(build, conf_conflicts_encoding="latin-1") as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual("Wrong conf/PKG_CONX encoding", str(cm.exception))
-
-    def test_wrong_conf_privilege_encoding(self):
-        build = BuildFactory.build(
-            buildmanifest__conf_privilege=json.dumps(
-                {"déçu": {"run-as": "<run-as>"}}, ensure_ascii=False
-            )
-        )
-        with create_spk(build, conf_privilege_encoding="latin-1") as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual("Wrong conf/privilege encoding", str(cm.exception))
-
-    def test_wrong_conf_resource_encoding(self):
-        build = BuildFactory.build(
-            buildmanifest__conf_resource=json.dumps(
-                {"déçu": {"<resource-id>": "<specification>"}}, ensure_ascii=False
-            )
-        )
-        with create_spk(build, conf_resource_encoding="latin-1") as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual("Wrong conf/resource encoding", str(cm.exception))
-
-    def test_post_conf_privilege_invalid_json(self):
-        build = BuildFactory.build(buildmanifest__conf_privilege='{"invalid": "json}')
-        with create_spk(build) as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual(
-            "File conf/privilege is not valid JSON",
-            str(cm.exception),
-        )
-
-    def test_post_conf_resource_invalid_json(self):
-        build = BuildFactory.build(buildmanifest__conf_resource='{"invalid": "json}')
-        with create_spk(build) as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual(
-            "File conf/resource is not valid JSON",
-            str(cm.exception),
-        )
-
-    def test_empty_conf_folder(self):
-        build = BuildFactory.build(
-            buildmanifest__conf_dependencies=None,
-            buildmanifest__conf_conflicts=None,
-            buildmanifest__conf_privilege=None,
-            buildmanifest__conf_resource=None,
-        )
-        info = create_info(build)
-        info["support_conf_folder"] = "yes"
-        with create_spk(build, info=info, with_conf=True) as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual("Empty conf folder", str(cm.exception))
+    def test_conf_invalid_json(self):
+        for field, expected in (
+            ("buildmanifest__conf_privilege", "File conf/privilege is not valid JSON"),
+            ("buildmanifest__conf_resource", "File conf/resource is not valid JSON"),
+        ):
+            with self.subTest(field=field):
+                build = BuildFactory.build(**{field: '{"invalid": "json}'})
+                with create_spk(build) as f:
+                    with self.assertRaises(SPKParseError) as cm:
+                        SPK(f)
+                self.assertEqual(expected, str(cm.exception))
 
 
 class SPKSignTestCase(BaseTestCase):

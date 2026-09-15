@@ -54,24 +54,13 @@ class TestSortFields:
         form = F()
         result = sort_fields(form)
         assert [f.name for f in result] == ["a", "b"]
-
-    def test_sort_fields_with_empty_field_names(self):
-        from wtforms import Form, StringField
-
-        class F(Form):
-            a = StringField()
-            b = StringField()
-
-        form = F()
         result = sort_fields(form, field_names=[])
         assert [f.name for f in result] == ["a", "b"]
 
 
 class TestAbbreviateNumber:
-    def test_none(self):
+    def test_none_and_zero(self):
         assert abbreviate_number(None) == "0"
-
-    def test_zero(self):
         assert abbreviate_number(0) == "0"
 
     def test_small_numbers(self):

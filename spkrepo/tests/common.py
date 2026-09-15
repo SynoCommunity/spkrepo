@@ -13,6 +13,7 @@ import tarfile
 import tempfile
 from configparser import ConfigParser
 from contextlib import contextmanager
+from unittest.mock import patch
 
 import factory
 import factory.alchemy
@@ -440,6 +441,47 @@ class BaseTestCase(TestCase):
     def assertHeader(self, response, header, value, message=None):
         self.assertIn(header, response.headers, message)
         self.assertEqual(response.headers[header], value, message)
+
+
+def run_task_sync(task_func):
+    """Return a mock for .delay() that runs the task synchronously in-process.
+
+    Usage:
+        with patch_resync_info(), patch_resync_file():
+            ...
+
+    The mock captures the build_id and build_label arguments that the action
+    handler passes to .delay() and calls the underlying task function directly,
+    so DB state is updated before assertions run — no broker needed.
+    """
+
+    def fake_delay(build_id, build_label=""):
+        task_func(build_id, build_label)
+
+        class FakeResult:
+            id = "fake-task-id"
+
+        return FakeResult()
+
+    return fake_delay
+
+
+def patch_resync_info():
+    from spkrepo.views.tasks import resync_build_metadata
+
+    return patch.object(
+        resync_build_metadata,
+        "delay",
+        side_effect=run_task_sync(resync_build_metadata.run),
+    )
+
+
+def patch_resync_file():
+    from spkrepo.views.tasks import resync_build_file
+
+    return patch.object(
+        resync_build_file, "delay", side_effect=run_task_sync(resync_build_file.run)
+    )
 
 
 def create_info(build):

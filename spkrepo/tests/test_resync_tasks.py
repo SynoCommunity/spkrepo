@@ -108,10 +108,12 @@ class ResyncBuildMetadataTaskTestCase(BaseTestCase):
         self.assertEqual(result["status"], "error")
         self.assertIn("build_id", result)
 
-    def test_does_not_retry_on_value_error(self):
-        """ValueError (e.g. metadata mismatch) must return error, never retry."""
+    def test_value_error_returns_error_without_retry_or_cache_invalidation(self):
+        """ValueError (e.g. metadata mismatch) must return error, never retry,
+        and must leave the cache untouched — the commit never ran."""
         build = BuildFactory()
         db.session.commit()
+        cache.set("packages_versions", "stale")
 
         with patch(
             "spkrepo.views.tasks.extract_version_metadata",
@@ -121,6 +123,7 @@ class ResyncBuildMetadataTaskTestCase(BaseTestCase):
 
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["error"], "bad data")
+        self.assertEqual(cache.get("packages_versions"), "stale")
 
     def test_invalidates_cache_on_success(self):
         build = BuildFactory()
@@ -130,19 +133,6 @@ class ResyncBuildMetadataTaskTestCase(BaseTestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertIsNone(cache.get("packages_versions"))
-
-    def test_cache_not_invalidated_on_error(self):
-        build = BuildFactory()
-        db.session.commit()
-        cache.set("packages_versions", "stale")
-        with patch(
-            "spkrepo.views.tasks.extract_version_metadata",
-            side_effect=ValueError("bad data"),
-        ):
-            resync_build_metadata(build.id, str(build))
-
-        # Cache must be untouched — the commit never ran
-        self.assertEqual(cache.get("packages_versions"), "stale")
 
     def test_each_sibling_spk_opened_exactly_once(self):
         """Verify O(n) sibling reads: 3 builds → 3 SPK opens, no duplicates."""

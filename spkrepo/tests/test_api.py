@@ -348,33 +348,31 @@ class PackagesTestCase(BaseTestCase):
         self.assert422(response)
         self.assertIn("Unknown architecture: newarch", response.data.decode())
 
-    def test_post_invalid_firmware(self):
+    def test_post_firmware_errors(self):
         user = UserFactory(roles=[Role.find("developer")])
         db.session.commit()
 
-        build = BuildFactory.build(firmware_min=Firmware(version="1.0", build=42))
-        with create_spk(build) as spk:
-            response = self.client.post(
-                url_for("api.packages"),
-                headers=authorization_header(user),
-                data=spk.read(),
-            )
-        self.assert422(response)
-        self.assertIn("Invalid firmware", response.data.decode())
+        with self.subTest(case="invalid_firmware"):
+            build = BuildFactory.build(firmware_min=Firmware(version="1.0", build=42))
+            with create_spk(build) as spk:
+                response = self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            self.assert422(response)
+            self.assertIn("Invalid firmware", response.data.decode())
 
-    def test_post_unknown_firmware(self):
-        user = UserFactory(roles=[Role.find("developer")])
-        db.session.commit()
-
-        build = BuildFactory.build(firmware_min=Firmware(version="1.0", build=421))
-        with create_spk(build) as spk:
-            response = self.client.post(
-                url_for("api.packages"),
-                headers=authorization_header(user),
-                data=spk.read(),
-            )
-        self.assert422(response)
-        self.assertIn("Unknown firmware", response.data.decode())
+        with self.subTest(case="unknown_firmware"):
+            build = BuildFactory.build(firmware_min=Firmware(version="1.0", build=421))
+            with create_spk(build) as spk:
+                response = self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
+            self.assert422(response)
+            self.assertIn("Unknown firmware", response.data.decode())
 
     def test_post_icons_in_info_only(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -498,37 +496,26 @@ class PackagesTestCase(BaseTestCase):
             )
         self.assertBuildInserted(get_only_build(), build, user)
 
-    def test_post_wrong_displayname_language(self):
+    def test_post_wrong_info_language(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
         db.session.commit()
 
-        build = BuildFactory.build()
-        info = create_info(build)
-        info["displayname_zzz"] = "displayname_zzz"
-        with create_spk(build, info=info) as spk:
-            response = self.client.post(
-                url_for("api.packages"),
-                headers=authorization_header(user),
-                data=spk.read(),
-            )
-        self.assert422(response)
-        self.assertIn("Unknown INFO displayname language", response.data.decode())
-
-    def test_post_wrong_description_language(self):
-        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
-        db.session.commit()
-
-        build = BuildFactory.build()
-        info = create_info(build)
-        info["description_zzz"] = "description_zzz"
-        with create_spk(build, info=info) as spk:
-            response = self.client.post(
-                url_for("api.packages"),
-                headers=authorization_header(user),
-                data=spk.read(),
-            )
-        self.assert422(response)
-        self.assertIn("Unknown INFO description language", response.data.decode())
+        for info_key, expected in (
+            ("displayname_zzz", "Unknown INFO displayname language"),
+            ("description_zzz", "Unknown INFO description language"),
+        ):
+            with self.subTest(info_key=info_key):
+                build = BuildFactory.build()
+                info = create_info(build)
+                info[info_key] = info_key
+                with create_spk(build, info=info) as spk:
+                    response = self.client.post(
+                        url_for("api.packages"),
+                        headers=authorization_header(user),
+                        data=spk.read(),
+                    )
+                self.assert422(response)
+                self.assertIn(expected, response.data.decode())
 
     def test_post_wrong_version(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -800,39 +787,28 @@ class PackagesTestCase(BaseTestCase):
             )
         self.assertBuildInserted(get_only_build(), build, user)
 
-    def test_post_invalid_firmware_max(self):
-        # os_max_ver that doesn't match the firmware regex returns 422.
+    def test_post_firmware_max_errors(self):
+        # os_max_ver that doesn't match the firmware regex returns 422;
+        # valid format but unknown build number returns 422.
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
         db.session.commit()
 
-        build = BuildFactory.build(firmware_min=Firmware.find(1594))
-        info = create_info(build)
-        info["os_max_ver"] = "not-a-firmware"
-        with create_spk(build, info=info) as spk:
-            response = self.client.post(
-                url_for("api.packages"),
-                headers=authorization_header(user),
-                data=spk.read(),
-            )
-        self.assert422(response)
-        self.assertIn("Invalid firmware value", response.data.decode())
-
-    def test_post_unknown_firmware_max(self):
-        # os_max_ver with valid format but unknown build number returns 422.
-        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
-        db.session.commit()
-
-        build = BuildFactory.build(firmware_min=Firmware.find(1594))
-        info = create_info(build)
-        info["os_max_ver"] = "5.0-9999"
-        with create_spk(build, info=info) as spk:
-            response = self.client.post(
-                url_for("api.packages"),
-                headers=authorization_header(user),
-                data=spk.read(),
-            )
-        self.assert422(response)
-        self.assertIn("Unknown firmware", response.data.decode())
+        for os_max_ver, expected in (
+            ("not-a-firmware", "Invalid firmware value"),
+            ("5.0-9999", "Unknown firmware"),
+        ):
+            with self.subTest(os_max_ver=os_max_ver):
+                build = BuildFactory.build(firmware_min=Firmware.find(1594))
+                info = create_info(build)
+                info["os_max_ver"] = os_max_ver
+                with create_spk(build, info=info) as spk:
+                    response = self.client.post(
+                        url_for("api.packages"),
+                        headers=authorization_header(user),
+                        data=spk.read(),
+                    )
+                self.assert422(response)
+                self.assertIn(expected, response.data.decode())
 
     def test_post_firmware_max_less_than_firmware_min(self):
         # os_max_ver < firmware returns 422.

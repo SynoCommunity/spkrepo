@@ -357,12 +357,9 @@ class CatalogTestCase(BaseTestCase):
             firmware_min=Firmware.find(1594),
         )
         db.session.commit()
-        data = dict(arch="88f6281", build="1594", language="enu")
-        response = self.client.post(url_for("nas.catalog"), data=data)
-        self.assert200(response)
-        self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode())
-        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        packages = self._catalog_post(
+            dict(arch="88f6281", build="1594", language="enu")
+        )
         self.assertEqual(len(packages), 0)
 
     def test_stable_build_active_stable_different_firmware(self):
@@ -373,12 +370,9 @@ class CatalogTestCase(BaseTestCase):
             firmware_min=Firmware.find(4458),
         )
         db.session.commit()
-        data = dict(arch="88f6281", build="1594", language="enu")
-        response = self.client.post(url_for("nas.catalog"), data=data)
-        self.assert200(response)
-        self.assertHeader(response, "Content-Type", "application/json")
-        catalog = json.loads(response.data.decode())
-        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
+        packages = self._catalog_post(
+            dict(arch="88f6281", build="1594", language="enu")
+        )
         self.assertEqual(len(packages), 0)
 
     def _catalog_post(self, data):
