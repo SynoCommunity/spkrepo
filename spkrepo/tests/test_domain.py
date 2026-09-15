@@ -496,6 +496,9 @@ class TestDomainGaps:
         assert has_wizard(["WIZARD_UIFILES/install_uifile_enu"], "install") is True
         assert has_wizard(["WIZARD_UIFILES/install_uifile.sh"], "install") is True
         assert has_wizard(["WIZARD_UIFILES/upgrade_uifile"], "install") is False
+        assert has_wizard(["WIZARD_UIFILES/uninstall_uifile"], "uninstall") is True
+        assert has_wizard(["WIZARD_UIFILES/uninstall_uifile_enu"], "uninstall") is True
+        assert has_wizard(["WIZARD_UIFILES/uninstall_uifile.sh"], "uninstall") is True
         assert has_wizard([], "install") is False
 
     def test_derive_startable_raw(self):
@@ -601,6 +604,34 @@ class TestDomainGaps:
                     service_dependencies=[_svc("apache-web")],
                 ),
                 ok_spk,
+            )
+        # each remaining simple field mismatch is reported by name
+        for field, spk_val in [
+            ("report_url", "http://r"),
+            ("distributor", "d"),
+            ("distributor_url", "http://d"),
+            ("maintainer", "m"),
+            ("maintainer_url", "http://m"),
+        ]:
+            with pytest.raises(ValueError, match=field):
+                _versions.assert_version_metadata_matches_db(
+                    _ver(displaynames={"enu": types.SimpleNamespace(displayname="G")}),
+                    _spk(dict(ok_info, **{field: spk_val})),
+                )
+        with pytest.raises(ValueError, match="license"):
+            _versions.assert_version_metadata_matches_db(
+                _ver(displaynames={"enu": types.SimpleNamespace(displayname="G")}),
+                _spk(ok_info, license="lic"),
+            )
+        with pytest.raises(ValueError, match="install_wizard"):
+            _versions.assert_version_metadata_matches_db(
+                _ver(displaynames={"enu": types.SimpleNamespace(displayname="G")}),
+                _spk(ok_info, wizards={"install"}),
+            )
+        with pytest.raises(ValueError, match="upgrade_wizard"):
+            _versions.assert_version_metadata_matches_db(
+                _ver(displaynames={"enu": types.SimpleNamespace(displayname="G")}),
+                _spk(ok_info, wizards={"upgrade"}),
             )
         # startable=None in DB means default-true, matching a key-omitting SPK
         _versions.assert_version_metadata_matches_db(

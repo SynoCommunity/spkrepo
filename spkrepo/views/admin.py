@@ -154,6 +154,70 @@ def _detect_and_fix_signed(build):
     return False
 
 
+def _run_activation_action(builds):
+    """Shared activate orchestration for the version/build admin actions.
+
+    Resolves each build's effective signed flag (with signature recovery),
+    delegates the activate/reject/upload decision to the application planner
+    (:func:`application.activation.plan_activation`), then applies the plan
+    (commit, cache invalidation, upload queueing, flashes). Transports differ
+    only in how they collect ``builds`` and in ``failure_message``.
+    """
+    from ..application.activation import plan_activation
+
+    snapshots = []
+    for build in builds:
+        signed = build.signed or _detect_and_fix_signed(build)
+        snapshots.append(
+            {
+                "ref": build,
+                "label": str(build),
+                "signed": bool(signed),
+                "storage": build.storage,
+            }
+        )
+    plan = plan_activation(snapshots, storage_service.storage_configured())
+    for entry in plan["to_activate"]:
+        entry["ref"].active = True
+    db.session.commit()
+    cache.delete("packages_versions")
+    clear_catalog_cache()
+
+    upload_tasks = []
+    for entry in plan["to_upload"]:
+        result = upload_to_storage.delay(entry["ref"].id, entry["label"])
+        upload_tasks.append(
+            {"id": result.id, "type": "upload", "label": entry["label"]}
+        )
+    if upload_tasks:
+        _store_task_tasks(upload_tasks)
+    if plan["not_signed"]:
+        flash(
+            "Build(s) have no signature and cannot be activated: "
+            + ", ".join(e["label"] for e in plan["not_signed"]),
+            "warning",
+        )
+    activated = plan["to_activate"]
+    if activated:
+        if upload_tasks:
+            msg = (
+                "Build was successfully activated and queued for upload."
+                if len(activated) == 1
+                else (
+                    f"{len(activated)} builds were successfully activated "
+                    "and queued for upload."
+                )
+            )
+            flash(Markup(msg + ' <a href="/admin/tasks/">View status</a>'), "info")
+        else:
+            msg = (
+                "Build was successfully activated."
+                if len(activated) == 1
+                else f"{len(activated)} builds were successfully activated."
+            )
+            flash(msg, "success")
+
+
 # ---------------------------------------------------------------------------
 # SPK helpers
 # ---------------------------------------------------------------------------
@@ -1294,56 +1358,8 @@ class VersionView(DetailsNavigationMixin, SignResyncMixin, ModelView):
     def action_01_activate(self, ids):
         try:
             versions = get_query_for_ids(self.get_query(), self.model, ids).all()
-            activated = []
-            not_signed = []
-            storage_ok = storage_service.storage_configured()
-            for version in versions:
-                for build in version.builds:
-                    if not build.signed and not _detect_and_fix_signed(build):
-                        not_signed.append(str(build))
-                        continue
-                    build.active = True
-                    activated.append(build)
-            db.session.commit()
-            cache.delete("packages_versions")
-            clear_catalog_cache()
-
-            upload_tasks = []
-            if storage_ok:
-                for build in activated:
-                    if build.storage == "local":
-                        result = upload_to_storage.delay(build.id, str(build))
-                        upload_tasks.append(
-                            {"id": result.id, "type": "upload", "label": str(build)}
-                        )
-            if upload_tasks:
-                _store_task_tasks(upload_tasks)
-            if not_signed:
-                flash(
-                    "Build(s) have no signature and cannot be activated: "
-                    + ", ".join(not_signed),
-                    "warning",
-                )
-            if activated:
-                if upload_tasks:
-                    msg = (
-                        "Build was successfully activated and queued for upload."
-                        if len(activated) == 1
-                        else (
-                            f"{len(activated)} builds were successfully activated "
-                            "and queued for upload."
-                        )
-                    )
-                    flash(
-                        Markup(msg + ' <a href="/admin/tasks/">View status</a>'), "info"
-                    )
-                else:
-                    msg = (
-                        "Build was successfully activated."
-                        if len(activated) == 1
-                        else f"{len(activated)} builds were successfully activated."
-                    )
-                    flash(msg, "success")
+            builds = [b for v in versions for b in v.builds]
+            _run_activation_action(builds)
         except SQLAlchemyError:
             db.session.rollback()
             current_app.logger.exception("Failed to activate versions' builds")
@@ -1546,56 +1562,7 @@ class BuildView(DetailsNavigationMixin, SignResyncMixin, ModelView):
     def action_01_activate(self, ids):
         try:
             builds = get_query_for_ids(self.get_query(), self.model, ids).all()
-            not_signed = []
-            activated = []
-            storage_ok = storage_service.storage_configured()
-            for build in builds:
-                if not build.signed and not _detect_and_fix_signed(build):
-                    not_signed.append(str(build))
-                    continue
-                build.active = True
-                activated.append(build)
-            db.session.commit()
-            cache.delete("packages_versions")
-            clear_catalog_cache()
-
-            upload_tasks = []
-            if storage_ok:
-                for build in activated:
-                    if build.storage == "local":
-                        result = upload_to_storage.delay(build.id, str(build))
-                        upload_tasks.append(
-                            {"id": result.id, "type": "upload", "label": str(build)}
-                        )
-            if upload_tasks:
-                _store_task_tasks(upload_tasks)
-            if not_signed:
-                flash(
-                    "Build(s) have no signature and cannot be activated: "
-                    + ", ".join(not_signed),
-                    "warning",
-                )
-            if activated:
-                if upload_tasks:
-                    a = len(activated)
-                    msg = (
-                        "Build was successfully activated and queued for upload."
-                        if a == 1
-                        else (
-                            f"{a} builds were successfully activated "
-                            "and queued for upload."
-                        )
-                    )
-                    flash(
-                        Markup(msg + ' <a href="/admin/tasks/">View status</a>'), "info"
-                    )
-                else:
-                    msg = (
-                        "Build was successfully activated."
-                        if len(activated) == 1
-                        else f"{len(activated)} builds were successfully activated."
-                    )
-                    flash(msg, "success")
+            _run_activation_action(builds)
         except SQLAlchemyError:
             db.session.rollback()
             current_app.logger.exception("Failed to activate builds")

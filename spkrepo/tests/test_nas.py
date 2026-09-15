@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 from flask import url_for
 
+from spkrepo.domain.catalog import derive_quick_flags
 from spkrepo.ext import db
 from spkrepo.models import Architecture, DownloadStat, Firmware, PackageDownloadCounts
 from spkrepo.tests.common import (
@@ -41,20 +42,15 @@ class CatalogTestCase(BaseTestCase):
         )
         for t in entry["thumbnail"]:
             self.assert200(self.client.get(t))
+        # quick flags — oracle is the domain function itself, so this asserts
+        # the adapter plumbs ORM values through (truth table lives in units).
         self.assertEqual(
-            entry["qinst"],
-            build.version.license is None and build.version.install_wizard is False,
-        )
-        self.assertEqual(
-            entry["qupgrade"],
-            build.version.license is None and build.version.upgrade_wizard is False,
-        )
-        self.assertEqual(
-            entry["qstart"],
-            (
-                build.version.license is None
-                and build.version.install_wizard is False
-                and build.version.startable is not False
+            (entry["qinst"], entry["qupgrade"], entry["qstart"]),
+            derive_quick_flags(
+                build.version.license,
+                build.version.install_wizard,
+                build.version.upgrade_wizard,
+                build.version.startable,
             ),
         )
         self.assertEqual(entry["deppkgs"], build.buildmanifest.dependencies)
