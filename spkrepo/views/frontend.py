@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Web frontend views: package browsing, auth pages, user profile."""
 import logging
 import secrets
 
@@ -71,7 +72,8 @@ def _resolve_arch_filter():
     if param is not None:
         if param in ("", "all"):
             return None, True
-        # Accept Synology DSM/SRM spellings (e.g. 88f6281) like nas.py does.
+        # Accept Synology DSM/SRM spellings (e.g. 88f6281); canonical map is
+        # owned by spkrepo.domain.shared_kernel.ARCH_FROM_SYNO.
         param = Architecture.from_syno.get(param, param)
         if Architecture.find(param) is None:
             abort(404)
@@ -213,9 +215,8 @@ def _latest_versions_query(arch_code):
             db.select(Version)
             .join(Version.package)
             .options(
-                # Version.icons/displaynames/builds are one-to-many
-                # collections; selectinload avoids the Cartesian-product
-                # row multiplication joinedload would cause here.
+                # selectinload for one-to-many collections (joinedload would
+                # multiply rows); see get_catalog in views/nas.py for why.
                 db.joinedload(Version.package).joinedload(Package.download_counts),
                 db.joinedload(Version.package).undefer(Package.has_active_builds),
                 db.selectinload(Version.icons),
@@ -255,8 +256,7 @@ def package(name):
             db.select(Package)
             .filter_by(name=name)
             .options(
-                # Same Cartesian-product concern as /packages — selectinload
-                # for one-to-many collections instead of stacking joinedloads.
+                # Same selectinload rule as above.
                 db.joinedload(Package.download_counts),
                 db.selectinload(Package.versions).selectinload(Version.icons),
                 db.selectinload(Package.versions).selectinload(Version.displaynames),

@@ -10,7 +10,11 @@ from datetime import date, datetime
 
 
 def is_full_range(range_header: str) -> bool:
-    """True for '' or 'bytes=0-...' (countable resumed-download start)."""
+    """True for '' or 'bytes=0-...' (countable resumed-download start).
+
+    Mid-range resumes (``bytes=N-`` with N > 0) must not double-count the
+    same download.
+    """
     range_header = range_header or ""
     return range_header == "" or range_header.startswith("bytes=0-")
 
@@ -76,7 +80,9 @@ def aggregate_parsed(
     parsed: list[tuple],
 ) -> tuple[dict, dict, dict]:
     """Aggregate parsed rows -> (counts, target_noarchs, sources) keyed by
-    (package_id placeholder ventures filled by adapter).
+    agg-key tuples ``(package_id, architecture_id, firmware_build,
+    target_firmware_build, date)`` whose ``package_id``/``build_id`` the
+    adapter resolves (``cli.ingest_logs`` build cache).
 
     Pure counting step; DB build/package resolution stays in the adapter.
     Input rows: (agg_key_tuple, target_noarch_bool, source_str).

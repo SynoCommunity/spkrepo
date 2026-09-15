@@ -2,11 +2,9 @@
 import base64
 import json
 import os
-import warnings
 from datetime import datetime, timedelta, timezone
 
 from flask import current_app, url_for
-from sqlalchemy.exc import SAWarning
 
 from spkrepo.ext import db
 from spkrepo.models import Architecture, Build, Firmware, Role

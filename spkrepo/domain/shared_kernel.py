@@ -82,6 +82,8 @@ def map_displaynames(info: dict) -> dict[str, str]:
         if key.startswith("displayname_"):
             displaynames[key.split("_", 1)[1]] = value
     if info.get("displayname"):
+        # Bare key wins last: DSM sends both displayname and displayname_enu
+        # and the bare key is the canonical enu value.
         displaynames["enu"] = info["displayname"]
     return displaynames
 

@@ -16,6 +16,8 @@ Views
 +-----------------+----------------------------------------------------+
 | Services        | Reference list of package service dependencies     |
 +-----------------+----------------------------------------------------+
+| Screenshots     | Package screenshot images                          |
++-----------------+----------------------------------------------------+
 | Packages        | Package metadata and maintainers                   |
 +-----------------+----------------------------------------------------+
 | Versions        | Package versions — activate/deactivate builds      |

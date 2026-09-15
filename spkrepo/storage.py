@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""S3 Object Storage and CDN purge adapter (implements domain ports)."""
 import logging
 import os
 

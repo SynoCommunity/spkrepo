@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Flask application factory: extension and blueprint wiring."""
 import logging
 import sys
 

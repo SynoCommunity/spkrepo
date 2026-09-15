@@ -21,14 +21,14 @@ def derive_quick_flags(
     upgrade_wizard: bool | None,
     startable: bool | None,
 ) -> tuple[bool, bool, bool]:
-    """Derive (qinst, qupgrade, qstart) exactly as DSM clients expect."""
+    """Derive (qinst, qupgrade, qstart) exactly as DSM clients expect.
+
+    Quiet install/upgrade require no license and no wizard; ``startable``
+    uses ``is not False`` so an unset (None) flag still allows start.
+    """
     qinst = license_text is None and install_wizard is False
     qupgrade = license_text is None and upgrade_wizard is False
-    qstart = (
-        license_text is None
-        and install_wizard is False
-        and startable is not False
-    )
+    qstart = license_text is None and install_wizard is False and startable is not False
     return qinst, qupgrade, qstart
 
 
@@ -39,7 +39,10 @@ def set_if_truthy(entry: dict, key: str, value) -> None:
 
 
 def _firmware_sort_key(version: str) -> tuple:
-    """Sort key for '7.2' style versions: numeric parts numerically."""
+    """Sort key for '7.2' style versions: numeric parts numerically.
+
+    Plain string sort would order '7.10' before '7.2'; int() parts fix that.
+    """
     return tuple(int(p) if p.isdigit() else p for p in version.split("."))
 
 
@@ -54,7 +57,9 @@ def group_builds_per_dsm(builds) -> dict:
         major = build.firmware_min.version.split(".")[0]
         groups.setdefault(major, []).append(build)
     for grouped in groups.values():
-        grouped.sort(key=lambda b: _firmware_sort_key(b.firmware_min.version), reverse=True)
+        grouped.sort(
+            key=lambda b: _firmware_sort_key(b.firmware_min.version), reverse=True
+        )
     return dict(
         sorted(
             groups.items(),

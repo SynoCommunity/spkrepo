@@ -75,7 +75,7 @@ def assert_version_metadata_matches_db(version, spk):
     for field in simple_fields:
         spk_val = incoming[field]
         db_val = getattr(version, field)
-        # startable=None in the DB means "default true", same as SPK omitting the key
+        # startable=None means "default true", same as an SPK omitting the key
         if field == "startable" and db_val is None:
             db_val = True
         if spk_val != db_val:

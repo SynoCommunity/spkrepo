@@ -1,3 +1,5 @@
+"""Flask ``spkrepo`` administrative commands and CDN log ingestion."""
+
 import logging
 import os
 import shutil
@@ -11,6 +13,7 @@ from .models import Build, Package, Role, User
 
 
 def _create_user(username, email, password):
+    """Create a user row via test factories (shared with test seeding)."""
     from spkrepo.tests.common import UserFactory
 
     with db.session.no_autoflush:
@@ -284,7 +287,9 @@ def parse_download(record):
     Returns (url_path, arch_code, firmware_build, record_date,
              target_firmware_build, target_noarch).
 
-    Adapter over :func:`spkrepo.domain.downloads.parse_download`.
+    Adapter over :func:`spkrepo.domain.downloads.parse_download`; the
+    domain's ``today`` test-injection parameter is intentionally not
+    exposed here (production always falls back to ``date.today()``).
     """
     from .domain.downloads import parse_download as _pure
 
@@ -305,11 +310,7 @@ def ingest_logs():
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
 
-    from .domain.downloads import (
-        aggregate_parsed,
-        build_upsert_rows,
-        classify_source,
-    )
+    from .domain.downloads import aggregate_parsed, build_upsert_rows, classify_source
     from .models import Architecture, Build, DownloadStat
 
     logger = logging.getLogger(__name__)
@@ -404,6 +405,9 @@ def ingest_logs():
 
                 download_source = classify_source(arch_code, firmware_build)
                 if download_source == "manual":
+                    # Manual (out-of-catalog) downloads carry no trustworthy
+                    # device context: null the dimensions so they aggregate
+                    # separately instead of polluting catalog stats.
                     arch_code = None
                     firmware_build = None
                     manual_downloads += 1

@@ -6,7 +6,17 @@ an app context, database, filesystem, network, or config.
 Adapters (views/tasks/cli/storage) inject data and call these functions.
 """
 
-from . import access, catalog, downloads, ports, shared_kernel, spk, storage_policy, upload, versions  # noqa: F401
+from . import (  # noqa: F401
+    access,
+    catalog,
+    downloads,
+    ports,
+    shared_kernel,
+    spk,
+    storage_policy,
+    upload,
+    versions,
+)
 
 __all__ = [
     "access",

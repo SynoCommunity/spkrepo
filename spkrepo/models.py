@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""SQLAlchemy ORM models with filesystem lifecycle hooks.
+
+Pure derivations (filenames, grouping, version parsing) delegate to
+:mod:`spkrepo.domain`; persistence and ``DATA_PATH`` file handling stay here.
+"""
 import hashlib
 import io
 import os
@@ -14,6 +19,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.collections import attribute_mapped_collection
 from sqlalchemy.sql.expression import FunctionElement
 
+from .domain.shared_kernel import ARCH_FROM_SYNO as _ARCH_FROM_SYNO
+from .domain.shared_kernel import ARCH_TO_SYNO as _ARCH_TO_SYNO
+# Aliases stay for backward compatibility (tests, views); single owner is
+# domain.shared_kernel.
 from .ext import db
 
 user_role = db.Table(
@@ -41,23 +50,20 @@ class _days_ago(FunctionElement):
 
 @compiles(_days_ago, "sqlite")
 def _compile_days_ago_sqlite(element, compiler, **kw):
+    """Render the N-days-ago date for SQLite."""
     return f"date('now', '-{element.days} days')"
 
 
 @compiles(_days_ago, "postgresql")
 def _compile_days_ago_postgresql(element, compiler, **kw):
+    """Render the N-days-ago date for PostgreSQL."""
     return f"CURRENT_DATE - INTERVAL '{element.days} days'"
 
 
 @compiles(_days_ago)
 def _compile_days_ago_default(element, compiler, **kw):
+    """Fallback renderer (SQLite syntax) for other dialects."""
     return f"date('now', '-{element.days} days')"
-
-
-# Architecture code mappings — single owner is domain.shared_kernel;
-# these module aliases stay for backward compatibility (tests, views).
-from .domain.shared_kernel import ARCH_FROM_SYNO as _ARCH_FROM_SYNO
-from .domain.shared_kernel import ARCH_TO_SYNO as _ARCH_TO_SYNO
 
 
 def _utcnow():
@@ -146,7 +152,8 @@ class Architecture(db.Model):
         "Build", secondary="build_architecture", back_populates="architectures"
     )
 
-    # Architecture code translation maps (references module-level constants)
+    # Architecture code translation maps (owned by domain.shared_kernel;
+    # kept here for backward compatibility with existing readers).
     from_syno = _ARCH_FROM_SYNO
     to_syno = _ARCH_TO_SYNO
 
@@ -572,7 +579,7 @@ class Build(db.Model):
         Takes package/version/firmware/architectures explicitly, rather
         than reading them off an instance, because callers need the
         filename to construct Build.path *before* the Build itself
-        exists (see api.py's upload handler). Pass the intended firmware
+        exists (see views/api.py's upload handler). Pass the intended firmware
         (typically firmware_min).
 
         Adapter over :func:`spkrepo.domain.shared_kernel.build_filename`.
@@ -580,7 +587,10 @@ class Build(db.Model):
         from .domain.shared_kernel import build_filename
 
         return build_filename(
-            package.name, version.version, firmware.build, [a.code for a in architectures]
+            package.name,
+            version.version,
+            firmware.build,
+            [a.code for a in architectures],
         )
 
     def save(self, stream):
@@ -637,6 +647,9 @@ class Build(db.Model):
         return f"<{self.__class__.__name__} {self.path}>"
 
 
+# Deferred per-row aggregates. The NAS catalog avoids these (bulk read from
+# the package_download_counts materialized view instead); they exist for the
+# admin/frontend detail pages where one extra correlated query is acceptable.
 Architecture.download_count = db.column_property(
     db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
     .where(DownloadStat.architecture_id == Architecture.id)
@@ -843,6 +856,7 @@ class Version(db.Model):
 
     @beta.expression
     def beta(cls):
+        """SQL equivalent of :attr:`beta` (NULL and empty both mean stable)."""
         return db.and_(cls.report_url.isnot(None), cls.report_url != "")
 
     @hybrid_property
@@ -852,6 +866,7 @@ class Version(db.Model):
 
     @all_builds_active.expression
     def all_builds_active(cls):
+        """SQL equivalent of :attr:`all_builds_active`."""
         return ~db.exists().where(
             db.and_(Build.version_id == cls.id, Build.active.is_(False))
         )
@@ -864,6 +879,7 @@ class Version(db.Model):
 
     @all_builds_uploaded.expression
     def all_builds_uploaded(cls):
+        """SQL equivalent of :attr:`all_builds_uploaded`."""
         return ~db.exists().where(
             db.and_(Build.version_id == cls.id, Build.storage != "remote")
         )
@@ -902,9 +918,8 @@ class Version(db.Model):
 
     @property
     def builds_per_dsm(self):
-        """Group builds by DSM/SRM major version, newest-first, with each
-        group's builds also ordered by full firmware version, newest-first,
-        so e.g. 7.2.x builds don't interleave with 7.1.x builds.
+        """Group builds by DSM/SRM major version (see
+        :func:`spkrepo.domain.catalog.group_builds_per_dsm`, single owner).
         """
         return group_builds_per_dsm(self.builds)
 
@@ -918,6 +933,7 @@ class Version(db.Model):
 
     @total_size.expression
     def total_size(cls):
+        """SQL equivalent of :attr:`total_size` (NULL sums to NULL)."""
         return (
             db.select(db.func.sum(Build.size))
             .where(Build.version_id == cls.id)

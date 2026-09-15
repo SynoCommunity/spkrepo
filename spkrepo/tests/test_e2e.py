@@ -13,12 +13,7 @@ from flask import current_app, url_for
 
 from spkrepo.ext import db
 from spkrepo.models import Architecture, Build, Firmware, Role
-from spkrepo.tests.common import (
-    BaseTestCase,
-    BuildFactory,
-    UserFactory,
-    create_spk,
-)
+from spkrepo.tests.common import BaseTestCase, BuildFactory, UserFactory, create_spk
 from spkrepo.tests.test_api import authorization_header, get_only_build
 from spkrepo.views.tasks import rehome_from_storage, upload_to_storage
 

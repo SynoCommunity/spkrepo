@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""Device catalog adapter for DSM/SRM ``package_update`` clients.
+
+SQL queries stay here; response shaping delegates to
+:mod:`spkrepo.domain.catalog`.
+"""
 import gnupg
 from flask import (
     Blueprint,
@@ -50,6 +55,11 @@ def get_catalog(arch, build, major, language, beta):
     "packages" (and "keyrings" for DSM 6 only) otherwise. Memoized for
     10 minutes; clear_catalog_cache() invalidates all entries when build
     or version data changes.
+
+    Perf notes: work_mem is raised to avoid sort spill; counts come from
+    the materialized view (not per-row subqueries); collections use
+    selectinload to avoid Cartesian blowup; .unique() dedupes the
+    many-to-many arch join.
     """
     # Raise work_mem for this transaction only to avoid the catalog sort
     # spilling to disk (observed: 6.9 MB spill with default work_mem).
@@ -123,20 +133,12 @@ def get_catalog(arch, build, major, language, beta):
         .subquery()
     )
 
-    # Step 3: Get the latest builds for versions.
-    # Download counts are no longer undeferred here — they are fetched in
-    # bulk from the package_download_counts materialized view below, which
-    # replaces the correlated per-row subqueries that were firing ~7000
-    # times per catalog request.
+    # Step 3: latest builds (counts fetched in bulk in step 4).
     firmware_min_for_build = aliased(Firmware)
     latest_build = (
         db.session.execute(
             db.select(Build)
             .options(
-                # Build.architectures/version/firmware_min/firmware_max are
-                # lazy=False (models.py), so joined by default. Collections
-                # below use selectinload, not joinedload, to avoid Cartesian-
-                # product row multiplication when eager-loading several at once.
                 db.selectinload(Build.architectures),
                 db.joinedload(Build.firmware_min),
                 db.joinedload(Build.firmware_max),
@@ -166,18 +168,12 @@ def get_catalog(arch, build, major, language, beta):
                 ),
             )
         )
-        # unique() is required (and good practice generally) whenever a
-        # query's joins could yield more than one row per Build — here,
-        # joining the many-to-many Build.architectures for filtering can
-        # do that — so entities are de-duplicated by identity before
-        # converting to a plain list.
         .unique()
         .scalars()
         .all()
     )
 
-    # Step 4: Bulk fetch download counts from the materialized view in one
-    # query rather than firing a correlated subquery per package per row.
+    # Step 4: bulk download counts from the materialized view.
     package_ids = [b.version.package_id for b in latest_build]
     counts_by_package = {
         row.package_id: row
@@ -213,7 +209,10 @@ def get_catalog(arch, build, major, language, beta):
 
 
 def _set_if_truthy(entry, key, value):
-    """Set entry[key] = value only if value is truthy (adapter over domain)."""
+    """Set entry[key] = value only if value is truthy.
+
+    Adapter over :func:`spkrepo.domain.catalog.set_if_truthy`.
+    """
     from ..domain.catalog import set_if_truthy
 
     set_if_truthy(entry, key, value)

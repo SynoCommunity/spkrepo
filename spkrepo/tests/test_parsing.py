@@ -10,9 +10,7 @@ from spkrepo.cli import is_countable_download, parse_download
 class TestCliWiring:
     def test_countable_passthrough(self):
         assert (
-            is_countable_download(
-                {"url": "/pkg/1/pkg.v1.spk", "response_status": 200}
-            )
+            is_countable_download({"url": "/pkg/1/pkg.v1.spk", "response_status": 200})
             is True
         )
         assert (

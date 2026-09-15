@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
-import base64
-import binascii
+"""SPK tar adapter and shared upload/resync writers over :mod:`spkrepo.domain`.
+
+Archive I/O, DB lookups, and file writes stay here; parsing, validation,
+and metadata mapping live in the domain layer.
+"""
 import hashlib
 import io
 import json
@@ -8,20 +11,12 @@ import os
 import re
 import tarfile
 import time
-from configparser import ConfigParser
 
 import gnupg
 import requests
 from flask import current_app
 
-from .domain.shared_kernel import (
-    derive_startable,
-    firmware_re,
-    map_displaynames,
-    parse_firmware,
-    parse_version,
-    version_re,
-)
+from .domain.shared_kernel import parse_firmware
 from .domain.spk import BOOLEAN_INFO as _DOMAIN_BOOLEAN_INFO
 from .domain.spk import REQUIRED_INFO as _DOMAIN_REQUIRED_INFO
 from .domain.spk import icon_info_re as _domain_icon_info_re
@@ -41,10 +36,6 @@ from .models import (
     Role,
     Service,
 )
-
-# Re-exported from domain.shared_kernel (single owner); kept here for
-# backward compatibility with existing imports (views, tests).
-# See spkrepo.domain.shared_kernel for definitions.
 
 
 class SPK(object):
@@ -139,7 +130,6 @@ class SPK(object):
                 for size, payload in raw_icons.items():
                     self.icons[size] = io.BytesIO(payload)
 
-                # validate info
                 validate_required(self.info)
 
                 # read conf files (bytes I/O here, pure parsing in domain.spk)
@@ -190,7 +180,6 @@ class SPK(object):
                             spk.extractfile(name).read()
                         )
 
-                # validate icons
                 if "72" not in self.icons:
                     raise SPKParseError("Missing 72px icon")
 
@@ -205,8 +194,10 @@ class SPK(object):
         self.stream.seek(0)
 
     def sign(self, timestamp_url, gnupghome):
-        """
-        Sign the package
+        """Append a detached GPG + timestamp signature to the package stream.
+
+        GPG/timestamp I/O stays here (see :mod:`spkrepo.domain` rule);
+        raises ``ValueError`` if already signed, ``SPKSignError`` on failure.
 
         :param timestamp_url: url for the remote timestamping
         :param gnupghome: path to the gnupg home
@@ -257,7 +248,7 @@ class SPK(object):
             self.stream.seek(0)
 
     def unsign(self):
-        """Remove the signature file of the package"""
+        """Remove the signature file from the package stream in place."""
         if self.signature is None:
             raise ValueError("Not signed")
 
@@ -314,7 +305,7 @@ def resolve_firmware(session, value, allow_none=False):
     """Resolve a firmware string like '6.2-23739' to a
     :class:`~spkrepo.models.Firmware`.
 
-    Adapter: pure parsing via :func:`domain.shared_kernel.parse_firmware`,
+    Adapter: pure parsing via :func:`spkrepo.domain.shared_kernel.parse_firmware`,
     DB lookup via ``Firmware.find``. Pass a session for ``merge``.
 
     :param session: SQLAlchemy session
@@ -381,7 +372,7 @@ def resolve_services(service_string):
 def resolve_displayname_languages(info) -> dict[str, "Language"]:
     """Single-owner Language lookup for INFO displaynames.
 
-    Pure mapping via :func:`domain.shared_kernel.map_displaynames`, DB
+    Pure mapping via :func:`spkrepo.domain.shared_kernel.map_displaynames`, DB
     lookup via ``Language.find``. Raises ``ValueError`` on unknown codes;
     HTTP adapters map this to 422.
     """
@@ -463,22 +454,24 @@ def assert_version_metadata_matches_db(version, spk):
 
 def apply_info_from_spk(session, build, spk, md5_hash):
     """Apply all metadata from a parsed SPK onto the given build and its parent
-    version. Used by the resync path (tasks.py's resync_build_metadata,
-    triggered from admin.py). NOT currently used by the upload path
-    (api.py's Packages.post), which has its own separate, inline
-    implementation of similar logic for creating new Package/Version/Build
-    records — see that function if you need to keep both in sync.
+    version. Resync-only entry point (``views/tasks.py``'s
+    ``resync_build_metadata``, triggered from ``views/admin.py``); the upload
+    path (``views/api.py``'s ``Packages.post``) creates new records instead.
+    Shared version-level fields converge on
+    :func:`spkrepo.utils.assign_version_common_fields` in both paths, while
+    displaynames/descriptions/icons diverge by design (resync clears and
+    rewrites; upload creates once).
 
     Version-level fields (shared across all builds of a version) are written
     unconditionally — callers must ensure consistency has already been checked
-    via :func:`assert_version_metadata_matches_db` before calling this.
+    via :func:`spkrepo.utils.assert_version_metadata_matches_db` before calling this.
 
     .. note::
         Icon files are written to disk before the database is flushed. If a
         subsequent error causes the caller to roll back the session, any newly
         written icon files will be left on disk. Callers that require strict
         atomicity should handle cleanup themselves (e.g. via
-        :func:`~spkrepo.api._cleanup_on_failure`).
+        :func:`~spkrepo.views.api._cleanup_on_failure`).
 
     .. note::
         This function calls ``session.flush()`` at the end to push all pending
@@ -624,7 +617,7 @@ def apply_sidecar_to_db(session, build, sidecar):
     from task-derived values (already resolved at upload time), and
     ``signed/storage`` mark the remote transition (sidecars only exist for
     remote builds). Upstream parsing converges on
-    :func:`domain.shared_kernel.parse_upstream_lenient`.
+    :func:`spkrepo.domain.shared_kernel.parse_upstream_lenient`.
     """
     from .domain.shared_kernel import parse_upstream_lenient
 

@@ -29,10 +29,10 @@ jobs:
 
       - name: Install dependencies
         if: steps.cached-uv-dependencies.outputs.cache-hit != 'true'
-        run: uv sync --locked --no-install-project --all-extras --dev
+        run: uv sync --locked --no-install-project --all-extras
 
       - name: Install project
-        run: uv sync --locked --all-extras --dev
+        run: uv sync --locked --all-extras
 
       - name: Build
         run: uv build

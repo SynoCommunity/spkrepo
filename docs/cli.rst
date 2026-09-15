@@ -27,7 +27,13 @@ Commands
     Delete all packages from the database and file system. Refuses to
     run if any build has been uploaded to Object Storage.
 
+**clean**
+    Remove all package files under ``DATA_PATH`` without touching the
+    database. Like ``depopulate_db``, refuses to run if any build has
+    been uploaded to Object Storage.
+
 **ingest_logs**
     Ingest download stats from Object Storage log files and refresh the
-    download-count materialized view. Runs hourly via the ``ingest``
-    container — see :doc:`operations`.
+    download-count materialized view. Schedule hourly (e.g. a cron job
+    or scheduler invoking ``flask spkrepo ingest_logs``) — see
+    :doc:`operations`.

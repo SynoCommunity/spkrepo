@@ -16,7 +16,7 @@ Setup
     cd spkrepo
 
     # Create virtual environment and install dependencies
-    uv sync --locked --all-extras --dev
+    uv sync --locked --all-extras
 
     # Start PostgreSQL and Redis (Docker)
     docker compose up -d db redis
@@ -44,5 +44,7 @@ Environment Variables
 
     SPKREPO_SQLALCHEMY_DATABASE_URI   postgresql+psycopg2://spkrepo:spkrepo@localhost/spkrepo
     SPKREPO_CONFIG                    None (uses built-in defaults)
-    CELERY_BROKER_URL                 redis://localhost:6379/1
     SECRET_KEY                        None (required in production)
+
+Celery uses the ``CELERY`` config dict (``broker_url`` defaults to
+``redis://localhost:6379/1`` — see :doc:`deployment`).

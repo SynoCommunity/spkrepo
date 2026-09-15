@@ -125,7 +125,11 @@ class TestCatalog:
         assert catalog.firmware_in_range(101, 100, None)
 
     def test_quick_flags(self):
-        assert catalog.derive_quick_flags(None, False, False, True) == (True, True, True)
+        assert catalog.derive_quick_flags(None, False, False, True) == (
+            True,
+            True,
+            True,
+        )
         assert catalog.derive_quick_flags("lic", False, False, True) == (
             False,
             False,
@@ -173,8 +177,14 @@ class TestCatalog:
 class TestSpk:
     def test_parse_info_lines_ok(self):
         info, icons = spk.parse_info_lines(
-            [b'package="git"', b'version="1.0-1"', b'arch="x86_64"',
-             b'displayname="G"', b'description="d"', b'startable="yes"']
+            [
+                b'package="git"',
+                b'version="1.0-1"',
+                b'arch="x86_64"',
+                b'displayname="G"',
+                b'description="d"',
+                b'startable="yes"',
+            ]
         )
         assert info["package"] == "git"
         assert info["startable"] is True
@@ -196,8 +206,13 @@ class TestSpk:
         with pytest.raises(SPKParseError):
             spk.validate_required({"package": "x"})
         spk.validate_required(
-            {"package": "x", "version": "1-1", "arch": "a",
-             "displayname": "d", "description": "e"}
+            {
+                "package": "x",
+                "version": "1-1",
+                "arch": "a",
+                "displayname": "d",
+                "description": "e",
+            }
         )
 
     def test_verify_checksum(self):
@@ -217,9 +232,7 @@ class TestDownloads:
 
     def test_parse_today_injected(self):
         fixed = date(2020, 1, 2)
-        _, _, _, rd, _, _ = downloads.parse_download(
-            {"url": "/p/1.spk"}, today=fixed
-        )
+        _, _, _, rd, _, _ = downloads.parse_download({"url": "/p/1.spk"}, today=fixed)
         assert rd == fixed
 
     def test_aggregate_and_rows(self):
@@ -391,27 +404,42 @@ class TestDomainGaps:
         assert is_full_range("") is True
         assert is_full_range("bytes=0-100") is True
         assert is_full_range("bytes=5-") is False
-        assert downloads.is_countable_download({"url": "/a.txt", "response_status": 200}) is False
-        assert downloads.is_countable_download(
-            {"url": "/a.spk", "response_status": 206, "range": "bytes=5-"}
-        ) is False
+        assert (
+            downloads.is_countable_download({"url": "/a.txt", "response_status": 200})
+            is False
+        )
+        assert (
+            downloads.is_countable_download(
+                {"url": "/a.spk", "response_status": 206, "range": "bytes=5-"}
+            )
+            is False
+        )
 
     def test_is_countable_positive_paths(self):
-        assert downloads.is_countable_download(
-            {"url": "/p/1.spk", "response_status": 200}
-        ) is True
-        assert downloads.is_countable_download(
-            {"url": "/p/1.spk?a=1", "response_status": 200}
-        ) is True
-        assert downloads.is_countable_download(
-            {"url": "/p/1.spk", "response_status": 206, "range": "bytes=0-99"}
-        ) is True
-        assert downloads.is_countable_download(
-            {"url": "/p/1.spk", "response_status": 206}
-        ) is True
-        assert downloads.is_countable_download(
-            {"url": "/p/1.spk", "response_status": 404}
-        ) is False
+        assert (
+            downloads.is_countable_download({"url": "/p/1.spk", "response_status": 200})
+            is True
+        )
+        assert (
+            downloads.is_countable_download(
+                {"url": "/p/1.spk?a=1", "response_status": 200}
+            )
+            is True
+        )
+        assert (
+            downloads.is_countable_download(
+                {"url": "/p/1.spk", "response_status": 206, "range": "bytes=0-99"}
+            )
+            is True
+        )
+        assert (
+            downloads.is_countable_download({"url": "/p/1.spk", "response_status": 206})
+            is True
+        )
+        assert (
+            downloads.is_countable_download({"url": "/p/1.spk", "response_status": 404})
+            is False
+        )
 
     def test_parse_download_valid_path(self):
         from datetime import date as _date
@@ -656,9 +684,7 @@ class TestDomainGaps:
         from spkrepo.domain.catalog import group_builds_per_dsm as _group2
 
         def _b2(v):
-            return type(
-                "B", (), {"firmware_min": type("F", (), {"version": v})()}
-            )()
+            return type("B", (), {"firmware_min": type("F", (), {"version": v})()})()
 
         assert list(_group2([_b2("SRM")]).keys()) == ["SRM"]
         assert list(_group2([_b2("SRM"), _b2("DSM")]).keys()) == ["SRM", "DSM"]
@@ -681,12 +707,25 @@ class TestDomainGaps:
         assert _cat.derive_quick_flags("", False, False, True) == (False, False, False)
         # falsy optionals omitted, empty report_url -> no beta
         e = _cat.build_entry_data(
-            package_name="p", version_string="1-1", displayname="D",
-            description="d", link="L", thumbnails=[], snapshots=[],
-            license_text=None, install_wizard=False, upgrade_wizard=False,
-            startable=True, dependencies=None, conflicts=None,
-            download_count=0, recent_download_count=0,
-            report_url="", md5="", size=0, retina_url="",
+            package_name="p",
+            version_string="1-1",
+            displayname="D",
+            description="d",
+            link="L",
+            thumbnails=[],
+            snapshots=[],
+            license_text=None,
+            install_wizard=False,
+            upgrade_wizard=False,
+            startable=True,
+            dependencies=None,
+            conflicts=None,
+            download_count=0,
+            recent_download_count=0,
+            report_url="",
+            md5="",
+            size=0,
+            retina_url="",
         )
         assert "beta" not in e and "md5" not in e and "thumbnail_retina" not in e
         # icon size fall-through -> generic info key
@@ -700,13 +739,18 @@ class TestDomainGaps:
             _spk.parse_conf_file(b"no-section-header\n", "conf/PKG_DEPS")
         # has_wizard uninstall + combo suffix
         assert _spk.has_wizard(["WIZARD_UIFILES/uninstall_uifile"], "uninstall") is True
-        assert _spk.has_wizard(["WIZARD_UIFILES/install_uifile_enu.sh"], "install") is True
+        assert (
+            _spk.has_wizard(["WIZARD_UIFILES/install_uifile_enu.sh"], "install") is True
+        )
         # loose parse None
         assert _spk.parse_loose_info_text(None) == {}
         # is_full_range None (missing header -> countable) + missing status
         assert _dl.is_full_range(None) is True
         assert _dl.is_countable_download({"url": "/a.spk"}) is False
-        assert _dl.is_countable_download({"url": "/a.spk", "response_status": "200"}) is False
+        assert (
+            _dl.is_countable_download({"url": "/a.spk", "response_status": "200"})
+            is False
+        )
         # parse_download no-slash URL, pre-int build, missing timestamp key
         p, _, fw, rd, _, _ = _dl.parse_download(
             {"url": "pkg.spk", "build": 1594}, today=date(2020, 1, 1)
@@ -720,7 +764,10 @@ class TestDomainGaps:
         )
         assert counts[k1] == 2 and noarchs[k1] is True and sources[k1] == "manual"
         rows = _dl.build_upsert_rows(counts, {}, noarchs, sources)
-        assert next(r for r in rows if r["date"] == date(2020, 1, 1))["target_noarch"] is True
+        assert (
+            next(r for r in rows if r["date"] == date(2020, 1, 1))["target_noarch"]
+            is True
+        )
 
     def test_parse_download_coercion(self):
         _, arch, fw, _, tfw, noarch = downloads.parse_download(
@@ -752,9 +799,7 @@ class TestDomainGaps:
         from spkrepo.domain.catalog import group_builds_per_dsm
 
         def _b(v):
-            return type(
-                "B", (), {"firmware_min": type("F", (), {"version": v})()}
-            )()
+            return type("B", (), {"firmware_min": type("F", (), {"version": v})()})()
 
         groups = group_builds_per_dsm([_b("7.1"), _b("6.2"), _b("7.2")])
         assert list(groups.keys()) == ["7", "6"]
@@ -778,16 +823,11 @@ class TestDomainGaps:
         from spkrepo.domain.spk import parse_conf_file
 
         assert parse_conf_file(b"", "conf/PKG_DEPS") == {}
-        info, _ = spk.parse_info_lines(
-            [b'foo="a"', b'foo="b"']
-        )
+        info, _ = spk.parse_info_lines([b'foo="a"', b'foo="b"'])
         assert info["foo"] == "b"
         assert shared_kernel.map_displaynames({"displayname": None}) == {}
         assert shared_kernel.map_displaynames({"displayname": ""}) == {}
-        assert (
-            shared_kernel.build_filename("p", 1, 1, [])
-            == "p.v1.f1[].spk"
-        )
+        assert shared_kernel.build_filename("p", 1, 1, []) == "p.v1.f1[].spk"
         from spkrepo.domain.catalog import _firmware_sort_key
 
         assert _firmware_sort_key("7.2.1") == (7, 2, 1)

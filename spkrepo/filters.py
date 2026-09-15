@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Jinja2 template filters for the web frontend."""
 from wtforms import HiddenField
 
 

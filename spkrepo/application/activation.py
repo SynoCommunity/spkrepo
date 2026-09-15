@@ -26,7 +26,8 @@ def plan_activation(builds, storage_configured):
         else:
             not_signed.append(build)
     to_upload = [
-        b for b in to_activate
+        b
+        for b in to_activate
         if storage_configured and b.get("storage", "local") == "local"
     ]
     return {

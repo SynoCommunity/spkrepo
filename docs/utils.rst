@@ -17,7 +17,11 @@ These functions resolve reference data and apply SPK metadata to the database.
 .. autofunction:: resolve_firmware
 .. autofunction:: resolve_architectures
 .. autofunction:: resolve_services
+.. autofunction:: resolve_displayname_languages
+.. autofunction:: resolve_description_languages
+.. autofunction:: assign_version_common_fields
 .. autofunction:: extract_version_metadata
+.. autofunction:: assert_version_metadata_matches_db
 .. autofunction:: apply_info_from_spk
 .. autofunction:: apply_sidecar_to_db
 .. autofunction:: populate_db

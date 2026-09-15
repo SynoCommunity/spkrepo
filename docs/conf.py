@@ -27,7 +27,7 @@ extensions = [
 
 templates_path = ["_templates"]
 source_suffix = ".rst"
-master_doc = "index"
+root_doc = "index"
 
 project = _project_title
 _this_year = str(__import__("datetime").datetime.now().year)

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Default configuration values (overridden by the ``SPKREPO_CONFIG`` file)."""
 import os
 
 DEBUG = False

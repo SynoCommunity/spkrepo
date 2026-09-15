@@ -2,7 +2,9 @@
 """Pure storage/CDN policy. S3/NET clients stay in adapters."""
 
 
-def should_attempt_upload(path: str | None, exists: bool, signed: bool) -> tuple[bool, str]:
+def should_attempt_upload(
+    path: str | None, exists: bool, signed: bool
+) -> tuple[bool, str]:
     """Decide whether upload_to_storage should proceed.
 
     Returns (proceed, reason) where reason is 'ok' or a skip code.

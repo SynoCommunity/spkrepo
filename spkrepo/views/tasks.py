@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""Celery ``ops``-queue tasks: metadata resync and storage round-trips.
+
+Sidecar/SPK decisions delegate to :mod:`spkrepo.domain`; DB, filesystem,
+and Object Storage I/O stay here.
+"""
 import hashlib
 import io
 import json
@@ -59,6 +64,9 @@ def resync_build_metadata(self, build_id, build_label):
                 if os.path.exists(sibling_sidecar_path):
                     with io.open(sibling_sidecar_path, "r", encoding="utf-8") as s2:
                         sc = json.load(s2)
+                    # Lightweight duck-typed fake: extract_version_metadata only
+                    # needs .info/.wizards/.license, so sidecar JSON need not be
+                    # re-packed into a tar archive.
                     sibling_meta = extract_version_metadata(
                         type("_", (), {"info": sc["info"]})()
                     )
@@ -199,6 +207,8 @@ def upload_to_storage(self, build_id, build_label):
                 "label": build_label,
                 "error": "Already uploaded (sidecar exists)",
             }
+        # Stale sidecar from a failed earlier attempt (still local): drop it
+        # so this run regenerates metadata instead of skipping.
         os.remove(sidecar_path)
 
     try:
@@ -225,6 +235,8 @@ def upload_to_storage(self, build_id, build_label):
             if "LICENSE" in names:
                 lic_stream = archive.extractfile("LICENSE")
                 if lic_stream:
+                    # Lenient decode: a best-effort license string must not fail
+                    # the upload (INFO stays strict and fails above instead).
                     license_text = (
                         lic_stream.read().decode("utf-8", errors="replace").strip()
                     )
@@ -256,6 +268,7 @@ def upload_to_storage(self, build_id, build_label):
             },
         }
 
+        # Atomic write: readers never see a half-written sidecar.
         tmp_sidecar = sidecar_path + ".tmp"
         with io.open(tmp_sidecar, "w", encoding="utf-8") as f:
             json.dump(sidecar, f, indent=2, ensure_ascii=False)

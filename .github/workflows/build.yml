@@ -40,9 +40,9 @@ jobs:
           key: uv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/pyproject.toml') }}
       - name: Install dependencies
         if: steps.cached-uv-dependencies.outputs.cache-hit != 'true'
-        run: uv sync --locked --no-install-project --all-extras --dev
+        run: uv sync --locked --no-install-project --all-extras
       - name: Install project
-        run: uv sync --locked --all-extras --dev
+        run: uv sync --locked --all-extras
       - name: Run tests
         run: uv run pytest -v
       - name: Build docs

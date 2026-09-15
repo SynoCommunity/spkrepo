@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""Flask-Admin views and background-action orchestration.
+
+Decisions delegate to :mod:`spkrepo.application` and :mod:`spkrepo.domain`;
+this module owns HTTP session handling, Celery fan-out, and file cleanup.
+"""
 import io
 import json
 import os
@@ -150,6 +155,8 @@ def _detect_and_fix_signed(build):
             build.signed = True
             return True
     except Exception:
+        # Swallowed deliberately: a corrupt/unreadable SPK must not 500 the
+        # admin list view; the build is simply treated as unsigned.
         pass
     return False
 
@@ -159,7 +166,7 @@ def _run_activation_action(builds):
 
     Resolves each build's effective signed flag (with signature recovery),
     delegates the activate/reject/upload decision to the application planner
-    (:func:`application.activation.plan_activation`), then applies the plan
+    (:func:`spkrepo.application.activation.plan_activation`), then applies the plan
     (commit, cache invalidation, upload queueing, flashes). Transports differ
     only in how they collect ``builds`` and in ``failure_message``.
     """

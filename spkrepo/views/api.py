@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""SPK upload API adapter (Flask-RESTful).
+
+Parses uploads via :mod:`spkrepo.utils`, validates against
+:mod:`spkrepo.domain`, and maps outcomes to HTTP status codes.
+"""
 import io
 import logging
 import os
@@ -20,7 +25,6 @@ from ..models import (
     BuildManifest,
     DisplayName,
     Icon,
-    Language,
     Package,
     Version,
     user_datastore,
@@ -30,7 +34,6 @@ from ..utils import (
     assert_version_metadata_matches_db,
     resolve_architectures,
     resolve_firmware,
-    resolve_services,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,6 +42,7 @@ api = Blueprint("api", __name__)
 
 
 def api_auth_required(f):
+    """Require HTTP Basic auth with a ``developer``-role API key (else 401)."""
     @wraps(f)
     def wrapper(*args, **kwargs):
         if request.authorization and request.authorization.type == "basic":
@@ -121,30 +125,25 @@ class Packages(Resource):
         if not request.data:
             abort(400, message="No data to process")
 
-        # open the spk
         try:
             spk = SPK(io.BytesIO(request.data))
         except SPKParseError as e:
             abort(422, message=str(e))
 
-        # reject signed packages
         if spk.signature is not None:
             abort(422, message="Package contains a signature")
 
-        # Architectures
         try:
             architectures = resolve_architectures(db.session, spk.info.get("arch"))
         except ValueError as e:
             abort(422, message=str(e))
 
-        # Firmware min
         input_firmware = spk.info.get("firmware") or spk.info.get("os_min_ver")
         try:
             firmware = resolve_firmware(db.session, input_firmware)
         except ValueError as e:
             abort(422, message=str(e))
 
-        # Firmware max
         firmware_max = None
         input_firmware_max = spk.info.get("os_max_ver")
         if input_firmware_max:
@@ -158,12 +157,6 @@ class Packages(Resource):
                 _validate_fw(firmware.build, firmware_max.build)
             except ValueError as e:
                 abort(422, message=str(e))
-
-        # Services — resolve once here; reused in version creation below
-        try:
-            services = resolve_services(spk.info.get("install_dep_services"))
-        except ValueError as e:
-            abort(422, message=str(e))
 
         # Package (pure auth decision in domain.upload; adapter maps to HTTP)
         from ..domain.upload import authorize_upload as _authorize
@@ -207,7 +200,9 @@ class Packages(Resource):
                 abort(422, message=str(e))
         else:
             create_version = True
-            version = Version(package=package, upstream_version="", version=version_number)
+            version = Version(
+                package=package, upstream_version="", version=version_number
+            )
             try:
                 assign_version_common_fields(version, spk)
             except ValueError as e:
@@ -226,7 +221,6 @@ class Packages(Resource):
                         language=language, displayname=raw_names[code]
                     )
 
-            # Icon
             for size, icon in spk.icons.items():
                 version.icons[size] = Icon(
                     path=os.path.join(
@@ -296,7 +290,6 @@ class Packages(Resource):
             conf_resource=spk.conf_resource,
         )
 
-        # sign
         if current_app.config["GNUPG_PATH"] is not None:
             try:
                 spk.sign(
@@ -308,7 +301,6 @@ class Packages(Resource):
         if spk.signature is not None:
             build.signed = True
 
-        # save files
         try:
             data_path = current_app.config["DATA_PATH"]
             if create_package:
