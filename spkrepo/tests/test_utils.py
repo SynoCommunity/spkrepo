@@ -148,8 +148,6 @@ class SPKParseTestCase(BaseTestCase):
         self.assertEqual("Missing package.tgz file", str(cm.exception))
 
     def test_wrong_file_encodings(self):
-        import json as json_module
-
         cases = [
             (
                 "LICENSE",
@@ -161,9 +159,7 @@ class SPKParseTestCase(BaseTestCase):
             (
                 "syno_signature",
                 {},
-                dict(
-                    signature="Signature française", signature_encoding="latin-1"
-                ),
+                dict(signature="Signature française", signature_encoding="latin-1"),
                 "Wrong syno_signature.asc encoding",
                 None,
             ),
@@ -177,7 +173,7 @@ class SPKParseTestCase(BaseTestCase):
             (
                 "PKG_DEPS",
                 dict(
-                    buildmanifest__conf_dependencies=json_module.dumps(
+                    buildmanifest__conf_dependencies=json.dumps(
                         {"déçu": {"dsm_min_ver": "5.0-4300"}}
                     )
                 ),
@@ -188,7 +184,7 @@ class SPKParseTestCase(BaseTestCase):
             (
                 "PKG_CONX",
                 dict(
-                    buildmanifest__conf_conflicts=json_module.dumps(
+                    buildmanifest__conf_conflicts=json.dumps(
                         {"déçu": {"dsm_min_ver": "5.0-4300"}}
                     )
                 ),
@@ -199,7 +195,7 @@ class SPKParseTestCase(BaseTestCase):
             (
                 "privilege",
                 dict(
-                    buildmanifest__conf_privilege=json_module.dumps(
+                    buildmanifest__conf_privilege=json.dumps(
                         {"déçu": {"run-as": "<run-as>"}}, ensure_ascii=False
                     )
                 ),
@@ -210,7 +206,7 @@ class SPKParseTestCase(BaseTestCase):
             (
                 "resource",
                 dict(
-                    buildmanifest__conf_resource=json_module.dumps(
+                    buildmanifest__conf_resource=json.dumps(
                         {"déçu": {"<resource-id>": "<specification>"}},
                         ensure_ascii=False,
                     )
