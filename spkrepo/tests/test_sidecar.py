@@ -29,7 +29,7 @@ class ApplySidecarToDBTestCase(BaseTestCase):
         sidecar["calculated"].update(overrides.pop("calculated", {}))
         return sidecar
 
-    def test_updates_version_metadata(self):
+    def test_applies_full_sidecar(self):
         build = BuildFactory()
         db.session.commit()
         apply_sidecar_to_db(db.session, build, self._make_sidecar())
@@ -40,13 +40,6 @@ class ApplySidecarToDBTestCase(BaseTestCase):
         assert refreshed.version.upgrade_wizard is False
         assert refreshed.version.startable is True
         assert refreshed.version.license == "MIT"
-
-    def test_updates_build_metadata(self):
-        build = BuildFactory()
-        db.session.commit()
-        apply_sidecar_to_db(db.session, build, self._make_sidecar())
-        db.session.expire_all()
-        refreshed = db.session.get(Build, build.id)
         assert refreshed.changelog == "Initial release"
         assert refreshed.checksum == "abc123"
         assert refreshed.md5 == "d41d8cd98f00b204e9800998ecf8427e"

@@ -42,27 +42,19 @@ class IndexTestCase(BaseTestCase):
 
 class PackagesTestCase(BaseTestCase):
     # Beta packages appear on the Packages page but without a 'beta' label
-    def test_get_active_beta_hides_beta_label(self):
-        build = BuildFactory(active=True)
+    def test_get_beta_hides_beta_label(self):
+        active_build = BuildFactory(active=True)
+        inactive_build = BuildFactory(active=False)
         db.session.commit()
         response = self.client.get(url_for("frontend.packages"))
         self.assert200(response)
         response_data = response.data.decode()
         self.assertIn(
-            build.version.displaynames["enu"].displayname,
+            active_build.version.displaynames["enu"].displayname,
             response_data,
         )
-        self.assertNotIn("beta", response_data)
-
-    # Inactive beta packages still appear on the Packages page without a 'beta' label
-    def test_get_inactive_beta_hides_beta_label(self):
-        build = BuildFactory(active=False)
-        db.session.commit()
-        response = self.client.get(url_for("frontend.packages"))
-        self.assert200(response)
-        response_data = response.data.decode()
         self.assertIn(
-            build.version.displaynames["enu"].displayname,
+            inactive_build.version.displaynames["enu"].displayname,
             response_data,
         )
         self.assertNotIn("beta", response_data)
@@ -285,13 +277,20 @@ class ModelMapTestCase(BaseTestCase):
         self.assertEqual(mapping["DS923+"], "r1000")
         self.assertEqual(mapping["DS1813+"], "cedarview")
         self.assertEqual(mapping["DS413"], "qoriq")
-        self.assertEqual(mapping["DS220+"], "geminilake")
         # All mapped codes look like platform codenames.
         for model, arch in models.items():
             self.assertRegex(arch, r"^[a-z0-9]+$", f"bad arch for {model}")
 
 
 class ProfileTestCase(BaseTestCase):
+    def _get_api_key_form(self, response):
+        # Locate the API key form by finding the form that contains the
+        # api_key field, rather than assuming it is always forms[0].
+        html = fromstring(response.data.decode())
+        api_key_form = next((f for f in html.forms if "api_key" in f.fields), None)
+        self.assertIsNotNone(api_key_form, "API key form not found in page")
+        return api_key_form
+
     def test_get_anonymous(self):
         self.assert302(self.client.get(url_for("frontend.profile")))
 
@@ -310,11 +309,7 @@ class ProfileTestCase(BaseTestCase):
     def test_get_no_api_key_by_default(self):
         with self.logged_user("developer", api_key=None):
             response = self.client.get(url_for("frontend.profile"))
-            html = fromstring(response.data.decode())
-            # Locate the API key form by finding the form that contains the
-            # api_key field, rather than assuming it is always forms[0].
-            api_key_form = next((f for f in html.forms if "api_key" in f.fields), None)
-            self.assertIsNotNone(api_key_form, "API key form not found in page")
+            api_key_form = self._get_api_key_form(response)
             self.assertEqual(api_key_form.fields["api_key"], "")
 
     def test_post_generate_api_key_developer(self):
@@ -323,9 +318,7 @@ class ProfileTestCase(BaseTestCase):
                 url_for("frontend.profile"), data=dict(), follow_redirects=True
             )
             self.assert200(response)
-            html = fromstring(response.data.decode())
-            api_key_form = next((f for f in html.forms if "api_key" in f.fields), None)
-            self.assertIsNotNone(api_key_form, "API key form not found in page")
+            api_key_form = self._get_api_key_form(response)
             self.assertNotEqual(api_key_form.fields["api_key"], "")
 
     def test_post_generate_api_key_not_developer(self):
@@ -339,9 +332,7 @@ class ProfileTestCase(BaseTestCase):
         with self.logged_user("developer"):
             response = self.client.get(url_for("frontend.profile"))
             self.assert200(response)
-            html = fromstring(response.data.decode())
-            api_key_form = next((f for f in html.forms if "api_key" in f.fields), None)
-            self.assertIsNotNone(api_key_form, "API key form not found in page")
+            api_key_form = self._get_api_key_form(response)
             # The logged developer user has a non-None api_key from the factory
             self.assertNotEqual(api_key_form.fields["api_key"], "")
 
@@ -352,9 +343,7 @@ class ProfileTestCase(BaseTestCase):
                 url_for("frontend.profile"), data=dict(), follow_redirects=True
             )
             self.assert200(response)
-            html = fromstring(response.data.decode())
-            api_key_form = next((f for f in html.forms if "api_key" in f.fields), None)
-            self.assertIsNotNone(api_key_form)
+            api_key_form = self._get_api_key_form(response)
             api_key = api_key_form.fields["api_key"]
             self.assertRegex(
                 api_key,

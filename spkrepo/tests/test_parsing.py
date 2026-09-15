@@ -10,12 +10,10 @@ class TestIsCountableDownload:
             {"url": "/pkg/1/pkg.v1.spk", "response_status": 200}
         )
 
-    def test_spk_url_206_no_range(self):
+    def test_spk_url_206_full_download(self):
         assert is_countable_download(
             {"url": "/pkg/1/pkg.v1.spk", "response_status": 206, "range": ""}
         )
-
-    def test_spk_url_206_full_range(self):
         assert is_countable_download(
             {
                 "url": "/pkg/1/pkg.v1.spk",
@@ -38,12 +36,10 @@ class TestIsCountableDownload:
             {"url": "/some/other/file.txt", "response_status": 200}
         )
 
-    def test_404_status(self):
+    def test_error_status_not_counted(self):
         assert not is_countable_download(
             {"url": "/pkg/1/pkg.v1.spk", "response_status": 404}
         )
-
-    def test_301_redirect(self):
         assert not is_countable_download(
             {"url": "/pkg/1/pkg.v1.spk", "response_status": 301}
         )
