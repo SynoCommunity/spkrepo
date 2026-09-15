@@ -168,16 +168,20 @@ def upload_to_storage(self, build_id, build_label):
     object_key = build.path
     sidecar_path = spk_path + ".json"
 
-    if not os.path.exists(spk_path):
-        return {
-            "status": "error",
-            "type": "upload",
-            "build_id": build_id,
-            "label": build_label,
-            "error": "File not found on disk",
-        }
+    from ..domain.storage_policy import should_attempt_upload as _should_upload
 
-    if not build.signed:
+    proceed, reason = _should_upload(
+        build.path, os.path.exists(spk_path), build.signed
+    )
+    if not proceed:
+        if reason == "missing-file":
+            return {
+                "status": "error",
+                "type": "upload",
+                "build_id": build_id,
+                "label": build_label,
+                "error": "File not found on disk",
+            }
         return {
             "status": "error",
             "type": "upload",
@@ -198,6 +202,12 @@ def upload_to_storage(self, build_id, build_label):
         os.remove(sidecar_path)
 
     try:
+        from ..domain.spk import (
+            derive_startable_raw,
+            has_wizard,
+            parse_loose_info_text,
+        )
+
         info = {}
         install_wizard = False
         upgrade_wizard = False
@@ -209,17 +219,9 @@ def upload_to_storage(self, build_id, build_label):
                 info_stream = archive.extractfile("INFO")
                 if info_stream:
                     raw = info_stream.read().decode("utf-8").strip()
-                    for line in raw.split("\n"):
-                        if "=" not in line:
-                            continue
-                        eq = line.index("=")
-                        key = line[:eq].strip()
-                        val = line[eq + 1 :].strip().strip('"')
-                        info[key] = val
-            if "WIZARD_UIFILES/install_uifile" in names:
-                install_wizard = True
-            if "WIZARD_UIFILES/upgrade_uifile" in names:
-                upgrade_wizard = True
+                    info = parse_loose_info_text(raw)
+            install_wizard = has_wizard(names, "install")
+            upgrade_wizard = has_wizard(names, "upgrade")
             if "LICENSE" in names:
                 lic_stream = archive.extractfile("LICENSE")
                 if lic_stream:
@@ -241,10 +243,7 @@ def upload_to_storage(self, build_id, build_label):
             "derived": {
                 "install_wizard": install_wizard,
                 "upgrade_wizard": upgrade_wizard,
-                "startable": (
-                    info.get("startable", "yes") != "no"
-                    and info.get("ctl_stop", "yes") != "no"
-                ),
+                "startable": derive_startable_raw(info),
                 "license": license_text,
             },
             "calculated": {

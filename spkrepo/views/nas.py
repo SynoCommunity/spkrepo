@@ -213,75 +213,75 @@ def get_catalog(arch, build, major, language, beta):
 
 
 def _set_if_truthy(entry, key, value):
-    """Set entry[key] = value only if value is truthy."""
-    if value:
-        entry[key] = value
+    """Set entry[key] = value only if value is truthy (adapter over domain)."""
+    from ..domain.catalog import set_if_truthy
+
+    set_if_truthy(entry, key, value)
 
 
 def build_package_entry(b, language, arch, build, counts_by_package):
     """Build one package's catalog dict entry from a Build, in the shape
-    expected by DSM/SRM package_update clients."""
+    expected by DSM/SRM package_update clients.
+
+    Flask adapter: resolves URLs/ORM objects, then delegates pure shaping to
+    :func:`spkrepo.domain.catalog.build_entry_data`.
+    """
+    from ..domain.catalog import build_entry_data
+
     counts = counts_by_package.get(b.version.package_id)
-    entry = {
-        "package": b.version.package.name,
-        "version": b.version.version_string,
-        "dname": b.version.displaynames.get(
+    link = url_for(
+        ".data",
+        path=b.path,
+        arch=arch,
+        build=build,
+        _external=True,
+    )
+    thumbnails = [
+        url_for(".data", path=icon.path, _external=True)
+        for icon in b.version.icons.values()
+    ]
+    snapshots = (
+        [
+            url_for(".data", path=screenshot.path, _external=True)
+            for screenshot in b.version.package.screenshots
+        ]
+        if b.version.package.screenshots
+        else []
+    )
+    retina_icon = b.version.icons.get("256")
+    retina_url = (
+        url_for(".data", path=retina_icon.path, _external=True)
+        if retina_icon
+        else None
+    )
+    return build_entry_data(
+        package_name=b.version.package.name,
+        version_string=b.version.version_string,
+        displayname=b.version.displaynames.get(
             language, b.version.displaynames["enu"]
         ).displayname,
-        "desc": b.descriptions.get(language, b.descriptions["enu"]).description,
-        "link": url_for(
-            ".data",
-            path=b.path,
-            arch=arch,
-            build=build,
-            _external=True,
-        ),
-        "thumbnail": [
-            url_for(".data", path=icon.path, _external=True)
-            for icon in b.version.icons.values()
-        ],
-        "qinst": b.version.license is None and b.version.install_wizard is False,
-        "qupgrade": b.version.license is None and b.version.upgrade_wizard is False,
-        "qstart": (
-            b.version.license is None
-            and b.version.install_wizard is False
-            and b.version.startable is not False
-        ),
-        "deppkgs": b.buildmanifest.dependencies if b.buildmanifest else None,
-        "conflictpkgs": b.buildmanifest.conflicts if b.buildmanifest else None,
-        "download_count": counts.download_count if counts else 0,
-        "recent_download_count": counts.recent_download_count if counts else 0,
-        "snapshot": (
-            [
-                url_for(".data", path=screenshot.path, _external=True)
-                for screenshot in b.version.package.screenshots
-            ]
-            if b.version.package.screenshots
-            else []
-        ),
-    }
-
-    if b.version.report_url:
-        entry["report_url"] = b.version.report_url
-        entry["beta"] = True
-
-    _set_if_truthy(entry, "changelog", b.changelog)
-    _set_if_truthy(entry, "distributor", b.version.distributor)
-    _set_if_truthy(entry, "distributor_url", b.version.distributor_url)
-    _set_if_truthy(entry, "maintainer", b.version.maintainer)
-    _set_if_truthy(entry, "maintainer_url", b.version.maintainer_url)
-    _set_if_truthy(entry, "md5", b.md5)
-    _set_if_truthy(entry, "size", b.size)
-
-    _retina_icon = b.version.icons.get("256")
-    if _retina_icon:
-        _retina_url = url_for(".data", path=_retina_icon.path, _external=True)
-        entry["thumbnail_retina"] = [_retina_url, _retina_url]
-
-    if b.version.startable is not None:
-        entry["startable"] = "yes" if b.version.startable else "no"
-
-    return entry
+        description=b.descriptions.get(language, b.descriptions["enu"]).description,
+        link=link,
+        thumbnails=thumbnails,
+        snapshots=snapshots,
+        license_text=b.version.license,
+        install_wizard=b.version.install_wizard,
+        upgrade_wizard=b.version.upgrade_wizard,
+        startable=b.version.startable,
+        dependencies=b.buildmanifest.dependencies if b.buildmanifest else None,
+        conflicts=b.buildmanifest.conflicts if b.buildmanifest else None,
+        download_count=counts.download_count if counts else 0,
+        recent_download_count=counts.recent_download_count if counts else 0,
+        report_url=b.version.report_url,
+        changelog=b.changelog,
+        distributor=b.version.distributor,
+        distributor_url=b.version.distributor_url,
+        maintainer=b.version.maintainer,
+        maintainer_url=b.version.maintainer_url,
+        md5=b.md5,
+        size=b.size,
+        retina_url=retina_url,
+    )
 
 
 def clear_catalog_cache():
@@ -356,7 +356,9 @@ def catalog():
     language = request.values["language"]
     if not is_valid_language(language):
         abort(422)
-    arch = Architecture.from_syno.get(request.values["arch"], request.values["arch"])
+    from ..domain.shared_kernel import translate_arch_from_syno as _translate_arch
+
+    arch = _translate_arch(request.values["arch"])
     if not is_valid_arch(arch):
         abort(422)
     try:

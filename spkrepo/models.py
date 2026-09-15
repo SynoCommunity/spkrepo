@@ -54,9 +54,10 @@ def _compile_days_ago_default(element, compiler, **kw):
     return f"date('now', '-{element.days} days')"
 
 
-# Architecture code mappings — module-level constants, not instance data
-_ARCH_FROM_SYNO = {"88f6281": "88f628x", "88f6282": "88f628x"}
-_ARCH_TO_SYNO = {"88f628x": "88f6281"}
+# Architecture code mappings — single owner is domain.shared_kernel;
+# these module aliases stay for backward compatibility (tests, views).
+from .domain.shared_kernel import ARCH_FROM_SYNO as _ARCH_FROM_SYNO
+from .domain.shared_kernel import ARCH_TO_SYNO as _ARCH_TO_SYNO
 
 
 def _utcnow():
@@ -155,7 +156,9 @@ class Architecture(db.Model):
         found. If syno=True, code is first translated from its Synology
         DSM/SRM spelling (e.g. "88f6281") to its canonical form."""
         if syno:
-            code = _ARCH_FROM_SYNO.get(code, code)
+            from .domain.shared_kernel import translate_arch_from_syno
+
+            code = translate_arch_from_syno(code)
         return (
             db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
         )
@@ -571,9 +574,14 @@ class Build(db.Model):
         filename to construct Build.path *before* the Build itself
         exists (see api.py's upload handler). Pass the intended firmware
         (typically firmware_min).
+
+        Adapter over :func:`spkrepo.domain.shared_kernel.build_filename`.
         """
-        arch_codes = "-".join(a.code for a in architectures)
-        return f"{package.name}.v{version.version}.f{firmware.build}[{arch_codes}].spk"
+        from .domain.shared_kernel import build_filename
+
+        return build_filename(
+            package.name, version.version, firmware.build, [a.code for a in architectures]
+        )
 
     def save(self, stream):
         """Write the given binary stream to this build's file on disk at
@@ -743,31 +751,12 @@ def group_builds_per_dsm(builds):
     group's builds also ordered by full firmware version, newest-first,
     so e.g. 7.2.x builds don't interleave with 7.1.x builds.
 
-    Shared by Version.builds_per_dsm and callers that need the same
-    grouping over a filtered subset of builds.
+    Adapter over :func:`spkrepo.domain.catalog.group_builds_per_dsm`
+    (single owner); kept here for backward compatibility.
     """
+    from .domain.catalog import group_builds_per_dsm as _pure
 
-    def _firmware_sort_key(build):
-        return tuple(
-            int(part) if part.isdigit() else part
-            for part in build.firmware_min.version.split(".")
-        )
-
-    groups = {}
-    for build in builds:
-        major = build.firmware_min.version.split(".")[0]
-        groups.setdefault(major, []).append(build)
-
-    for grouped in groups.values():
-        grouped.sort(key=_firmware_sort_key, reverse=True)
-
-    return dict(
-        sorted(
-            groups.items(),
-            key=lambda item: int(item[0]) if item[0].isdigit() else item[0],
-            reverse=True,
-        )
-    )
+    return _pure(builds)
 
 
 class BuildManifest(db.Model):

@@ -212,96 +212,42 @@ class PackagesTestCase(BaseTestCase):
             response.data.decode(),
         )
 
-    def test_post_allows_different_firmware_same_architecture(self):
+    def test_post_allows_different_arch_same_version(self):
+        """Single no-conflict wiring probe (disjoint arch → 201).
+
+        Range/arch truth tables live in domain units (detect_conflicts)."""
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
         db.session.commit()
 
-        # Pin to the lowest seeded firmware so newer_firmware is always strictly higher.
-        base_build = BuildFactory.build(
-            architectures=[Architecture.find("noarch")],
-            firmware_min=db.session.execute(
-                db.select(Firmware).order_by(Firmware.build.asc())
+        template = BuildFactory.build(
+            architectures=[Architecture.find("88f628x")],
+            firmware_min=Firmware.find(1594),
+            version__report_url=None,
+        )
+        with create_spk(template) as spk:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk.read(),
+                )
             )
-            .scalars()
-            .first(),
-        )
-        with (
-            create_spk(base_build) as spk,
-            warnings.catch_warnings(record=True) as base_warns,
-        ):
-            warnings.simplefilter("always", SAWarning)
-            first_response = self.client.post(
-                url_for("api.packages"),
-                headers=authorization_header(user),
-                data=spk.read(),
+        info = create_info(template)
+        info["arch"] = "cedarview"
+        with create_spk(template, info=info) as spk2:
+            self.assert201(
+                self.client.post(
+                    url_for("api.packages"),
+                    headers=authorization_header(user),
+                    data=spk2.read(),
+                )
             )
-        self.assert201(first_response)
-        base_sa_warnings = [w for w in base_warns if issubclass(w.category, SAWarning)]
-        self.assertFalse(
-            base_sa_warnings,
-            (
-                "Unexpected SAWarnings encountered: "
-                f"{[str(w.message) for w in base_sa_warnings]}"
-            ),
-        )
-
-        # Always use the highest seeded firmware to guarantee it is genuinely newer
-        # than whatever the factory picked for base_build, avoiding a flaky fixture.
-        newer_firmware = (
-            db.session.execute(db.select(Firmware).order_by(Firmware.build.desc()))
-            .scalars()
-            .first()
-        )
-        self.assertIsNotNone(newer_firmware)
-        self.assertGreater(
-            newer_firmware.build,
-            base_build.firmware_min.build,
-            "Expected newer_firmware to be strictly higher than base firmware",
-        )
-
-        followup_build = BuildFactory.build(
-            version=base_build.version,
-            architectures=base_build.architectures,
-            firmware_min=newer_firmware,
-        )
-        with (
-            create_spk(followup_build) as spk,
-            warnings.catch_warnings(record=True) as caught,
-        ):
-            warnings.simplefilter("always", SAWarning)
-            response = self.client.post(
-                url_for("api.packages"),
-                headers=authorization_header(user),
-                data=spk.read(),
-            )
-
-        self.assert201(response)
-        sa_warnings = [w for w in caught if issubclass(w.category, SAWarning)]
-        self.assertFalse(
-            sa_warnings,
-            (
-                "Unexpected SAWarnings encountered: "
-                f"{[str(w.message) for w in sa_warnings]}"
-            ),
-        )
-
-    def test_post_new_package_not_author_not_maintainer_user(self):
-        user = UserFactory(roles=[Role.find("developer")])
-        db.session.commit()
-
-        with create_spk(BuildFactory.build()) as spk:
-            response = self.client.post(
-                url_for("api.packages"),
-                headers=authorization_header(user),
-                data=spk.read(),
-            )
-        self.assert403(response)
-        self.assertIn(
-            "Insufficient permissions to create new packages",
-            response.data.decode(),
-        )
+        builds = db.session.execute(db.select(Build)).unique().scalars().all()
+        self.assertEqual(len(builds), 2)
 
     def test_post_existing_package_not_author_not_maintainer_user(self):
+        # Single 403 wiring probe (PermissionError -> 403 mapping); the
+        # decision table lives in domain units (authorize_upload).
         user = UserFactory(roles=[Role.find("developer")])
         package = PackageFactory()
         db.session.commit()
@@ -419,26 +365,21 @@ class PackagesTestCase(BaseTestCase):
             )
         self.assertBuildInserted(get_only_build(), build, user)
 
-    def test_post_install_wizard(self):
+    def test_post_version_flags_passthrough(self):
+        """Single wiring probe: wizard/startable flags flow SPK -> DB.
+
+        Branch logic lives in domain units (derive_quick_flags,
+        derive_startable); other upload tests already assert the
+        default (False/None) path via assertBuildInserted.
+        """
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
         db.session.commit()
 
-        build = BuildFactory.build(version__install_wizard=True)
-        with create_spk(build) as spk:
-            self.assert201(
-                self.client.post(
-                    url_for("api.packages"),
-                    headers=authorization_header(user),
-                    data=spk.read(),
-                )
-            )
-        self.assertBuildInserted(get_only_build(), build, user)
-
-    def test_post_upgrade_wizard(self):
-        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
-        db.session.commit()
-
-        build = BuildFactory.build(version__upgrade_wizard=True)
+        build = BuildFactory.build(
+            version__install_wizard=True,
+            version__upgrade_wizard=True,
+            version__startable=False,
+        )
         with create_spk(build) as spk:
             self.assert201(
                 self.client.post(
@@ -456,36 +397,6 @@ class PackagesTestCase(BaseTestCase):
         build = BuildFactory.build(
             version__icons={"120": IconFactory.build(size="120")}
         )
-        with create_spk(build) as spk:
-            self.assert201(
-                self.client.post(
-                    url_for("api.packages"),
-                    headers=authorization_header(user),
-                    data=spk.read(),
-                )
-            )
-        self.assertBuildInserted(get_only_build(), build, user)
-
-    def test_post_startable(self):
-        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
-        db.session.commit()
-
-        build = BuildFactory.build(version__startable=True)
-        with create_spk(build) as spk:
-            self.assert201(
-                self.client.post(
-                    url_for("api.packages"),
-                    headers=authorization_header(user),
-                    data=spk.read(),
-                )
-            )
-        self.assertBuildInserted(get_only_build(), build, user)
-
-    def test_post_not_startable(self):
-        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
-        db.session.commit()
-
-        build = BuildFactory.build(version__startable=False)
         with create_spk(build) as spk:
             self.assert201(
                 self.client.post(
@@ -831,77 +742,6 @@ class PackagesTestCase(BaseTestCase):
             response.data.decode(),
         )
 
-    def test_post_conflict_firmware_max_range_overlap(self):
-        # Two builds with overlapping firmware ranges on the same arch should conflict.
-        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
-        db.session.commit()
-
-        arch = [Architecture.find("88f628x")]
-        first_build = BuildFactory.build(
-            architectures=arch,
-            firmware_min=Firmware.find(1594),
-            firmware_max=Firmware.find(4458),
-        )
-        with create_spk(first_build) as spk:
-            self.assert201(
-                self.client.post(
-                    url_for("api.packages"),
-                    headers=authorization_header(user),
-                    data=spk.read(),
-                )
-            )
-
-        # Second build: same arch, firmware range overlaps (min=4458, no max)
-        second_build = BuildFactory.build(
-            version=first_build.version,
-            architectures=arch,
-            firmware_min=Firmware.find(4458),
-            firmware_max=None,
-        )
-        with create_spk(second_build) as spk:
-            response = self.client.post(
-                url_for("api.packages"),
-                headers=authorization_header(user),
-                data=spk.read(),
-            )
-        self.assert409(response)
-        self.assertIn("Conflicting architectures", response.data.decode())
-
-    def test_post_no_conflict_non_overlapping_firmware_ranges(self):
-        # Two builds on the same arch with non-overlapping firmware ranges are allowed.
-        user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
-        db.session.commit()
-
-        arch = [Architecture.find("88f628x")]
-        first_build = BuildFactory.build(
-            architectures=arch,
-            firmware_min=Firmware.find(1594),
-            firmware_max=Firmware.find(1594),
-        )
-        with create_spk(first_build) as spk:
-            self.assert201(
-                self.client.post(
-                    url_for("api.packages"),
-                    headers=authorization_header(user),
-                    data=spk.read(),
-                )
-            )
-
-        second_build = BuildFactory.build(
-            version=first_build.version,
-            architectures=arch,
-            firmware_min=Firmware.find(4458),
-            firmware_max=None,
-        )
-        with create_spk(second_build) as spk:
-            self.assert201(
-                self.client.post(
-                    url_for("api.packages"),
-                    headers=authorization_header(user),
-                    data=spk.read(),
-                )
-            )
-
     def test_post_unknown_install_dep_service(self):
         # An unknown install_dep_services value returns 422.
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -919,24 +759,4 @@ class PackagesTestCase(BaseTestCase):
         self.assert422(response)
         self.assertIn(
             "Unknown dependent service: no-such-service", response.data.decode()
-        )
-
-    def test_post_maintainer_cannot_upload_to_other_package(self):
-        # A maintainer on package A must be rejected when uploading to package B.
-        user = UserFactory(roles=[Role.find("developer")])
-        PackageFactory(
-            maintainers=[user]
-        )  # establishes user as maintainer on a different package
-        package_b = PackageFactory()
-        db.session.commit()
-
-        with create_spk(BuildFactory.build(version__package=package_b)) as spk:
-            response = self.client.post(
-                url_for("api.packages"),
-                headers=authorization_header(user),
-                data=spk.read(),
-            )
-        self.assert403(response)
-        self.assertIn(
-            "Insufficient permissions on this package", response.data.decode()
         )

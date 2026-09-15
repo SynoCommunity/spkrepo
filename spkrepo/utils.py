@@ -14,6 +14,20 @@ import gnupg
 import requests
 from flask import current_app
 
+from .domain.shared_kernel import (
+    derive_startable,
+    firmware_re,
+    map_displaynames,
+    parse_firmware,
+    parse_version,
+    version_re,
+)
+from .domain.spk import BOOLEAN_INFO as _DOMAIN_BOOLEAN_INFO
+from .domain.spk import REQUIRED_INFO as _DOMAIN_REQUIRED_INFO
+from .domain.spk import icon_info_re as _domain_icon_info_re
+from .domain.spk import info_line_re as _domain_info_line_re
+from .domain.spk import package_re as _domain_package_re
+from .domain.spk import wizard_filename_re as _domain_wizard_filename_re
 from .exceptions import SPKParseError, SPKSignError
 from .ext import db
 from .models import (
@@ -28,11 +42,9 @@ from .models import (
     Service,
 )
 
-#: Regex for a firmware string e.g. "6.2-23739"
-firmware_re = re.compile(r"^(?P<version>\d+\.\d)-(?P<build>\d{3,6})$")
-
-#: Regex for a version string e.g. "1.2.3-10"
-version_re = re.compile(r"^(?P<upstream_version>.*)-(?P<version>\d+)$")
+# Re-exported from domain.shared_kernel (single owner); kept here for
+# backward compatibility with existing imports (views, tests).
+# See spkrepo.domain.shared_kernel for definitions.
 
 
 class SPK(object):
@@ -41,31 +53,26 @@ class SPK(object):
     :param fileobj stream: SPK file stream
     """
 
-    #: Required keys in the INFO file
-    REQUIRED_INFO = {"package", "version", "arch", "displayname", "description"}
+    #: Required keys in the INFO file (single owner: domain.spk)
+    REQUIRED_INFO = _DOMAIN_REQUIRED_INFO
 
-    #: Boolean INFO keys
-    BOOLEAN_INFO = set(["ctl_stop", "startable", "support_conf_folder"])
+    #: Boolean INFO keys (single owner: domain.spk)
+    BOOLEAN_INFO = _DOMAIN_BOOLEAN_INFO
 
     #: Signature filename
     SIGNATURE_FILENAME = "syno_signature.asc"
 
-    #: Regex for a line of the INFO file
-    info_line_re = re.compile(r'^(?P<key>\w+)="(?P<value>.*)"$', re.MULTILINE)
+    #: Regex for a line of the INFO file (single owner: domain.spk)
+    info_line_re = _domain_info_line_re
 
-    #: Regex for package in INFO file
-    package_re = re.compile(r"^[\w-]+$")
+    #: Regex for package in INFO file (single owner: domain.spk)
+    package_re = _domain_package_re
 
-    #: Regex for a wizard filename
-    wizard_filename_re = re.compile(
-        (
-            r"^WIZARD_UIFILES/(?P<process>install|upgrade|uninstall)"
-            r"_uifile(?:_[a-z]{3})?(?:\.sh)?$"
-        )
-    )
+    #: Regex for a wizard filename (single owner: domain.spk)
+    wizard_filename_re = _domain_wizard_filename_re
 
-    #: Regex for icons in INFO
-    icon_info_re = re.compile(r"^package_icon(?:_(?P<size>120|256))?$")
+    #: Regex for icons in INFO (single owner: domain.spk)
+    icon_info_re = _domain_icon_info_re
 
     #: Regex for icons in files
     icon_filename_re = re.compile(r"^PACKAGE_ICON(?:_(?P<size>120|256))?\.PNG$")
@@ -124,105 +131,42 @@ class SPK(object):
                     except UnicodeDecodeError:
                         raise SPKParseError("Wrong syno_signature.asc encoding")
 
-                # read INFO lines
-                for line in spk.extractfile("INFO").readlines():
-                    try:
-                        line = line.decode("utf-8").strip()
-                    except UnicodeDecodeError:
-                        raise SPKParseError("Wrong INFO encoding")
+                # read INFO lines (pure parsing in domain.spk; tar I/O stays here)
+                from .domain.spk import parse_info_lines, validate_required
 
-                    if not line:
-                        continue
-
-                    match = self.info_line_re.match(line)
-                    if not match:
-                        raise SPKParseError("Invalid INFO")
-                    key, value = match.group("key"), match.group("value")
-
-                    match = self.icon_info_re.match(key)
-                    if match:
-                        size = match.group("size") or "72"
-                        try:
-                            self.icons[size] = io.BytesIO(
-                                base64.b64decode(value.encode("utf-8"))
-                            )
-                        except binascii.Error:
-                            raise SPKParseError(f"Invalid INFO icon: {key}")
-                        except TypeError:
-                            raise SPKParseError(f"Invalid INFO icon: {key}")
-                    elif key in self.BOOLEAN_INFO:
-                        if value == "yes":
-                            self.info[key] = True
-                        elif value == "no":
-                            self.info[key] = False
-                        else:
-                            raise SPKParseError(f"Invalid INFO boolean: {key}")
-                    elif key == "package":
-                        match = self.package_re.match(value)
-                        if not match:
-                            raise SPKParseError("Invalid INFO package")
-                        self.info[key] = value
-                    else:
-                        self.info[key] = value
+                raw_lines = spk.extractfile("INFO").readlines()
+                self.info, raw_icons = parse_info_lines(raw_lines)
+                for size, payload in raw_icons.items():
+                    self.icons[size] = io.BytesIO(payload)
 
                 # validate info
-                if not set(self.info.keys()) >= self.REQUIRED_INFO:
-                    missing = ", ".join(self.REQUIRED_INFO - set(self.info.keys()))
-                    raise SPKParseError(f"Missing INFO: {missing}")
+                validate_required(self.info)
 
-                # read conf files
+                # read conf files (bytes I/O here, pure parsing in domain.spk)
                 if (
                     "support_conf_folder" in self.info
                     and self.info["support_conf_folder"]
                 ):
+                    from .domain.spk import parse_conf_file, parse_json_conf
+
                     if "conf" not in names:
                         raise SPKParseError("Missing conf folder")
                     if "conf/PKG_DEPS" in names:
-                        c = ConfigParser()
-                        try:
-                            c.read_string(
-                                spk.extractfile("conf/PKG_DEPS").read().decode("utf-8")
-                            )
-                        except UnicodeDecodeError:
-                            raise SPKParseError("Wrong conf/PKG_DEPS encoding")
+                        raw = spk.extractfile("conf/PKG_DEPS").read()
                         self.conf_dependencies = json.dumps(
-                            {s: {k: v for k, v in c.items(s)} for s in c.sections()}
+                            parse_conf_file(raw, "conf/PKG_DEPS")
                         )
                     if "conf/PKG_CONX" in names:
-                        c = ConfigParser()
-                        try:
-                            c.read_string(
-                                spk.extractfile("conf/PKG_CONX").read().decode("utf-8")
-                            )
-                        except UnicodeDecodeError:
-                            raise SPKParseError("Wrong conf/PKG_CONX encoding")
+                        raw = spk.extractfile("conf/PKG_CONX").read()
                         self.conf_conflicts = json.dumps(
-                            {s: {k: v for k, v in c.items(s)} for s in c.sections()}
+                            parse_conf_file(raw, "conf/PKG_CONX")
                         )
                     if "conf/privilege" in names:
-                        try:
-                            conf_privilege = (
-                                spk.extractfile("conf/privilege").read().decode("utf-8")
-                            )
-                        except UnicodeDecodeError:
-                            raise SPKParseError("Wrong conf/privilege encoding")
-                        try:
-                            json.loads(conf_privilege)
-                        except (json.JSONDecodeError, ValueError):
-                            raise SPKParseError("File conf/privilege is not valid JSON")
-                        self.conf_privilege = conf_privilege
+                        raw = spk.extractfile("conf/privilege").read()
+                        self.conf_privilege = parse_json_conf(raw, "conf/privilege")
                     if "conf/resource" in names:
-                        try:
-                            conf_resource = (
-                                spk.extractfile("conf/resource").read().decode("utf-8")
-                            )
-                        except UnicodeDecodeError:
-                            raise SPKParseError("Wrong conf/resource encoding")
-                        try:
-                            json.loads(conf_resource)
-                        except (json.JSONDecodeError, ValueError):
-                            raise SPKParseError("File conf/resource is not valid JSON")
-                        self.conf_resource = conf_resource
+                        raw = spk.extractfile("conf/resource").read()
+                        self.conf_resource = parse_json_conf(raw, "conf/resource")
                     if (
                         self.conf_dependencies is None
                         and self.conf_conflicts is None
@@ -231,16 +175,12 @@ class SPK(object):
                     ):
                         raise SPKParseError("Empty conf folder")
 
-                # verify checksum
+                # verify checksum (pure bytes check in domain.spk)
                 if "checksum" in self.info:
-                    checksum = hashlib.md5()
+                    from .domain.spk import verify_checksum
+
                     archive = spk.extractfile("package.tgz")
-                    for chunk in iter(
-                        lambda: archive.read(io.DEFAULT_BUFFER_SIZE), b""
-                    ):
-                        checksum.update(chunk)
-                    if checksum.hexdigest() != self.info["checksum"]:
-                        raise SPKParseError("Checksum mismatch")
+                    verify_checksum(self.info["checksum"], archive.read())
 
                 # read icon files
                 for name in names:
@@ -374,6 +314,9 @@ def resolve_firmware(session, value, allow_none=False):
     """Resolve a firmware string like '6.2-23739' to a
     :class:`~spkrepo.models.Firmware`.
 
+    Adapter: pure parsing via :func:`domain.shared_kernel.parse_firmware`,
+    DB lookup via ``Firmware.find``. Pass a session for ``merge``.
+
     :param session: SQLAlchemy session
     :param value: firmware string from SPK INFO
     :param allow_none: if True, a missing/empty value returns None instead of raising
@@ -385,11 +328,12 @@ def resolve_firmware(session, value, allow_none=False):
             return None
         raise ValueError("Missing firmware information in INFO")
 
-    match = firmware_re.match(value)
-    if not match:
+    try:
+        _, build = parse_firmware(value)
+    except ValueError:
         raise ValueError(f"Invalid firmware value: {value}")
 
-    firmware = Firmware.find(int(match.group("build")))
+    firmware = Firmware.find(build)
     if firmware is None:
         raise ValueError(f"Unknown firmware: {value}")
 
@@ -434,108 +378,87 @@ def resolve_services(service_string):
     return services
 
 
-def extract_version_metadata(spk):
-    """Extract all version-level fields from an SPK into a plain dict without
-    touching the database. Used to compare builds of the same version for
-    consistency before writing anything.
+def resolve_displayname_languages(info) -> dict[str, "Language"]:
+    """Single-owner Language lookup for INFO displaynames.
 
-    :param spk: a parsed :class:`SPK` instance
-    :returns: dict of version-level field values
+    Pure mapping via :func:`domain.shared_kernel.map_displaynames`, DB
+    lookup via ``Language.find``. Raises ``ValueError`` on unknown codes;
+    HTTP adapters map this to 422.
     """
-    info = spk.info
-    version_match = version_re.match(info.get("version", ""))
-    startable = True
-    if info.get("startable") is False or info.get("ctl_stop") is False:
-        startable = False
-    # Normalise displaynames to language-code keys (matching DB storage):
-    # INFO key "displayname" -> "enu", "displayname_fre" -> "fre", etc.
-    # Note: create_info also emits "displayname_enu" alongside "displayname",
-    # so we process suffixed keys first, then let the bare key set "enu" last,
-    # ensuring an override of info["displayname"] is not shadowed by
-    # info["displayname_enu"] still holding the original value.
-    displaynames = {}
-    for k, v in info.items():
-        if k.startswith("displayname_"):
-            displaynames[k.split("_", 1)[1]] = v
-    if "displayname" in info:
-        displaynames["enu"] = info["displayname"]
+    from .domain.shared_kernel import map_displaynames as _map
 
-    return {
-        "upstream_version": (
-            version_match.group("upstream_version") if version_match else None
-        ),
-        "report_url": info.get("report_url"),
-        "distributor": info.get("distributor"),
-        "distributor_url": info.get("distributor_url"),
-        "maintainer": info.get("maintainer"),
-        "maintainer_url": info.get("maintainer_url"),
-        "install_wizard": "install" in spk.wizards,
-        "upgrade_wizard": "upgrade" in spk.wizards,
-        "startable": startable,
-        "license": spk.license,
-        "install_dep_services": (
-            set(info["install_dep_services"].split())
-            if info.get("install_dep_services")
-            else set()
-        ),
-        "displaynames": displaynames,
-    }
+    resolved: dict[str, Language] = {}
+    for code in _map(info):
+        language = Language.find(code)
+        if language is None:
+            raise ValueError(f"Unknown INFO displayname language: {code}")
+        resolved[code] = language
+    return resolved
+
+
+def resolve_description_languages(info) -> dict[str, "Language"]:
+    """Single-owner Language lookup for INFO descriptions.
+
+    Raises ``ValueError`` on unknown codes; HTTP adapters map to 422.
+    """
+    from .domain.shared_kernel import map_descriptions as _map
+
+    resolved: dict[str, Language] = {}
+    for code in _map(info):
+        language = Language.find(code)
+        if language is None:
+            raise ValueError(f"Unknown INFO description language: {code}")
+        resolved[code] = language
+    return resolved
+
+
+def assign_version_common_fields(version, spk) -> None:
+    """Single-owner writer for version-level fields shared by upload/resync.
+
+    Assigns upstream_version, report/distributor/maintainer URLs, wizards,
+    startable (via domain), license and service dependencies. Localized
+    displaynames are handled by :func:`resolve_displayname_languages` +
+    caller-owned relationship assignment (create vs clear semantics differ).
+    """
+    from .domain.shared_kernel import derive_startable as _startable
+    from .domain.shared_kernel import parse_version as _parse_version
+
+    info = spk.info if hasattr(spk, "info") else spk
+    wizards = getattr(spk, "wizards", set())
+    upstream, _ = _parse_version(info.get("version", ""))
+    version.upstream_version = upstream
+    version.report_url = info.get("report_url")
+    version.distributor = info.get("distributor")
+    version.distributor_url = info.get("distributor_url")
+    version.maintainer = info.get("maintainer")
+    version.maintainer_url = info.get("maintainer_url")
+    version.install_wizard = "install" in wizards
+    version.upgrade_wizard = "upgrade" in wizards
+    version.startable = _startable(info)
+    version.license = getattr(spk, "license", info.get("license"))
+    version.service_dependencies = resolve_services(info.get("install_dep_services"))
+
+
+def extract_version_metadata(spk):
+    """Extract all version-level fields from an SPK into a plain dict.
+
+    Adapter over :mod:`spkrepo.domain.versions` (single owner); kept here
+    for backward compatibility.
+    """
+    from .domain.versions import extract_version_metadata as _pure
+
+    return _pure(spk)
 
 
 def assert_version_metadata_matches_db(version, spk):
-    """Raise :exc:`ValueError` if the SPK's version-level metadata conflicts with
-    what is already stored on an existing :class:`~spkrepo.models.Version` record.
+    """Raise :exc:`ValueError` on version-level metadata conflicts.
 
-    Call this before writing anything when uploading a new build to an existing
-    version, to ensure all builds within a version carry consistent metadata.
-
-    :param version: the existing :class:`~spkrepo.models.Version` DB record
-    :param spk: a parsed :class:`SPK` instance for the incoming build
-    :raises ValueError: listing all mismatched fields if any inconsistency is found
+    Adapter over :mod:`spkrepo.domain.versions` (single owner); kept here
+    for backward compatibility.
     """
-    incoming = extract_version_metadata(spk)
-    mismatches = []
+    from .domain.versions import assert_version_metadata_matches_db as _pure
 
-    simple_fields = (
-        "upstream_version",
-        "report_url",
-        "distributor",
-        "distributor_url",
-        "maintainer",
-        "maintainer_url",
-        "install_wizard",
-        "upgrade_wizard",
-        "startable",
-        "license",
-    )
-    for field in simple_fields:
-        spk_val = incoming[field]
-        db_val = getattr(version, field)
-        # startable=None in the DB means "default true", same as SPK omitting the key
-        if field == "startable" and db_val is None:
-            db_val = True
-        if spk_val != db_val:
-            mismatches.append(f"{field}: SPK has {spk_val!r}, DB has {db_val!r}")
-
-    existing_services = {s.code for s in version.service_dependencies}
-    if incoming["install_dep_services"] != existing_services:
-        mismatches.append(
-            f"service_dependencies: SPK has {incoming['install_dep_services']}, "
-            f"DB has {existing_services}"
-        )
-
-    existing_displaynames = {k: v.displayname for k, v in version.displaynames.items()}
-    if incoming["displaynames"] != existing_displaynames:
-        mismatches.append(
-            f"displaynames: SPK has {incoming['displaynames']}, "
-            f"DB has {existing_displaynames}"
-        )
-
-    if mismatches:
-        raise ValueError(
-            "SPK version-level metadata conflicts with existing builds:\n"
-            + "\n".join(f"  - {m}" for m in mismatches)
-        )
+    return _pure(version, spk)
 
 
 def apply_info_from_spk(session, build, spk, md5_hash):
@@ -569,84 +492,50 @@ def apply_info_from_spk(session, build, spk, md5_hash):
     :raises ValueError: on any validation failure (package mismatch, bad version, etc.)
     """
     with session.no_autoflush:
+        from .domain.shared_kernel import map_descriptions as _descriptions
+        from .domain.shared_kernel import map_displaynames as _displaynames
+        from .domain.shared_kernel import parse_version as _parse_version
+
         info = spk.info
         package = build.version.package
 
         if info.get("package") != package.name:
             raise ValueError("INFO package does not match build package")
 
-        version_match = version_re.match(info.get("version", ""))
-        if not version_match:
+        try:
+            _, version_number = _parse_version(info.get("version", ""))
+        except ValueError:
             raise ValueError("Invalid INFO version value")
 
-        version_number = int(version_match.group("version"))
         if version_number != build.version.version:
             raise ValueError("INFO version does not match build version")
 
-        # -- Version-level fields ------------------------------------------------
-
+        # -- Version-level fields (shared writer; upload path converges here) --
         version = build.version
-        version.upstream_version = version_match.group("upstream_version")
         build.changelog = info.get("changelog")
-        version.report_url = info.get("report_url")
-        version.distributor = info.get("distributor")
-        version.distributor_url = info.get("distributor_url")
-        version.maintainer = info.get("maintainer")
-        version.maintainer_url = info.get("maintainer_url")
-        version.install_wizard = "install" in spk.wizards
-        version.upgrade_wizard = "upgrade" in spk.wizards
-
-        startable = True  # default per Synology docs
-        if info.get("startable") is False or info.get("ctl_stop") is False:
-            startable = False
-        version.startable = startable
-
-        version.license = spk.license
-        version.service_dependencies = resolve_services(
-            info.get("install_dep_services")
-        )
+        assign_version_common_fields(version, spk)
 
         version.displaynames.clear()
-        default_display = info.get("displayname")
-        if default_display:
-            language = Language.find("enu")
+        for language_code, displayname in _displaynames(info).items():
+            language = Language.find(language_code)
             if language is None:
-                raise ValueError("Language 'enu' is not defined")
-            version.displaynames[language.code] = DisplayName(
-                language=language, displayname=default_display
-            )
-        for key, value in info.items():
-            if key.startswith("displayname_"):
-                language_code = key.split("_", 1)[1]
-                language = Language.find(language_code)
-                if language is None:
-                    raise ValueError(
-                        f"Unknown INFO displayname language: {language_code}"
-                    )
-                version.displaynames[language.code] = DisplayName(
-                    language=language, displayname=value
+                raise ValueError(
+                    f"Unknown INFO displayname language: {language_code}"
                 )
+            version.displaynames[language.code] = DisplayName(
+                language=language, displayname=displayname
+            )
 
         build.descriptions.clear()
-        default_description = info.get("description")
-        if default_description:
-            language = Language.find("enu")
+        for language_code, description in _descriptions(info).items():
+            language = Language.find(language_code)
             if language is None:
-                raise ValueError("Language 'enu' is not defined")
-            build.descriptions[language.code] = BuildDescription(
-                language=language, description=default_description
-            )
-        for key, value in info.items():
-            if key.startswith("description_"):
-                language_code = key.split("_", 1)[1]
-                language = Language.find(language_code)
-                if language is None:
-                    raise ValueError(
-                        f"Unknown INFO description language: {language_code}"
-                    )
-                build.descriptions[language.code] = BuildDescription(
-                    language=language, description=value
+                raise ValueError(
+                    f"Unknown INFO description language: {language_code}"
                 )
+            build.descriptions[language.code] = BuildDescription(
+                language=language, description=description
+            )
 
         # Icon files are written to disk here. If anything raises after this point
         # the caller's session rollback will undo the DB changes but the files will
@@ -697,10 +586,15 @@ def apply_info_from_spk(session, build, spk, md5_hash):
 
         firmware_max_value = info.get("os_max_ver")
         firmware_max = resolve_firmware(session, firmware_max_value, allow_none=True)
-        if firmware_max and firmware_max.build < build.firmware_min.build:
-            raise ValueError(
-                "Maximum firmware must be greater than or equal to minimum firmware"
+        from .domain.upload import validate_firmware_range as _validate_fw
+
+        try:
+            _validate_fw(
+                build.firmware_min.build,
+                firmware_max.build if firmware_max else None,
             )
+        except ValueError as e:
+            raise ValueError(str(e))
         build.firmware_max = firmware_max
 
         build.checksum = info.get("checksum")
@@ -723,13 +617,23 @@ def apply_info_from_spk(session, build, spk, md5_hash):
 
 
 def apply_sidecar_to_db(session, build, sidecar):
-    """Apply sidecar metadata to a build and its version without the SPK archive."""
+    """Apply sidecar metadata to a build and its version without the SPK archive.
+
+    Sidecar field ownership differs from the SPK paths by design: version
+    identity/URLs come from raw ``info``, wizard/startable/license flags
+    from task-derived values (already resolved at upload time), and
+    ``signed/storage`` mark the remote transition (sidecars only exist for
+    remote builds). Upstream parsing converges on
+    :func:`domain.shared_kernel.parse_upstream_lenient`.
+    """
+    from .domain.shared_kernel import parse_upstream_lenient
+
     info = sidecar["info"]
     derived = sidecar["derived"]
     calculated = sidecar["calculated"]
 
     version = build.version
-    version.upstream_version = info.get("version", "").rsplit("-", 1)[0]
+    version.upstream_version = parse_upstream_lenient(info.get("version", ""))
     version.report_url = info.get("report_url")
     version.distributor = info.get("distributor")
     version.distributor_url = info.get("distributor_url")
