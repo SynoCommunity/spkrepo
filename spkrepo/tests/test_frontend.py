@@ -288,6 +288,46 @@ class PackageTestCase(BaseTestCase):
         response = self.client.get(url_for("frontend.package", name="empty-package"))
         self.assert404(response)
 
+    def test_detail_query_is_bounded(self):
+        # The detail page must not eager-load every build's descriptions nor
+        # lazily fetch Language per row; the default (enu) description comes
+        # from one dedicated query, so query count stays bounded.
+        from sqlalchemy import event
+
+        from spkrepo.views.frontend import _default_descriptions, _package_detail_query
+
+        package = PackageFactory()
+        for _ in range(3):
+            version = VersionFactory(package=package)
+            BuildFactory.create_batch(2, version=version, active=True)
+        db.session.commit()
+
+        statements = []
+
+        def _record(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(db.engine, "before_cursor_execute", _record)
+        try:
+            loaded = _package_detail_query(package.name)
+            _default_descriptions([v.id for v in loaded.versions])
+        finally:
+            event.remove(db.engine, "before_cursor_execute", _record)
+
+        self.assertEqual(len(loaded.versions), 3)
+        self.assertLessEqual(len(statements), 9, statements)
+        # descriptions are fetched only by the dedicated default-description query
+        self.assertEqual(
+            sum("build_description" in s.lower() for s in statements),
+            1,
+            statements,
+        )
+        # no per-row lazy Language load
+        self.assertFalse(
+            any(s.lower().lstrip().startswith("select language") for s in statements),
+            statements,
+        )
+
     def test_detail_filters_versions_by_arch(self):
         # Only versions with a matching build are shown when filtered.
         package = PackageFactory(name="multiversion-package")

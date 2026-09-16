@@ -309,6 +309,34 @@ def invalidate_packages_cache():
     cache.delete_memoized(_packages_for_arch)
 
 
+def _package_detail_query(name):
+    """Load one package with everything the detail page renders.
+
+    Builds are loaded (the page lists them), but their descriptions are
+    not: only the default (enu) description of each version's first build
+    is shown, fetched separately via _default_descriptions.
+    """
+    return (
+        db.session.execute(
+            db.select(Package)
+            .filter_by(name=name)
+            .options(
+                db.joinedload(Package.download_counts),
+                db.undefer(Package.has_active_builds),
+                db.selectinload(Package.screenshots),
+                db.selectinload(Package.versions).selectinload(Version.icons),
+                db.selectinload(Package.versions)
+                .selectinload(Version.displaynames)
+                .joinedload(DisplayName.language),
+                db.selectinload(Package.versions).selectinload(Version.builds),
+            )
+        )
+        .unique()
+        .scalars()
+        .first()
+    )
+
+
 @frontend.route("/package/<name>")
 def package(name):
     """Render a single package's detail page, showing its full version
@@ -320,29 +348,10 @@ def package(name):
     targets the selected arch.
     """
     selected_arch, clear_cookie, param_present = _arch_request_context()
-    pkg = (
-        db.session.execute(
-            db.select(Package)
-            .filter_by(name=name)
-            .options(
-                # Same selectinload rule as above.
-                db.joinedload(Package.download_counts),
-                db.selectinload(Package.versions).selectinload(Version.icons),
-                db.selectinload(Package.versions).selectinload(Version.displaynames),
-                db.selectinload(Package.versions)
-                .selectinload(Version.builds)
-                .selectinload(Build.descriptions),
-                db.selectinload(Package.versions)
-                .selectinload(Version.builds)
-                .selectinload(Build.architectures),
-            )
-        )
-        .unique()
-        .scalars()
-        .first()
-    )
+    pkg = _package_detail_query(name)
     if pkg is None or not pkg.versions:
         abort(404)
+    descriptions = _default_descriptions([v.id for v in pkg.versions])
     display_versions = None
     version_build_groups = None
     header_version = pkg.versions[-1]
@@ -375,6 +384,7 @@ def package(name):
         clear_cookie,
         selected_arch,
         package=pkg,
+        descriptions=descriptions,
         display_versions=display_versions,
         version_build_groups=version_build_groups,
         header_version=header_version,

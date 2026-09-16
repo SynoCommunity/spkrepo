@@ -70,7 +70,7 @@
         {% endif %}
       {% endif %}
 
-      <p>{{ header_version.builds[0].descriptions['enu'].description }}</p>
+      <p>{{ descriptions.get(header_version.id, '') }}</p>
       <div class="package-screenshots">
         {% for screenshot in package.screenshots %}
         <img class="package-screenshot" src="{{ url_for('nas.data', path=screenshot.path) }}" alt="Screenshot">&nbsp;
