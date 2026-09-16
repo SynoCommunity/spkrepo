@@ -209,16 +209,6 @@ def get_catalog(arch, build, major, language, beta):
     return result
 
 
-def _set_if_truthy(entry, key, value):
-    """Set entry[key] = value only if value is truthy.
-
-    Adapter over :func:`spkrepo.domain.catalog.set_if_truthy`.
-    """
-    from ..domain.catalog import set_if_truthy
-
-    set_if_truthy(entry, key, value)
-
-
 def build_package_entry(b, language, arch, build, counts_by_package):
     """Build one package's catalog dict entry from a Build, in the shape
     expected by DSM/SRM package_update clients.

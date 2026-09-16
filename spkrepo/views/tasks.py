@@ -17,7 +17,7 @@ from flask import current_app
 from .. import storage
 from ..adapters.persistence import apply_info_from_spk, apply_sidecar_to_db
 from ..adapters.spk_io import SPK
-from ..domain.versions import extract_version_metadata
+from ..domain.versions import extract_sidecar_metadata, extract_version_metadata
 from ..ext import cache, celery, db
 from ..models import Build
 from .nas import clear_catalog_cache
@@ -62,12 +62,9 @@ def resync_build_metadata(self, build_id, build_label):
                 if os.path.exists(sibling_sidecar_path):
                     with io.open(sibling_sidecar_path, "r", encoding="utf-8") as s2:
                         sc = json.load(s2)
-                    # Lightweight duck-typed fake: extract_version_metadata only
-                    # needs .info/.wizards/.license, so sidecar JSON need not be
-                    # re-packed into a tar archive.
-                    sibling_meta = extract_version_metadata(
-                        type("_", (), {"info": sc["info"]})()
-                    )
+                    # Sibling only has a sidecar: reuse the domain extractor so
+                    # its field list matches extract_version_metadata exactly.
+                    sibling_meta = extract_sidecar_metadata(sc)
                 elif os.path.exists(sibling_spk_path):
                     with io.open(sibling_spk_path, "rb") as s2:
                         sibling_meta = extract_version_metadata(SPK(s2))
@@ -159,7 +156,12 @@ def resync_build_file(self, build_id, build_label):
 
 @celery.task(bind=True, max_retries=3, default_retry_delay=10, queue="ops")
 def upload_to_storage(self, build_id, build_label):
-    """Upload a signed, active build from local disk to Object Storage."""
+    """Upload a signed local build to Object Storage and write its sidecar.
+
+    Writes a ``<path>.json`` sidecar (INFO + derived flags + hashes) and
+    flips ``storage`` to ``remote``. Does not require the build to be active:
+    inactive builds may be uploaded to free local disk.
+    """
     build = db.session.get(Build, build_id)
     if not build or not build.path:
         return {

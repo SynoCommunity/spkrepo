@@ -4,6 +4,7 @@
 Runs in a subprocess so the parent test session's already-imported Flask/
 SQLAlchemy modules cannot mask a regression.
 """
+
 import subprocess
 import sys
 

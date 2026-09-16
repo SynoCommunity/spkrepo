@@ -4,6 +4,7 @@
 Mocks only the S3 boundary; exercises real JSON parsing, domain
 aggregation, DB upsert, and object deletion as one flow.
 """
+
 import gzip
 import io
 import json

@@ -66,6 +66,7 @@ from .tasks import (
 
 
 def _bool_formatter(v, c, m, p):
+    """Flask-Admin column formatter: green check / red cross / grey unknown."""
     value = getattr(m, p)
     if value is None:
         return Markup('<i class="fa fa-question-circle text-muted"></i>')
@@ -75,6 +76,7 @@ def _bool_formatter(v, c, m, p):
 
 
 def _storage_formatter(v, c, m, p):
+    """Flask-Admin column formatter: cloud for remote, disk for local."""
     if m.storage == "remote":
         return Markup('<i class="fa fa-cloud text-info"></i>')
     if m.storage == "local":
@@ -83,6 +85,7 @@ def _storage_formatter(v, c, m, p):
 
 
 def _flash_action_results(successes, failures, skipped=None, item_label="item"):
+    """Flash a summary of a batch action: successes, optional skips, errors."""
     if successes:
         count = len(successes)
         flash(
@@ -289,6 +292,7 @@ class SignResyncMixin:
     # -- Permission guards --------------------------------------------------
 
     def is_action_allowed(self, name):
+        """Hide role-restricted actions from the dropdown for other roles."""
         checks = {
             "07_sign": self.can_sign,
             "08_unsign": self.can_unsign,
@@ -302,6 +306,7 @@ class SignResyncMixin:
         return super().is_action_allowed(name)
 
     def handle_action(self, return_view=None):
+        """Server-side guard: 403 if the posted action's role check fails."""
         action_name = request.form.get("action")
         checks = {
             "07_sign": self.can_sign,
@@ -328,6 +333,7 @@ class SignResyncMixin:
 
     @action("07_sign", "Sign", "Are you sure you want to sign selected builds?")
     def action_07_sign(self, ids):
+        """GPG-sign each selected local build (or recover an existing signature)."""
         try:
             not_local, already_signed, recovered, success, failed = ([], [], [], [], [])
             for label, build in self._iter_builds(ids):
@@ -385,6 +391,7 @@ class SignResyncMixin:
 
     @action("08_unsign", "Unsign", "Are you sure you want to unsign selected builds?")
     def action_08_unsign(self, ids):
+        """Strip the GPG signature from each selected inactive local build."""
         try:
             not_local, not_signed, active_skipped, success, failed = (
                 [],
@@ -451,6 +458,7 @@ class SignResyncMixin:
         "Upload selected builds to Object Storage?",
     )
     def action_03_upload(self, ids):
+        """Queue an upload_to_storage task per selected signed local build."""
         tasks = []
         for label, build in self._iter_builds(ids):
             if build.storage != "local":
@@ -481,6 +489,7 @@ class SignResyncMixin:
         "Download selected builds from Object Storage for local editing?",
     )
     def action_04_rehome(self, ids):
+        """Queue a rehome_from_storage task per selected remote build."""
         tasks = []
         for label, build in self._iter_builds(ids):
             if build.active:
@@ -511,6 +520,7 @@ class SignResyncMixin:
         "Reapply INFO metadata from selected builds?",
     )
     def action_05_resync_info(self, ids):
+        """Queue a metadata resync per selected build (sidecar or SPK)."""
         tasks = []
         for label, build in self._iter_builds(ids):
             result = resync_build_metadata.delay(build.id, str(build))
@@ -534,6 +544,7 @@ class SignResyncMixin:
         "Recalculate md5 and size from selected build files?",
     )
     def action_06_resync_file(self, ids):
+        """Queue an md5/size recalculation per selected build."""
         tasks = []
         for label, build in self._iter_builds(ids):
             result = resync_build_file.delay(build.id, str(build))
@@ -761,6 +772,11 @@ ALLOWED_SCREENSHOT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
 
 def screenshot_namegen(obj, file_data):
+    """Generate a collision-free ``screenshot_N.<ext>`` path for an upload.
+
+    Rejects extensions outside ``ALLOWED_SCREENSHOT_EXTENSIONS`` (raises
+    ``ValueError`` so the form surfaces a validation error).
+    """
     ext = os.path.splitext(file_data.filename)[1].lower()
     if ext not in ALLOWED_SCREENSHOT_EXTENSIONS:
         raise ValueError(f"Invalid screenshot file extension: {ext!r}")
@@ -1002,6 +1018,7 @@ class PackageView(DetailsNavigationMixin, ModelView):
         return super().details_view()
 
     def _get_arch_breakdown(self):
+        """Top-3 architectures by downloads (last 90 days) for the detail chart."""
         pkg_id = request.args.get("id", type=int)
         if not pkg_id:
             return None
@@ -1028,6 +1045,7 @@ class PackageView(DetailsNavigationMixin, ModelView):
         return [(code, total, total / grand_total * 100) for code, total in rows]
 
     def _get_firmware_breakdown(self):
+        """Top-3 firmware builds by downloads (last 90 days) for the detail chart."""
         pkg_id = request.args.get("id", type=int)
         if not pkg_id:
             return None
@@ -1608,6 +1626,7 @@ class BuildView(DetailsNavigationMixin, SignResyncMixin, ModelView):
 class IndexView(AdminIndexView):
     @expose("/")
     def index(self):
+        """Admin landing page: role-gated redirect plus download charts."""
         if not current_user.is_authenticated:
             return redirect(url_for("security.login"))
         if not any(map(current_user.has_role, ("developer", "package_admin", "admin"))):
@@ -1892,6 +1911,7 @@ class TaskStatusView(BaseView):
 
     @expose("/")
     def index(self):
+        """Render the task list with each task's Celery state and progress."""
         task_list = _get_task_ids()
         tasks = []
         pending_count = 0

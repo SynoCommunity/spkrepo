@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 import io
+import json
 import os
 from unittest.mock import MagicMock, patch
 
 from flask import current_app
 
+from spkrepo.adapters.spk_io import SPK
 from spkrepo.ext import cache, db
 from spkrepo.models import Build
 from spkrepo.tests.common import (
@@ -107,6 +109,38 @@ class ResyncBuildMetadataTaskTestCase(BaseTestCase):
 
         self.assertEqual(result["status"], "error")
         self.assertIn("build_id", result)
+
+    def test_sibling_with_sidecar_is_compared_by_sidecar_metadata(self):
+        """A sibling that only has a sidecar (no local SPK) must be compared
+        via its sidecar metadata, not crash on missing attributes."""
+        build1 = BuildFactory(architectures=[Architecture.find("88f628x")])
+        build2 = BuildFactory(
+            version=build1.version,
+            architectures=[Architecture.find("cedarview")],
+        )
+        db.session.commit()
+
+        # Sibling 2: sidecar only, no local .spk.
+        spk2_path = os.path.join(current_app.config["DATA_PATH"], build2.path)
+        os.remove(spk2_path)
+        sidecar2_path = spk2_path + ".json"
+        with create_spk(build2) as stream:
+            spk2 = SPK(stream)
+            sidecar2 = {
+                "info": spk2.info,
+                "derived": {
+                    "install_wizard": False,
+                    "upgrade_wizard": False,
+                    "startable": True,
+                    "license": spk2.license,
+                },
+            }
+        with open(sidecar2_path, "w") as f:
+            json.dump(sidecar2, f)
+
+        result = resync_build_metadata(build1.id, str(build1))
+
+        self.assertEqual(result["status"], "ok", result.get("error"))
 
     def test_value_error_returns_error_without_retry_or_cache_invalidation(self):
         """ValueError (e.g. metadata mismatch) must return error, never retry,

@@ -65,6 +65,12 @@ class SPK(object):
     firmware_type_re = re.compile(r"^([a-z]){3,}$")
 
     def __init__(self, stream):
+        """Parse an SPK from ``stream``.
+
+        Extracts raw members here (tar I/O) and delegates INFO/conf/checksum
+        validation to :mod:`spkrepo.domain.spk`. Raises
+        :class:`~spkrepo.exceptions.SPKParseError` on malformed input.
+        """
         self.info = {}
         self.icons = {}
         self.wizards = set()
@@ -253,6 +259,7 @@ class SPK(object):
         self.stream.seek(0)
 
     def calculate_md5(self):
+        """Return the MD5 hex digest of this SPK stream (rewinds first)."""
         md5_hash = hashlib.md5()
         self.stream.seek(0)
         for chunk in iter(lambda: self.stream.read(4096), b""):

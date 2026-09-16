@@ -47,6 +47,38 @@ def extract_version_metadata(spk):
     }
 
 
+def extract_sidecar_metadata(sidecar):
+    """Version-level metadata from a sidecar dict (upload-to-storage output).
+
+    Mirrors :func:`extract_version_metadata` for siblings that only have a
+    sidecar on disk: the sidecar's ``derived`` block carries the wizard and
+    license flags that an SPK would expose as attributes, and ``info`` the
+    raw INFO values. Keeps the two extraction paths in one module so their
+    field lists cannot drift.
+
+    :param sidecar: dict with ``info`` and ``derived`` keys
+    :returns: dict of version-level field values
+    """
+    from types import SimpleNamespace
+
+    info = sidecar.get("info", {})
+    derived = sidecar.get("derived", {})
+    wizards = set()
+    if derived.get("install_wizard"):
+        wizards.add("install")
+    if derived.get("upgrade_wizard"):
+        wizards.add("upgrade")
+    meta = extract_version_metadata(
+        SimpleNamespace(info=info, wizards=wizards, license=derived.get("license"))
+    )
+    # Sidecar ``info`` holds raw INFO strings ("yes"/"no"), whereas a parsed
+    # SPK exposes booleans; take the task-derived boolean so the two paths
+    # compare equal. See parse_loose_info_text / derive_startable_raw.
+    if "startable" in derived:
+        meta["startable"] = bool(derived["startable"])
+    return meta
+
+
 def assert_version_metadata_matches_db(version, spk):
     """Raise :exc:`ValueError` if the SPK's version-level metadata conflicts with
     what is already stored on an existing version record.

@@ -520,7 +520,8 @@ def create_info(build):
     if build.buildmanifest and build.buildmanifest.conflicts:
         info["install_conflict_packages"] = build.buildmanifest.conflicts
     if build.version.service_dependencies:
-        # Space-separated to match the .split() parsing in api.py and admin.py
+        # Space-separated to match the .split() parsing in
+        # adapters.repositories.resolve_services
         info["install_dep_services"] = " ".join(
             s.code for s in build.version.service_dependencies
         )

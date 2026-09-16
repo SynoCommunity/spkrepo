@@ -274,7 +274,8 @@ def clean():
 def is_countable_download(record):
     """Check whether a CDN log record represents a countable download.
 
-    Flask/CLI adapter over :func:`spkrepo.domain.downloads.is_countable_download`.
+    Thin wrapper over :func:`spkrepo.domain.downloads.is_countable_download`
+    (used by :func:`ingest_logs`).
     """
     from .domain.downloads import is_countable_download as _pure
 
@@ -437,7 +438,9 @@ def ingest_logs():
         try:
             dialect = db.engine.dialect.name
             # ``constraint=`` (by unique-constraint name) is PostgreSQL-only;
-            # SQLite targets the same constraint via its columns.
+            # SQLite targets the same constraint via its columns. Note both
+            # dialects treat NULLs as distinct, so rows with NULL device
+            # dimensions (manual downloads) don't conflict and can duplicate.
             conflict_target = {
                 "package_id",
                 "architecture_id",
