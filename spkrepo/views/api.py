@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+"""SPK upload API adapter (Flask-RESTful).
+
+Parses uploads via :mod:`spkrepo.adapters.spk_io`, validates against
+:mod:`spkrepo.domain`, and maps outcomes to HTTP status codes.
+"""
+
 import io
 import logging
 import os
@@ -12,6 +18,9 @@ from flask_restful import Api, Resource, abort
 from flask_security import current_user
 from sqlalchemy.exc import IntegrityError
 
+from ..adapters.repositories import resolve_architectures, resolve_firmware
+from ..adapters.spk_io import SPK
+from ..domain.versions import assert_version_metadata_matches_db
 from ..exceptions import SPKParseError, SPKSignError
 from ..ext import db
 from ..models import (
@@ -20,18 +29,9 @@ from ..models import (
     BuildManifest,
     DisplayName,
     Icon,
-    Language,
     Package,
     Version,
     user_datastore,
-)
-from ..utils import (
-    SPK,
-    assert_version_metadata_matches_db,
-    resolve_architectures,
-    resolve_firmware,
-    resolve_services,
-    version_re,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,8 @@ api = Blueprint("api", __name__)
 
 
 def api_auth_required(f):
+    """Require HTTP Basic auth with a ``developer``-role API key (else 401)."""
+
     @wraps(f)
     def wrapper(*args, **kwargs):
         if request.authorization and request.authorization.type == "basic":
@@ -122,30 +124,25 @@ class Packages(Resource):
         if not request.data:
             abort(400, message="No data to process")
 
-        # open the spk
         try:
             spk = SPK(io.BytesIO(request.data))
         except SPKParseError as e:
             abort(422, message=str(e))
 
-        # reject signed packages
         if spk.signature is not None:
             abort(422, message="Package contains a signature")
 
-        # Architectures
         try:
             architectures = resolve_architectures(db.session, spk.info.get("arch"))
         except ValueError as e:
             abort(422, message=str(e))
 
-        # Firmware min
         input_firmware = spk.info.get("firmware") or spk.info.get("os_min_ver")
         try:
             firmware = resolve_firmware(db.session, input_firmware)
         except ValueError as e:
             abort(422, message=str(e))
 
-        # Firmware max
         firmware_max = None
         input_firmware_max = spk.info.get("os_max_ver")
         if input_firmware_max:
@@ -153,44 +150,45 @@ class Packages(Resource):
                 firmware_max = resolve_firmware(db.session, input_firmware_max)
             except ValueError as e:
                 abort(422, message=str(e))
-            if firmware_max.build < firmware.build:
-                abort(
-                    422,
-                    message=(
-                        "Maximum firmware must be greater than or equal to "
-                        "minimum firmware"
-                    ),
-                )
+            from ..domain.upload import validate_firmware_range as _validate_fw
 
-        # Services — resolve once here; reused in version creation below
-        try:
-            services = resolve_services(spk.info.get("install_dep_services"))
-        except ValueError as e:
-            abort(422, message=str(e))
+            try:
+                _validate_fw(firmware.build, firmware_max.build)
+            except ValueError as e:
+                abort(422, message=str(e))
 
-        # Package
+        # Package (pure auth decision in domain.upload; adapter maps to HTTP)
+        from ..domain.upload import authorize_upload as _authorize
+
         create_package = False
         package = Package.find(spk.info["package"])
+        try:
+            _authorize(
+                {r.name for r in current_user.roles} if current_user else set(),
+                is_new_package=package is None,
+                is_maintainer=package is not None
+                and current_user in package.maintainers,
+            )
+        except PermissionError as e:
+            abort(403, message=str(e))
         if package is None:
-            if not current_user.has_role("package_admin"):
-                abort(403, message="Insufficient permissions to create new packages")
             create_package = True
             package = Package(name=spk.info["package"], author=current_user)
-        elif (
-            not current_user.has_role("package_admin")
-            and current_user not in package.maintainers
-        ):
-            abort(403, message="Insufficient permissions on this package")
 
-        # Version
+        # Version (shared writer; pure parsing in domain.shared_kernel)
+        from ..adapters.persistence import assign_version_common_fields
+        from ..adapters.repositories import (
+            resolve_displayname_languages as _resolve_names,
+        )
+        from ..domain.shared_kernel import parse_version as _parse_version
+
         create_version = False
-        match = version_re.match(spk.info["version"])
-        if not match:
+        try:
+            _, version_number = _parse_version(spk.info["version"])
+        except (ValueError, KeyError):
             abort(422, message="Invalid version")
 
-        version = {v.version: v for v in package.versions}.get(
-            int(match.group("version"))
-        )
+        version = {v.version: v for v in package.versions}.get(version_number)
 
         if version is not None:
             # Existing version — enforce full metadata consistency before proceeding.
@@ -203,41 +201,27 @@ class Packages(Resource):
                 abort(422, message=str(e))
         else:
             create_version = True
-            version_startable = True
-            if spk.info.get("startable") is False or spk.info.get("ctl_stop") is False:
-                version_startable = False
             version = Version(
-                package=package,
-                upstream_version=match.group("upstream_version"),
-                version=int(match.group("version")),
-                report_url=spk.info.get("report_url"),
-                distributor=spk.info.get("distributor"),
-                distributor_url=spk.info.get("distributor_url"),
-                maintainer=spk.info.get("maintainer"),
-                maintainer_url=spk.info.get("maintainer_url"),
-                install_wizard="install" in spk.wizards,
-                upgrade_wizard="upgrade" in spk.wizards,
-                startable=version_startable,
-                license=spk.license,
+                package=package, upstream_version="", version=version_number
             )
+            try:
+                assign_version_common_fields(version, spk)
+            except ValueError as e:
+                abort(422, message=str(e))
 
             with db.session.no_autoflush:
-                for key, value in spk.info.items():
-                    if key == "install_dep_services":
-                        version.service_dependencies = services
-                    elif key == "displayname":
-                        version.displaynames["enu"] = DisplayName(
-                            language=Language.find("enu"), displayname=value
-                        )
-                    elif key.startswith("displayname_"):
-                        language = Language.find(key.split("_", 1)[1])
-                        if not language:
-                            abort(422, message="Unknown INFO displayname language")
-                        version.displaynames[language.code] = DisplayName(
-                            language=language, displayname=value
-                        )
+                try:
+                    displaynames = _resolve_names(spk.info)
+                except ValueError:
+                    abort(422, message="Unknown INFO displayname language")
+                from ..domain.shared_kernel import map_displaynames as _map_names
 
-            # Icon
+                raw_names = _map_names(spk.info)
+                for code, language in displaynames.items():
+                    version.displaynames[language.code] = DisplayName(
+                        language=language, displayname=raw_names[code]
+                    )
+
             for size, icon in spk.icons.items():
                 version.icons[size] = Icon(
                     path=os.path.join(
@@ -247,31 +231,27 @@ class Packages(Resource):
                 )
 
         # Build — conflict check is a no-op for new versions but kept unconditional
-        conflicts = set()
-        for existing_build in version.builds:
-            overlapping_architectures = set(existing_build.architectures) & set(
-                architectures
-            )
-            if not overlapping_architectures:
-                continue
-            existing_min_build = existing_build.firmware_min.build
-            existing_max_build = (
-                existing_build.firmware_max.build
-                if existing_build.firmware_max
-                else existing_min_build
-            )
-            candidate_min_build = firmware.build
-            candidate_max_build = (
-                firmware_max.build if firmware_max is not None else candidate_min_build
-            )
-            if (
-                candidate_min_build > existing_max_build
-                or candidate_max_build < existing_min_build
-            ):
-                continue
-            conflicts |= overlapping_architectures
+        # Pure domain check (hex): snapshots keep DB objects out of the policy.
+        from ..domain.upload import detect_conflicts
+
+        existing_snapshot = [
+            {
+                "archs": {a.code for a in b.architectures},
+                "min": b.firmware_min.build,
+                "max": (
+                    b.firmware_max.build if b.firmware_max else b.firmware_min.build
+                ),
+            }
+            for b in version.builds
+        ]
+        conflicts = detect_conflicts(
+            existing_snapshot,
+            {a.code for a in architectures},
+            firmware.build,
+            firmware_max.build if firmware_max is not None else None,
+        )
         if conflicts:
-            conflict_codes = ", ".join(sorted(a.code for a in conflicts))
+            conflict_codes = ", ".join(sorted(conflicts))
             abort(409, message=f"Conflicting architectures: {conflict_codes}")
 
         build_filename = Build.generate_filename(
@@ -288,19 +268,21 @@ class Packages(Resource):
             changelog=spk.info.get("changelog"),
         )
 
+        from ..adapters.repositories import (
+            resolve_description_languages as _resolve_desc,
+        )
+        from ..domain.shared_kernel import map_descriptions as _descriptions
+
         with db.session.no_autoflush:
-            for key, value in spk.info.items():
-                if key == "description":
-                    build.descriptions["enu"] = BuildDescription(
-                        description=value, language=Language.find("enu")
-                    )
-                elif key.startswith("description_"):
-                    language = Language.find(key.split("_", 1)[1])
-                    if not language:
-                        abort(422, message="Unknown INFO description language")
-                    build.descriptions[language.code] = BuildDescription(
-                        language=language, description=value
-                    )
+            try:
+                desc_langs = _resolve_desc(spk.info)
+            except ValueError:
+                abort(422, message="Unknown INFO description language")
+            raw_desc = _descriptions(spk.info)
+            for code, language in desc_langs.items():
+                build.descriptions[language.code] = BuildDescription(
+                    language=language, description=raw_desc[code]
+                )
 
         build.buildmanifest = BuildManifest(
             dependencies=spk.info.get("install_dep_packages"),
@@ -311,7 +293,6 @@ class Packages(Resource):
             conf_resource=spk.conf_resource,
         )
 
-        # sign
         if current_app.config["GNUPG_PATH"] is not None:
             try:
                 spk.sign(
@@ -323,7 +304,6 @@ class Packages(Resource):
         if spk.signature is not None:
             build.signed = True
 
-        # save files
         try:
             data_path = current_app.config["DATA_PATH"]
             if create_package:

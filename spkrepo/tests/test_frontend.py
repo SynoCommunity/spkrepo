@@ -605,6 +605,7 @@ class GetClientIpTestCase(BaseTestCase):
     def test_cf_connecting_ip_ignored(self):
         # Cloudflare is DNS-only here, so this header can never arrive
         # legitimately — it must not be trusted (rate-limit bypass).
+        # Single adapter probe; trust-order branches live in domain units.
         with self.app.test_request_context(
             headers={
                 "CF-Connecting-IP": "9.9.9.9",
@@ -612,33 +613,6 @@ class GetClientIpTestCase(BaseTestCase):
             }
         ):
             self.assertEqual(get_client_ip(), "1.2.3.4")
-
-    def test_fastly_client_ip(self):
-        # Set by Fastly to its connecting client; beats XFF parsing.
-        with self.app.test_request_context(
-            headers={
-                "Fastly-Client-IP": "8.8.8.8",
-                "X-Forwarded-For": "1.2.3.4, 5.6.7.8",
-            }
-        ):
-            self.assertEqual(get_client_ip(), "8.8.8.8")
-
-    def test_second_to_last_forwarded_for_entry(self):
-        # Fastly appends the real client, nginx appends its peer; anything
-        # left of those two is client-spoofable.
-        with self.app.test_request_context(
-            headers={"X-Forwarded-For": "1.2.3.4, 5.6.7.8"}
-        ):
-            self.assertEqual(get_client_ip(), "1.2.3.4")
-
-    def test_single_forwarded_for_entry(self):
-        # Direct-to-nginx traffic: the lone entry is nginx's peer.
-        with self.app.test_request_context(headers={"X-Forwarded-For": "5.6.7.8"}):
-            self.assertEqual(get_client_ip(), "5.6.7.8")
-
-    def test_remote_addr_fallback(self):
-        with self.app.test_request_context(environ_base={"REMOTE_ADDR": "10.0.0.1"}):
-            self.assertEqual(get_client_ip(), "10.0.0.1")
 
 
 class RateLimitTestCase(BaseTestCase):

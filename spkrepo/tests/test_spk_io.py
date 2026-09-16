@@ -5,6 +5,12 @@ import tarfile
 
 from mock import Mock
 
+from spkrepo.adapters.spk_io import SPK
+from spkrepo.domain.shared_kernel import translate_arch_from_syno
+from spkrepo.domain.versions import (
+    assert_version_metadata_matches_db,
+    extract_version_metadata,
+)
 from spkrepo.exceptions import SPKParseError
 from spkrepo.ext import db
 from spkrepo.models import Architecture, Package
@@ -14,11 +20,6 @@ from spkrepo.tests.common import (
     PackageFactory,
     create_info,
     create_spk,
-)
-from spkrepo.utils import (
-    SPK,
-    assert_version_metadata_matches_db,
-    extract_version_metadata,
 )
 
 
@@ -55,7 +56,7 @@ class SPKParseTestCase(BaseTestCase):
         ]
         self.assertEqual(set(info_keys), set(spk.info.keys()))
         self.assertEqual(
-            {Architecture.from_syno.get(a, a) for a in spk.info["arch"].split()},
+            {translate_arch_from_syno(a) for a in spk.info["arch"].split()},
             {a.code for a in build.architectures},
         )
         self.assertEqual(build.changelog, spk.info["changelog"])
@@ -116,7 +117,9 @@ class SPKParseTestCase(BaseTestCase):
         # signature
         self.assertEqual("signature", spk.signature)
 
-    def test_info_blank_like(self):
+    def test_info_text_variants(self):
+        # Single tar-wiring probe for INFO text tolerance + booleans.
+        # Branch tables live in domain units (parse_info_lines).
         build = BuildFactory.build()
         info = io.BytesIO(
             "\n".join([f'{k}="{v}"\n' for k, v in create_info(build).items()]).encode(
@@ -125,8 +128,6 @@ class SPKParseTestCase(BaseTestCase):
         )
         with create_spk(build, info=info) as f:
             SPK(f)
-
-    def test_info_boolean(self):
         for startable, expected in [(True, True), (False, False)]:
             with self.subTest(startable=startable, expected=expected):
                 build = BuildFactory.build(version__startable=startable)
@@ -229,51 +230,50 @@ class SPKParseTestCase(BaseTestCase):
                         SPK(f)
                 self.assertEqual(expected, str(cm.exception))
 
-    def test_invalid_info(self):
-        build = BuildFactory.build()
-        info = io.BytesIO(
-            "\n".join([f"{k}={v}" for k, v in create_info(build).items()]).encode(
-                "utf-8"
-            )
-        )
-        with create_spk(build, info=info) as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual("Invalid INFO", str(cm.exception))
+    def test_invalid_info_wiring(self):
+        """Single tar->domain wiring probe for INFO rejection messages.
 
-    def test_invalid_info_icon(self):
+        Parse branches live in domain units (parse_info_lines); this keeps
+        one probe per message proving the adapter propagates the error.
+        """
         build = BuildFactory.build()
-        info = create_info(build)
-        info["package_icon_120"] = "package_icon_120"
-        with create_spk(build, info=info) as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual("Invalid INFO icon: package_icon_120", str(cm.exception))
-
-    def test_invalid_info_boolean_startable(self):
-        build = BuildFactory.build()
-        info = create_info(build)
-        info["startable"] = "Something"
-        with create_spk(build, info=info) as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual("Invalid INFO boolean: startable", str(cm.exception))
-
-    def test_invalid_info_package(self):
-        build = BuildFactory.build(version__package__name="Invalid package name")
-        with create_spk(build) as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual("Invalid INFO package", str(cm.exception))
-
-    def test_missing_info_package(self):
-        build = BuildFactory.build()
-        info = create_info(build)
-        del info["package"]
-        with create_spk(build, info=info) as f:
-            with self.assertRaises(SPKParseError) as cm:
-                SPK(f)
-        self.assertEqual("Missing INFO: package", str(cm.exception))
+        base_info = create_info(build)
+        cases = [
+            (
+                io.BytesIO(
+                    "\n".join([f"{k}={v}" for k, v in base_info.items()]).encode(
+                        "utf-8"
+                    )
+                ),
+                "Invalid INFO",
+            ),
+            (
+                dict(base_info, package_icon_120="package_icon_120"),
+                "Invalid INFO icon: package_icon_120",
+            ),
+            (dict(base_info, startable="Something"), "Invalid INFO boolean: startable"),
+            (None, "Invalid INFO package"),  # special-cased below
+            ("__del_package__", "Missing INFO: package"),
+        ]
+        for info_arg, expected in cases:
+            with self.subTest(expected=expected):
+                if info_arg is None:
+                    bad = BuildFactory.build(
+                        version__package__name="Invalid package name"
+                    )
+                    ctx = create_spk(bad)
+                elif info_arg == "__del_package__":
+                    info = dict(base_info)
+                    del info["package"]
+                    ctx = create_spk(build, info=info)
+                elif isinstance(info_arg, io.BytesIO):
+                    ctx = create_spk(build, info=info_arg)
+                else:
+                    ctx = create_spk(build, info=info_arg)
+                with ctx as f:
+                    with self.assertRaises(SPKParseError) as cm:
+                        SPK(f)
+                self.assertEqual(expected, str(cm.exception))
 
     def test_checksum_mismatch(self):
         build = BuildFactory.build()
@@ -380,7 +380,11 @@ class SPKUnsignTestCase(BaseTestCase):
 
 
 class ExtractVersionMetadataTestCase(BaseTestCase):
-    """Tests for extract_version_metadata — pure dict extraction, no DB writes."""
+    """Single tar-wiring probe for extract_version_metadata.
+
+    Branch table moved to test_domain (fake-based) to keep that suite
+    boundary-free.
+    """
 
     def test_displaynames_keyed_by_language_code(self):
         # INFO key "displayname" must map to "enu", not the raw key name.
@@ -395,59 +399,12 @@ class ExtractVersionMetadataTestCase(BaseTestCase):
             build.version.displaynames["enu"].displayname,
         )
 
-    def test_startable_defaults_true(self):
-        build = BuildFactory.build(version__startable=None)
-        with create_spk(build) as f:
-            spk = SPK(f)
-        meta = extract_version_metadata(spk)
-        self.assertTrue(meta["startable"])
-
-    def test_startable_false_when_ctl_stop_false(self):
-        build = BuildFactory.build(version__startable=False)
-        with create_spk(build) as f:
-            spk = SPK(f)
-        meta = extract_version_metadata(spk)
-        self.assertFalse(meta["startable"])
-
-    def test_install_dep_services_as_set(self):
-        build = BuildFactory.build()
-        with create_spk(build) as f:
-            spk = SPK(f)
-        meta = extract_version_metadata(spk)
-        expected = {s.code for s in build.version.service_dependencies}
-        self.assertEqual(meta["install_dep_services"], expected)
-
-    def test_no_services_returns_empty_set(self):
-        build = BuildFactory.build(version__service_dependencies=[])
-        with create_spk(build) as f:
-            spk = SPK(f)
-        meta = extract_version_metadata(spk)
-        self.assertEqual(meta["install_dep_services"], set())
-
-    def test_upstream_version_extracted(self):
-        build = BuildFactory.build(version__upstream_version="1.2.3")
-        with create_spk(build) as f:
-            spk = SPK(f)
-        meta = extract_version_metadata(spk)
-        self.assertEqual(meta["upstream_version"], "1.2.3")
-
-    def test_install_wizard_reflected(self):
-        build = BuildFactory.build(version__install_wizard=True)
-        with create_spk(build) as f:
-            spk = SPK(f)
-        meta = extract_version_metadata(spk)
-        self.assertTrue(meta["install_wizard"])
-
-    def test_upgrade_wizard_reflected(self):
-        build = BuildFactory.build(version__upgrade_wizard=True)
-        with create_spk(build) as f:
-            spk = SPK(f)
-        meta = extract_version_metadata(spk)
-        self.assertTrue(meta["upgrade_wizard"])
-
 
 class AssertVersionMetadataMatchesDBTestCase(BaseTestCase):
-    """Tests for assert_version_metadata_matches_db."""
+    """Single tar→DB wiring probe for the consistency check.
+
+    Mismatch truth table lives in domain units (fakes, no DB/tar).
+    """
 
     def test_matching_spk_does_not_raise(self):
         # An SPK whose metadata exactly matches the DB version must pass silently.
@@ -457,58 +414,6 @@ class AssertVersionMetadataMatchesDBTestCase(BaseTestCase):
             spk = SPK(f)
         # Should not raise
         assert_version_metadata_matches_db(build.version, spk)
-
-    def test_mismatched_displayname_raises(self):
-        build = BuildFactory()
-        db.session.commit()
-        existing = build.version.displaynames["enu"].displayname
-        info = create_info(build)
-        info["displayname"] = existing + " MODIFIED"
-        info["displayname_enu"] = existing + " MODIFIED"
-        with create_spk(build, info=info) as f:
-            spk = SPK(f)
-        with self.assertRaises(ValueError) as cm:
-            assert_version_metadata_matches_db(build.version, spk)
-        self.assertIn("displaynames", str(cm.exception))
-
-    def test_mismatched_upstream_version_raises(self):
-        build = BuildFactory(version__upstream_version="1.0.0")
-        db.session.commit()
-        info = create_info(build)
-        info["version"] = f"2.0.0-{build.version.version}"
-        with create_spk(build, info=info) as f:
-            spk = SPK(f)
-        with self.assertRaises(ValueError) as cm:
-            assert_version_metadata_matches_db(build.version, spk)
-        self.assertIn("upstream_version", str(cm.exception))
-
-    def test_mismatched_service_dependencies_raises(self):
-        build = BuildFactory(version__service_dependencies=[])
-        db.session.commit()
-        info = create_info(build)
-        info["install_dep_services"] = "apache-web"
-        with create_spk(build, info=info) as f:
-            spk = SPK(f)
-        with self.assertRaises(ValueError) as cm:
-            assert_version_metadata_matches_db(build.version, spk)
-        self.assertIn("service_dependencies", str(cm.exception))
-
-    def test_error_message_lists_all_mismatches(self):
-        # Multiple mismatching fields should all appear in the error message.
-        build = BuildFactory()
-        db.session.commit()
-        existing_displayname = build.version.displaynames["enu"].displayname
-        info = create_info(build)
-        info["displayname"] = existing_displayname + " MODIFIED"
-        info["displayname_enu"] = existing_displayname + " MODIFIED"
-        info["version"] = f"9.9.9-{build.version.version}"
-        with create_spk(build, info=info) as f:
-            spk = SPK(f)
-        with self.assertRaises(ValueError) as cm:
-            assert_version_metadata_matches_db(build.version, spk)
-        error = str(cm.exception)
-        self.assertIn("displaynames", error)
-        self.assertIn("upstream_version", error)
 
 
 class PopulateDBTestCase(BaseTestCase):

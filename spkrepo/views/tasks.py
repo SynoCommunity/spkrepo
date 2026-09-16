@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+"""Celery ``ops``-queue tasks: metadata resync and storage round-trips.
+
+Sidecar/SPK decisions delegate to :mod:`spkrepo.domain`; DB, filesystem,
+and Object Storage I/O stay here.
+"""
+
 import hashlib
 import io
 import json
@@ -9,14 +15,11 @@ from datetime import datetime, timezone
 from flask import current_app
 
 from .. import storage
+from ..adapters.persistence import apply_info_from_spk, apply_sidecar_to_db
+from ..adapters.spk_io import SPK
+from ..domain.versions import extract_version_metadata
 from ..ext import cache, celery, db
 from ..models import Build
-from ..utils import (
-    SPK,
-    apply_info_from_spk,
-    apply_sidecar_to_db,
-    extract_version_metadata,
-)
 from .nas import clear_catalog_cache
 
 
@@ -59,6 +62,9 @@ def resync_build_metadata(self, build_id, build_label):
                 if os.path.exists(sibling_sidecar_path):
                     with io.open(sibling_sidecar_path, "r", encoding="utf-8") as s2:
                         sc = json.load(s2)
+                    # Lightweight duck-typed fake: extract_version_metadata only
+                    # needs .info/.wizards/.license, so sidecar JSON need not be
+                    # re-packed into a tar archive.
                     sibling_meta = extract_version_metadata(
                         type("_", (), {"info": sc["info"]})()
                     )
@@ -168,16 +174,18 @@ def upload_to_storage(self, build_id, build_label):
     object_key = build.path
     sidecar_path = spk_path + ".json"
 
-    if not os.path.exists(spk_path):
-        return {
-            "status": "error",
-            "type": "upload",
-            "build_id": build_id,
-            "label": build_label,
-            "error": "File not found on disk",
-        }
+    from ..domain.storage_policy import should_attempt_upload as _should_upload
 
-    if not build.signed:
+    proceed, reason = _should_upload(build.path, os.path.exists(spk_path), build.signed)
+    if not proceed:
+        if reason == "missing-file":
+            return {
+                "status": "error",
+                "type": "upload",
+                "build_id": build_id,
+                "label": build_label,
+                "error": "File not found on disk",
+            }
         return {
             "status": "error",
             "type": "upload",
@@ -195,9 +203,13 @@ def upload_to_storage(self, build_id, build_label):
                 "label": build_label,
                 "error": "Already uploaded (sidecar exists)",
             }
+        # Stale sidecar from a failed earlier attempt (still local): drop it
+        # so this run regenerates metadata instead of skipping.
         os.remove(sidecar_path)
 
     try:
+        from ..domain.spk import derive_startable_raw, has_wizard, parse_loose_info_text
+
         info = {}
         install_wizard = False
         upgrade_wizard = False
@@ -209,20 +221,14 @@ def upload_to_storage(self, build_id, build_label):
                 info_stream = archive.extractfile("INFO")
                 if info_stream:
                     raw = info_stream.read().decode("utf-8").strip()
-                    for line in raw.split("\n"):
-                        if "=" not in line:
-                            continue
-                        eq = line.index("=")
-                        key = line[:eq].strip()
-                        val = line[eq + 1 :].strip().strip('"')
-                        info[key] = val
-            if "WIZARD_UIFILES/install_uifile" in names:
-                install_wizard = True
-            if "WIZARD_UIFILES/upgrade_uifile" in names:
-                upgrade_wizard = True
+                    info = parse_loose_info_text(raw)
+            install_wizard = has_wizard(names, "install")
+            upgrade_wizard = has_wizard(names, "upgrade")
             if "LICENSE" in names:
                 lic_stream = archive.extractfile("LICENSE")
                 if lic_stream:
+                    # Lenient decode: a best-effort license string must not fail
+                    # the upload (INFO stays strict and fails above instead).
                     license_text = (
                         lic_stream.read().decode("utf-8", errors="replace").strip()
                     )
@@ -241,10 +247,7 @@ def upload_to_storage(self, build_id, build_label):
             "derived": {
                 "install_wizard": install_wizard,
                 "upgrade_wizard": upgrade_wizard,
-                "startable": (
-                    info.get("startable", "yes") != "no"
-                    and info.get("ctl_stop", "yes") != "no"
-                ),
+                "startable": derive_startable_raw(info),
                 "license": license_text,
             },
             "calculated": {
@@ -257,6 +260,7 @@ def upload_to_storage(self, build_id, build_label):
             },
         }
 
+        # Atomic write: readers never see a half-written sidecar.
         tmp_sidecar = sidecar_path + ".tmp"
         with io.open(tmp_sidecar, "w", encoding="utf-8") as f:
             json.dump(sidecar, f, indent=2, ensure_ascii=False)

@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+"""Web frontend views: package browsing, auth pages, user profile."""
+
 import logging
 import secrets
 
@@ -67,18 +69,21 @@ def _resolve_arch_filter():
     Returns (arch_code or None, clear_cookie bool). An explicit ?arch=
     query param wins over the cookie; unknown codes abort with 404.
     """
+    from ..domain.shared_kernel import translate_arch_from_syno as _from_syno
+
     param = request.args.get("arch")
     if param is not None:
         if param in ("", "all"):
             return None, True
-        # Accept Synology DSM/SRM spellings (e.g. 88f6281) like nas.py does.
-        param = Architecture.from_syno.get(param, param)
+        # Accept Synology DSM/SRM spellings (e.g. 88f6281); canonical map is
+        # owned by spkrepo.domain.shared_kernel.
+        param = _from_syno(param)
         if Architecture.find(param) is None:
             abort(404)
         return param, False
     cookie = request.cookies.get(ARCH_COOKIE)
     if cookie and cookie not in ("", "all"):
-        cookie = Architecture.from_syno.get(cookie, cookie)
+        cookie = _from_syno(cookie)
         if Architecture.find(cookie) is not None:
             return cookie, False
     return None, False
@@ -213,9 +218,8 @@ def _latest_versions_query(arch_code):
             db.select(Version)
             .join(Version.package)
             .options(
-                # Version.icons/displaynames/builds are one-to-many
-                # collections; selectinload avoids the Cartesian-product
-                # row multiplication joinedload would cause here.
+                # selectinload for one-to-many collections (joinedload would
+                # multiply rows); see get_catalog in views/nas.py for why.
                 db.joinedload(Version.package).joinedload(Package.download_counts),
                 db.joinedload(Version.package).undefer(Package.has_active_builds),
                 db.selectinload(Version.icons),
@@ -255,8 +259,7 @@ def package(name):
             db.select(Package)
             .filter_by(name=name)
             .options(
-                # Same Cartesian-product concern as /packages — selectinload
-                # for one-to-many collections instead of stacking joinedloads.
+                # Same selectinload rule as above.
                 db.joinedload(Package.download_counts),
                 db.selectinload(Package.versions).selectinload(Version.icons),
                 db.selectinload(Package.versions).selectinload(Version.displaynames),

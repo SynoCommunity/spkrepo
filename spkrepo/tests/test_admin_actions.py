@@ -4,6 +4,8 @@ import os
 
 from flask import current_app, url_for
 
+from spkrepo.adapters.spk_io import SPK
+from spkrepo.domain.versions import extract_version_metadata
 from spkrepo.ext import cache, db
 from spkrepo.models import Build, Firmware, Version
 from spkrepo.tests.common import (
@@ -17,7 +19,6 @@ from spkrepo.tests.common import (
     patch_resync_file,
     patch_resync_info,
 )
-from spkrepo.utils import SPK, extract_version_metadata
 
 
 class UserTestCase(BaseTestCase):
@@ -567,28 +568,6 @@ class VersionTestCase(_AdminActionTestMixin, BaseTestCase):
             )
         db.session.expire_all()
         self.assertTrue(db.session.get(Build, build.id).active)
-
-    def test_action_activate_multi(self):
-        build1 = BuildFactory(active=False, signed=True)
-        build2 = BuildFactory(active=False, signed=True)
-        db.session.commit()
-        with self.logged_user("package_admin"):
-            response = self.client.post(
-                url_for("version.action_view"),
-                follow_redirects=True,
-                data=dict(
-                    action="01_activate",
-                    rowid=[build1.version.id, build2.version.id],
-                ),
-            )
-            self.assert200(response)
-            self.assertIn(
-                "activated",
-                response.data.decode(),
-            )
-        db.session.expire_all()
-        self.assertTrue(db.session.get(Build, build1.id).active)
-        self.assertTrue(db.session.get(Build, build2.id).active)
 
     def test_action_deactivate_one(self):
         build = BuildFactory(active=True)

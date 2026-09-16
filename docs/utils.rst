@@ -1,23 +1,38 @@
-Utilities
-=========
-.. module:: spkrepo.utils
+Persistence Adapters
+====================
+.. module:: spkrepo.adapters
 
-SPK
----
-The :class:`SPK` class handles parsing and introspection of ``.spk`` package files.
+Tar I/O, repository lookups, writers, and seed data, split out of the
+former ``spkrepo.utils`` grab-bag during the hexagonal refactor.
 
-.. autoclass:: SPK
+SPK Archives
+------------
+Tar I/O for ``.spk`` files (parsing delegates to :doc:`domain`).
+
+.. automodule:: spkrepo.adapters.spk_io
     :members:
     :undoc-members:
 
-Helpers
--------
-These functions resolve reference data and apply SPK metadata to the database.
+Repositories
+------------
+Resolve SPK INFO strings to database rows.
 
-.. autofunction:: resolve_firmware
-.. autofunction:: resolve_architectures
-.. autofunction:: resolve_services
-.. autofunction:: extract_version_metadata
-.. autofunction:: apply_info_from_spk
-.. autofunction:: apply_sidecar_to_db
-.. autofunction:: populate_db
+.. automodule:: spkrepo.adapters.repositories
+    :members:
+    :undoc-members:
+
+Writers
+-------
+Apply SPK/sidecar metadata to ORM rows and files (upload/resync paths).
+
+.. automodule:: spkrepo.adapters.persistence
+    :members:
+    :undoc-members:
+
+Seed
+----
+Reference-data seed (architectures, firmware, languages, roles, services).
+
+.. automodule:: spkrepo.adapters.seed
+    :members:
+    :undoc-members:

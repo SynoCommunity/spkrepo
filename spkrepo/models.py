@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+"""SQLAlchemy ORM models with filesystem lifecycle hooks.
+
+Pure derivations (filenames, grouping, version parsing) delegate to
+:mod:`spkrepo.domain`; persistence and ``DATA_PATH`` file handling stay here.
+"""
+
 import hashlib
 import io
 import os
@@ -41,22 +47,20 @@ class _days_ago(FunctionElement):
 
 @compiles(_days_ago, "sqlite")
 def _compile_days_ago_sqlite(element, compiler, **kw):
+    """Render the N-days-ago date for SQLite."""
     return f"date('now', '-{element.days} days')"
 
 
 @compiles(_days_ago, "postgresql")
 def _compile_days_ago_postgresql(element, compiler, **kw):
+    """Render the N-days-ago date for PostgreSQL."""
     return f"CURRENT_DATE - INTERVAL '{element.days} days'"
 
 
 @compiles(_days_ago)
 def _compile_days_ago_default(element, compiler, **kw):
+    """Fallback renderer (SQLite syntax) for other dialects."""
     return f"date('now', '-{element.days} days')"
-
-
-# Architecture code mappings — module-level constants, not instance data
-_ARCH_FROM_SYNO = {"88f6281": "88f628x", "88f6282": "88f628x"}
-_ARCH_TO_SYNO = {"88f628x": "88f6281"}
 
 
 def _utcnow():
@@ -145,17 +149,15 @@ class Architecture(db.Model):
         "Build", secondary="build_architecture", back_populates="architectures"
     )
 
-    # Architecture code translation maps (references module-level constants)
-    from_syno = _ARCH_FROM_SYNO
-    to_syno = _ARCH_TO_SYNO
-
     @classmethod
     def find(cls, code, syno=False):
         """Look up an architecture by its code, or return None if not
         found. If syno=True, code is first translated from its Synology
         DSM/SRM spelling (e.g. "88f6281") to its canonical form."""
         if syno:
-            code = _ARCH_FROM_SYNO.get(code, code)
+            from .domain.shared_kernel import translate_arch_from_syno
+
+            code = translate_arch_from_syno(code)
         return (
             db.session.execute(select(cls).filter(cls.code == code)).scalars().first()
         )
@@ -569,11 +571,19 @@ class Build(db.Model):
         Takes package/version/firmware/architectures explicitly, rather
         than reading them off an instance, because callers need the
         filename to construct Build.path *before* the Build itself
-        exists (see api.py's upload handler). Pass the intended firmware
+        exists (see views/api.py's upload handler). Pass the intended firmware
         (typically firmware_min).
+
+        Adapter over :func:`spkrepo.domain.shared_kernel.build_filename`.
         """
-        arch_codes = "-".join(a.code for a in architectures)
-        return f"{package.name}.v{version.version}.f{firmware.build}[{arch_codes}].spk"
+        from .domain.shared_kernel import build_filename
+
+        return build_filename(
+            package.name,
+            version.version,
+            firmware.build,
+            [a.code for a in architectures],
+        )
 
     def save(self, stream):
         """Write the given binary stream to this build's file on disk at
@@ -629,6 +639,9 @@ class Build(db.Model):
         return f"<{self.__class__.__name__} {self.path}>"
 
 
+# Deferred per-row aggregates. The NAS catalog avoids these (bulk read from
+# the package_download_counts materialized view instead); they exist for the
+# admin/frontend detail pages where one extra correlated query is acceptable.
 Architecture.download_count = db.column_property(
     db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
     .where(DownloadStat.architecture_id == Architecture.id)
@@ -743,31 +756,12 @@ def group_builds_per_dsm(builds):
     group's builds also ordered by full firmware version, newest-first,
     so e.g. 7.2.x builds don't interleave with 7.1.x builds.
 
-    Shared by Version.builds_per_dsm and callers that need the same
-    grouping over a filtered subset of builds.
+    Adapter over :func:`spkrepo.domain.catalog.group_builds_per_dsm`
+    (single owner); kept here for backward compatibility.
     """
+    from .domain.catalog import group_builds_per_dsm as _pure
 
-    def _firmware_sort_key(build):
-        return tuple(
-            int(part) if part.isdigit() else part
-            for part in build.firmware_min.version.split(".")
-        )
-
-    groups = {}
-    for build in builds:
-        major = build.firmware_min.version.split(".")[0]
-        groups.setdefault(major, []).append(build)
-
-    for grouped in groups.values():
-        grouped.sort(key=_firmware_sort_key, reverse=True)
-
-    return dict(
-        sorted(
-            groups.items(),
-            key=lambda item: int(item[0]) if item[0].isdigit() else item[0],
-            reverse=True,
-        )
-    )
+    return _pure(builds)
 
 
 class BuildManifest(db.Model):
@@ -854,6 +848,7 @@ class Version(db.Model):
 
     @beta.expression
     def beta(cls):
+        """SQL equivalent of :attr:`beta` (NULL and empty both mean stable)."""
         return db.and_(cls.report_url.isnot(None), cls.report_url != "")
 
     @hybrid_property
@@ -863,6 +858,7 @@ class Version(db.Model):
 
     @all_builds_active.expression
     def all_builds_active(cls):
+        """SQL equivalent of :attr:`all_builds_active`."""
         return ~db.exists().where(
             db.and_(Build.version_id == cls.id, Build.active.is_(False))
         )
@@ -875,6 +871,7 @@ class Version(db.Model):
 
     @all_builds_uploaded.expression
     def all_builds_uploaded(cls):
+        """SQL equivalent of :attr:`all_builds_uploaded`."""
         return ~db.exists().where(
             db.and_(Build.version_id == cls.id, Build.storage != "remote")
         )
@@ -913,9 +910,8 @@ class Version(db.Model):
 
     @property
     def builds_per_dsm(self):
-        """Group builds by DSM/SRM major version, newest-first, with each
-        group's builds also ordered by full firmware version, newest-first,
-        so e.g. 7.2.x builds don't interleave with 7.1.x builds.
+        """Group builds by DSM/SRM major version (see
+        :func:`spkrepo.domain.catalog.group_builds_per_dsm`, single owner).
         """
         return group_builds_per_dsm(self.builds)
 
@@ -929,6 +925,7 @@ class Version(db.Model):
 
     @total_size.expression
     def total_size(cls):
+        """SQL equivalent of :attr:`total_size` (NULL sums to NULL)."""
         return (
             db.select(db.func.sum(Build.size))
             .where(Build.version_id == cls.id)

@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+"""S3 Object Storage and CDN purge adapter (implements domain ports)."""
+
 import logging
 import os
 
@@ -97,13 +99,19 @@ def delete(object_key):
 
 
 def purge_cdn(url_path):
-    """Issue a CDN purge for the given URL path. Logs and skips if not configured."""
+    """Issue a CDN purge for the given URL path. Logs and skips if not configured.
+
+    URL shaping via :func:`spkrepo.domain.storage_policy.cdn_purge_url`;
+    transport stays here.
+    """
+    from .domain.storage_policy import cdn_purge_url
+
     token = current_app.config.get("CDN_PURGE_TOKEN")
     host = current_app.config.get("PACKAGES_CDN_HOST")
     if not token or not host:
         logger.info("CDN purge skipped (not configured): %s", url_path)
         return
-    url = f"https://{host}{url_path}"
+    url = cdn_purge_url(host, url_path)
     try:
         requests.request("PURGE", url, headers={"Fastly-Key": token}, timeout=10)
         logger.info("CDN purge issued: %s", url)

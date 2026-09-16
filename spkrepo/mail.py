@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+"""Transactional mail with bot-template suppression."""
+
 import logging
 
 from flask_security import MailUtil

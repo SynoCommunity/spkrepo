@@ -26,8 +26,11 @@ and comes with an API, advanced permission management and an admin interface.
    :caption: Reference
 
    models
+   domain
+   application
    utils
    operations
+   infrastructure
    admin
    cli
    migrations

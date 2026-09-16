@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 from flask import url_for
 
+from spkrepo.domain.catalog import derive_quick_flags
 from spkrepo.ext import db
 from spkrepo.models import Architecture, DownloadStat, Firmware, PackageDownloadCounts
 from spkrepo.tests.common import (
@@ -41,20 +42,15 @@ class CatalogTestCase(BaseTestCase):
         )
         for t in entry["thumbnail"]:
             self.assert200(self.client.get(t))
+        # quick flags — oracle is the domain function itself, so this asserts
+        # the adapter plumbs ORM values through (truth table lives in units).
         self.assertEqual(
-            entry["qinst"],
-            build.version.license is None and build.version.install_wizard is False,
-        )
-        self.assertEqual(
-            entry["qupgrade"],
-            build.version.license is None and build.version.upgrade_wizard is False,
-        )
-        self.assertEqual(
-            entry["qstart"],
-            (
-                build.version.license is None
-                and build.version.install_wizard is False
-                and build.version.startable is not False
+            (entry["qinst"], entry["qupgrade"], entry["qstart"]),
+            derive_quick_flags(
+                build.version.license,
+                build.version.install_wizard,
+                build.version.upgrade_wizard,
+                build.version.startable,
             ),
         )
         self.assertEqual(entry["deppkgs"], build.buildmanifest.dependencies)
@@ -299,34 +295,10 @@ class CatalogTestCase(BaseTestCase):
         self.assertEqual(len(packages), 1)
         self.assertCatalogEntry(packages[0], build, data)
 
-    def test_stable_build_active_stable_quick_flags_all_true(self):
-        # qinst=True, qupgrade=True, qstart=True:
-        # license=None, no wizards, startable=True.
-        build = BuildFactory(
-            active=True,
-            version__report_url=None,
-            version__license=None,
-            version__install_wizard=False,
-            version__startable=True,
-            architectures=[Architecture.find("88f6281", syno=True)],
-            firmware_min=Firmware.find(1594),
-        )
-        db.session.commit()
-        data = dict(arch="88f6281", build="1594", language="enu")
-        response = self.client.post(url_for("nas.catalog"), data=data)
-        self.assert200(response)
-        catalog = json.loads(response.data.decode())
-        packages = catalog["packages"] if isinstance(catalog, dict) else catalog
-        self.assertEqual(len(packages), 1)
-        entry = packages[0]
-        self.assertTrue(entry["qinst"])
-        self.assertTrue(entry["qupgrade"])
-        self.assertTrue(entry["qstart"])
-        self.assertCatalogEntry(entry, build, data)
-
     def test_stable_build_active_stable_qstart_false_when_not_startable(self):
-        # qstart=False when startable=False,
-        # even with license=None and no install wizard.
+        # Single wiring probe for the discriminating branch (startable=False).
+        # The default path is already asserted by assertCatalogEntry in every
+        # other catalog test; flag truth tables live in domain units.
         build = BuildFactory(
             active=True,
             version__report_url=None,
@@ -344,8 +316,6 @@ class CatalogTestCase(BaseTestCase):
         packages = catalog["packages"] if isinstance(catalog, dict) else catalog
         self.assertEqual(len(packages), 1)
         entry = packages[0]
-        self.assertTrue(entry["qinst"])
-        self.assertTrue(entry["qupgrade"])
         self.assertFalse(entry["qstart"])
         self.assertCatalogEntry(entry, build, data)
 

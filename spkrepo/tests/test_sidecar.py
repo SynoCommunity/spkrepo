@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
+from spkrepo.adapters.persistence import apply_sidecar_to_db
 from spkrepo.ext import db
 from spkrepo.models import Build
 from spkrepo.tests.common import BaseTestCase, BuildFactory
-from spkrepo.utils import apply_sidecar_to_db
 
 
 class ApplySidecarToDBTestCase(BaseTestCase):
@@ -78,6 +78,18 @@ class ApplySidecarToDBTestCase(BaseTestCase):
         refreshed = db.session.get(Build, build.id)
         assert refreshed.version.distributor == "Test Distributor"
         assert refreshed.version.distributor_url == "https://dist.example.com"
+
+    def test_malformed_version_falls_back_to_rsplit(self):
+        # Lenient sidecar path (parse_upstream_lenient): malformed versions
+        # fall back instead of raising, unlike the SPK paths.
+        build = BuildFactory()
+        db.session.commit()
+        sidecar = self._make_sidecar()
+        sidecar["info"]["version"] = "not-a-version!!"
+        apply_sidecar_to_db(db.session, build, sidecar)
+        db.session.expire_all()
+        refreshed = db.session.get(Build, build.id)
+        assert refreshed.version.upstream_version == "not-a-version!!".rsplit("-", 1)[0]
 
     def test_flush_within_session(self):
         build = BuildFactory(changelog=None)

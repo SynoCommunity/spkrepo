@@ -1,9 +1,8 @@
+"""Flask ``spkrepo`` administrative commands and CDN log ingestion."""
+
 import logging
 import os
-import re
 import shutil
-import urllib.parse
-from datetime import date, datetime
 
 import click
 from flask import current_app
@@ -14,6 +13,7 @@ from .models import Build, Package, Role, User
 
 
 def _create_user(username, email, password):
+    """Create a user row via test factories (shared with test seeding)."""
     from spkrepo.tests.common import UserFactory
 
     with db.session.no_autoflush:
@@ -272,18 +272,13 @@ def clean():
 
 
 def is_countable_download(record):
-    """Check whether a CDN log record represents a countable download."""
-    url = record.get("url", "")
-    path = url.split("?")[0]
-    if not path.endswith(".spk"):
-        return False
-    status = record.get("response_status")
-    if status == 200:
-        return True
-    if status == 206:
-        range_header = record.get("range", "")
-        return range_header == "" or range_header.startswith("bytes=0-")
-    return False
+    """Check whether a CDN log record represents a countable download.
+
+    Flask/CLI adapter over :func:`spkrepo.domain.downloads.is_countable_download`.
+    """
+    from .domain.downloads import is_countable_download as _pure
+
+    return _pure(record)
 
 
 def parse_download(record):
@@ -291,53 +286,31 @@ def parse_download(record):
 
     Returns (url_path, arch_code, firmware_build, record_date,
              target_firmware_build, target_noarch).
+
+    Adapter over :func:`spkrepo.domain.downloads.parse_download`; the
+    domain's ``today`` test-injection parameter is intentionally not
+    exposed here (production always falls back to ``date.today()``).
     """
-    url = record.get("url", "")
-    path = urllib.parse.unquote(url.split("?")[0])
-    arch_code = record.get("arch") or None
-    firmware_build = record.get("build") or None
-    if firmware_build is not None:
-        try:
-            firmware_build = int(firmware_build)
-        except ValueError:
-            firmware_build = None
-    try:
-        record_date = datetime.fromisoformat(record["timestamp"]).date()
-    except (KeyError, ValueError):
-        record_date = date.today()
+    from .domain.downloads import parse_download as _pure
 
-    # Parse target info from the SPK filename
-    target_firmware_build = None
-    target_noarch = False
-    filename = path.rsplit("/", 1)[-1] if "/" in path else path
-    fm = re.search(r"\.f(\d+)\[([^\]]+)\]", filename)
-    if fm:
-        archs = fm.group(2).split("-")
-        target_noarch = "noarch" in archs
-        if not target_noarch:
-            target_firmware_build = int(fm.group(1))
-
-    return (
-        path.lstrip("/"),
-        arch_code,
-        firmware_build,
-        record_date,
-        target_firmware_build,
-        target_noarch,
-    )
+    return _pure(record)
 
 
 @spkrepo.command("ingest_logs")
 @with_appcontext
 def ingest_logs():
-    """Ingest download stats from Object Storage log files."""
+    """Ingest download stats from Object Storage log files.
+
+    S3/DB adapter: pure counting/row-shaping lives in
+    :mod:`spkrepo.domain.downloads`.
+    """
     import gzip
     import json
-    from collections import defaultdict
 
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
 
+    from .domain.downloads import aggregate_parsed, build_upsert_rows, classify_source
     from .models import Architecture, Build, DownloadStat
 
     logger = logging.getLogger(__name__)
@@ -369,10 +342,8 @@ def ingest_logs():
     # url_path -> (build_id, pkg_id) or None
     build_cache = {}
     arch_cache = {}  # arch_code -> architecture_id or None
-    counts = defaultdict(int)
+    parsed_rows: list[tuple] = []  # (agg_key, target_noarch, source) for domain
     build_ids = {}  # agg_key -> build_id or None
-    target_noarchs = {}  # agg_key -> bool
-    download_sources = {}  # agg_key -> str
     processed_keys = []
 
     manual_downloads = 0
@@ -396,9 +367,6 @@ def ingest_logs():
                     continue
                 if not is_countable_download(record):
                     continue
-                parsed = parse_download(record)
-                if parsed is None:
-                    continue
                 (
                     url_path,
                     arch_code,
@@ -406,7 +374,7 @@ def ingest_logs():
                     record_date,
                     target_firmware_build,
                     target_noarch,
-                ) = parsed
+                ) = parse_download(record)
 
                 if url_path not in build_cache:
                     build = (
@@ -435,13 +403,14 @@ def ingest_logs():
                 else:
                     architecture_id = None
 
-                if arch_code is None or firmware_build is None:
+                download_source = classify_source(arch_code, firmware_build)
+                if download_source == "manual":
+                    # Manual (out-of-catalog) downloads carry no trustworthy
+                    # device context: null the dimensions so they aggregate
+                    # separately instead of polluting catalog stats.
                     arch_code = None
                     firmware_build = None
                     manual_downloads += 1
-                    download_source = "manual"
-                else:
-                    download_source = "catalog"
 
                 agg_key = (
                     package_id,
@@ -450,9 +419,7 @@ def ingest_logs():
                     target_firmware_build,
                     record_date,
                 )
-                counts[agg_key] += 1
-                target_noarchs[agg_key] = target_noarch
-                download_sources[agg_key] = download_source
+                parsed_rows.append((agg_key, target_noarch, download_source))
 
                 if agg_key not in build_ids:
                     build_ids[agg_key] = build_id
@@ -463,28 +430,10 @@ def ingest_logs():
             logger.error("Failed to read %s: %s", key, e)
             continue
 
+    counts, target_noarchs, download_sources = aggregate_parsed(parsed_rows)
+
     if counts:
-        rows = [
-            {
-                "package_id": package_id,
-                "build_id": build_ids.get(agg_key),
-                "architecture_id": architecture_id,
-                "firmware_build": firmware_build,
-                "target_firmware_build": target_firmware_build,
-                "target_noarch": target_noarchs.get(agg_key, False),
-                "download_source": download_sources.get(agg_key, "catalog"),
-                "date": record_date,
-                "count": count,
-            }
-            for agg_key, count in counts.items()
-            for (
-                package_id,
-                architecture_id,
-                firmware_build,
-                target_firmware_build,
-                record_date,
-            ) in [agg_key]
-        ]
+        rows = build_upsert_rows(counts, build_ids, target_noarchs, download_sources)
         try:
             dialect = db.engine.dialect.name
             if dialect == "postgresql":
