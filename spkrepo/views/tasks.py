@@ -4,6 +4,7 @@
 Sidecar/SPK decisions delegate to :mod:`spkrepo.domain`; DB, filesystem,
 and Object Storage I/O stay here.
 """
+
 import hashlib
 import io
 import json
@@ -175,9 +176,7 @@ def upload_to_storage(self, build_id, build_label):
 
     from ..domain.storage_policy import should_attempt_upload as _should_upload
 
-    proceed, reason = _should_upload(
-        build.path, os.path.exists(spk_path), build.signed
-    )
+    proceed, reason = _should_upload(build.path, os.path.exists(spk_path), build.signed)
     if not proceed:
         if reason == "missing-file":
             return {

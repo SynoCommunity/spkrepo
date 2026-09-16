@@ -5,6 +5,7 @@ Operates on duck-typed objects (``spk.info/wizards/license``,
 ``version.<fields>/service_dependencies/displaynames``), never on the
 database. Adapters pass ORM objects or fakes.
 """
+
 from .shared_kernel import derive_startable, map_displaynames, parse_version
 
 

@@ -4,6 +4,7 @@
 Pure parsing delegates to :mod:`spkrepo.domain`; queries and session
 merges stay here.
 """
+
 from ..domain.shared_kernel import parse_firmware
 from ..models import Architecture, Firmware, Language, Service
 

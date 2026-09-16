@@ -4,6 +4,7 @@
 SQL queries stay here; response shaping delegates to
 :mod:`spkrepo.domain.catalog`.
 """
+
 import gnupg
 from flask import (
     Blueprint,
@@ -249,9 +250,7 @@ def build_package_entry(b, language, arch, build, counts_by_package):
     )
     retina_icon = b.version.icons.get("256")
     retina_url = (
-        url_for(".data", path=retina_icon.path, _external=True)
-        if retina_icon
-        else None
+        url_for(".data", path=retina_icon.path, _external=True) if retina_icon else None
     )
     return build_entry_data(
         package_name=b.version.package.name,

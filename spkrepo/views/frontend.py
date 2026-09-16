@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Web frontend views: package browsing, auth pages, user profile."""
+
 import logging
 import secrets
 

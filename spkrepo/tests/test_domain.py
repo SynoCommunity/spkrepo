@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Pure unit tests for spkrepo.domain — no app, DB, FS, or network."""
+
 from datetime import date
 
 import pytest

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Proxy-aware client-IP resolution adapter (used for rate limiting)."""
+
 from flask import request
 
 from .domain.access import resolve_client_ip

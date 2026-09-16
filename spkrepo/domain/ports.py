@@ -5,6 +5,7 @@ Domain and application layers depend only on these Protocols, never on
 concrete clients (boto3, Flask-Cache, CDN HTTP). Adapters inject
 implementations at the edges (storage.py, tasks.py, admin.py).
 """
+
 from typing import Protocol
 
 

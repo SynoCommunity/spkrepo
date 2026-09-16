@@ -4,6 +4,7 @@
 The tar adapter (adapters.spk_io.SPK) extracts raw bytes and delegates here, so all
 branch logic is unit-testable without fixture archives.
 """
+
 import base64
 import binascii
 import hashlib

@@ -4,6 +4,7 @@
 Pure derivations (filenames, grouping, version parsing) delegate to
 :mod:`spkrepo.domain`; persistence and ``DATA_PATH`` file handling stay here.
 """
+
 import hashlib
 import io
 import os
@@ -19,10 +20,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.collections import attribute_mapped_collection
 from sqlalchemy.sql.expression import FunctionElement
 
+# _ARCH_* aliases stay for backward compatibility (tests, views); single
+# owner is domain.shared_kernel.
 from .domain.shared_kernel import ARCH_FROM_SYNO as _ARCH_FROM_SYNO
 from .domain.shared_kernel import ARCH_TO_SYNO as _ARCH_TO_SYNO
-# Aliases stay for backward compatibility (tests, views); single owner is
-# domain.shared_kernel.
 from .ext import db
 
 user_role = db.Table(

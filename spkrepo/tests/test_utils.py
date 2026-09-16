@@ -240,16 +240,17 @@ class SPKParseTestCase(BaseTestCase):
         cases = [
             (
                 io.BytesIO(
-                    "\n".join(
-                        [f"{k}={v}" for k, v in base_info.items()]
-                    ).encode("utf-8")
+                    "\n".join([f"{k}={v}" for k, v in base_info.items()]).encode(
+                        "utf-8"
+                    )
                 ),
                 "Invalid INFO",
             ),
-            (dict(base_info, package_icon_120="package_icon_120"),
-                "Invalid INFO icon: package_icon_120"),
-            (dict(base_info, startable="Something"),
-                "Invalid INFO boolean: startable"),
+            (
+                dict(base_info, package_icon_120="package_icon_120"),
+                "Invalid INFO icon: package_icon_120",
+            ),
+            (dict(base_info, startable="Something"), "Invalid INFO boolean: startable"),
             (None, "Invalid INFO package"),  # special-cased below
             ("__del_package__", "Missing INFO: package"),
         ]

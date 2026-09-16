@@ -4,6 +4,7 @@
 Pure value-object logic shared by upload, catalog, resync and downloads.
 No Flask/DB/FS imports.
 """
+
 import re
 
 #: Synology-reported -> canonical arch code.

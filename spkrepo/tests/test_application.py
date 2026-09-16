@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Cheap use-case units for spkrepo.application — no app, DB, or network."""
+
 from spkrepo.application.activation import plan_activation
 
 

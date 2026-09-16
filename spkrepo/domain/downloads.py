@@ -4,6 +4,7 @@
 No S3/DB/date-today side effects except an explicit fallback parameter so
 units can inject a fixed date.
 """
+
 import urllib.parse
 from collections import defaultdict
 from datetime import date, datetime

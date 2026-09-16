@@ -5,6 +5,7 @@ Shared version-field logic lives in
 :func:`spkrepo.adapters.persistence.assign_version_common_fields`, used by
 both the upload and resync paths.
 """
+
 import os
 
 from flask import current_app

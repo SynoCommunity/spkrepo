@@ -4,6 +4,7 @@
 Archive I/O lives here; INFO/conf/checksum parsing delegates to
 :mod:`spkrepo.domain.spk`.
 """
+
 import hashlib
 import io
 import json

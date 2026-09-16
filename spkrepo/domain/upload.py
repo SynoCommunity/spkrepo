@@ -3,6 +3,7 @@
 
 Adapters resolve ORM objects to these lightweight snapshots before calling.
 """
+
 from .shared_kernel import validate_firmware_range  # noqa: F401 (re-export)
 
 

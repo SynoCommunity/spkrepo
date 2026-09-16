@@ -4,6 +4,7 @@
 Branch tables live in test_domain.py (pure domain fns); these two prove
 the cli.py wrappers delegate without re-pinning the matrix.
 """
+
 from spkrepo.cli import is_countable_download, parse_download
 
 

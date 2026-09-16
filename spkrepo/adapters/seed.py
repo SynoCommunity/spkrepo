@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Reference-data seed: architectures, firmware, languages, roles, services."""
+
 from ..ext import db
 from ..models import Architecture, Firmware, Language, Role, Service
 
