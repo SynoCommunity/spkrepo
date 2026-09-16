@@ -2,9 +2,9 @@
 {% block title %}Packages - {{ super() }}{% endblock %}
 {% block content %}
 
-{% macro downloads_badge(counts) %}
-  {% if counts %}
-    {% set n = counts.recent_download_count %}
+{% macro downloads_badge(recent_count) %}
+  {% if recent_count %}
+    {% set n = recent_count %}
     {% if n >= 100000 %}
       <span class="badge badge-dark" title="Based on downloads in last 90 days">100k+ downloads</span>
     {% elif n >= 50000 %}
@@ -23,49 +23,38 @@
   {% endif %}
 {% endmacro %}
 
-{% macro package_card(version, archived=false) %}
+{# `row` is a plain dict built in _latest_versions_query (name, displayname,
+   version_string, icon_path, description, recent_download_count, archived);
+   active/archived are split in the view. #}
+{% macro package_card(row, archived=false) %}
 <div class="col-md-4">
   <div class="d-flex{% if archived %}" style="opacity: 0.6;{% endif %}">
     <div class="flex-shrink-0 mr-3" style="width: 72px;">
       {% if selected_arch|default(None) %}
-      <a href="{{ url_for('frontend.package', name=version.package.name, arch=selected_arch) }}">
+      <a href="{{ url_for('frontend.package', name=row.name, arch=selected_arch) }}">
       {% else %}
-      <a href="{{ url_for('frontend.package', name=version.package.name) }}">
+      <a href="{{ url_for('frontend.package', name=row.name) }}">
       {% endif %}
-        <img src="{{ url_for('nas.data', path=version.icons['72'].path) }}" alt="Icon"{% if archived %} style="filter: grayscale(60%);"{% endif %}>
+        <img src="{{ url_for('nas.data', path=row.icon_path) }}" alt="Icon"{% if archived %} style="filter: grayscale(60%);"{% endif %}>
       </a>
     </div>
     <div class="flex-grow-1">
-      <h2 class="h5">{{ version.displaynames['enu'].displayname }}
-        <small class="text-muted">v{{ version.version_string }}</small>
+      <h2 class="h5">{{ row.displayname }}
+        <small class="text-muted">v{{ row.version_string }}</small>
         {% if archived %}
           <span class="badge badge-secondary ml-1">Archived</span>
         {% endif %}
       </h2>
       {% if not archived %}
-        {{ downloads_badge(version.package.download_counts) }}
+        {{ downloads_badge(row.recent_download_count) }}
       {% endif %}
       <div class="ellipsis package-description">
-        <p>{{ version.builds[0].descriptions['enu'].description }}</p>
+        <p>{{ row.description }}</p>
       </div>
     </div>
   </div>
 </div>
 {% endmacro %}
-
-{# Split versions into active and archived.
-   A package is considered archived only if no build across any of its
-   versions is active. All versions' builds are pre-loaded in frontend.py
-   via the Package.versions -> Version.builds joinedload chain. #}
-{% set active_versions = [] %}
-{% set archived_versions = [] %}
-{% for version in versions %}
-  {% if version.package.has_active_builds %}
-    {% set _ = active_versions.append(version) %}
-  {% else %}
-    {% set _ = archived_versions.append(version) %}
-  {% endif %}
-{% endfor %}
 
 <h1 class="sr-only">Packages</h1>
 <div class="form-inline mb-3">
@@ -97,8 +86,8 @@
   {# ── Active packages ── #}
   {% for version_row in active_versions | batch(3) %}
   <div class="row package-row">
-    {% for version in version_row %}
-      {{ package_card(version) }}
+    {% for row in version_row %}
+      {{ package_card(row) }}
     {% endfor %}
   </div>
   {% endfor %}
@@ -118,8 +107,8 @@
   </div>
   {% for version_row in archived_versions | batch(3) %}
   <div class="row package-row archived-package-row">
-    {% for version in version_row %}
-      {{ package_card(version, archived=true) }}
+    {% for row in version_row %}
+      {{ package_card(row, archived=true) }}
     {% endfor %}
   </div>
   {% endfor %}

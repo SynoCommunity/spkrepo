@@ -52,6 +52,7 @@ from ..models import (
     User,
     Version,
 )
+from .frontend import invalidate_packages_cache
 from .nas import clear_catalog_cache
 from .tasks import (
     rehome_from_storage,
@@ -191,7 +192,7 @@ def _run_activation_action(builds):
     for entry in plan["to_activate"]:
         entry["ref"].active = True
     db.session.commit()
-    cache.delete("packages_versions")
+    invalidate_packages_cache()
     clear_catalog_cache()
 
     upload_tasks = []
@@ -591,11 +592,11 @@ class UserView(ModelView):
     form_overrides = {"password": PasswordField}
 
     def after_model_change(self, form, model, is_created):
-        cache.delete("packages_versions")
+        invalidate_packages_cache()
         clear_catalog_cache()
 
     def after_model_delete(self, model):
-        cache.delete("packages_versions")
+        invalidate_packages_cache()
         clear_catalog_cache()
 
     @action(
@@ -1000,11 +1001,11 @@ class PackageView(DetailsNavigationMixin, ModelView):
             shutil.rmtree(package_path)
 
     def after_model_change(self, form, model, is_created):
-        cache.delete("packages_versions")
+        invalidate_packages_cache()
         clear_catalog_cache()
 
     def after_model_delete(self, model):
-        cache.delete("packages_versions")
+        invalidate_packages_cache()
         clear_catalog_cache()
 
     can_view_details = True
@@ -1405,7 +1406,7 @@ class VersionView(DetailsNavigationMixin, SignResyncMixin, ModelView):
                 for build in version.builds:
                     build.active = False
             db.session.commit()
-            cache.delete("packages_versions")
+            invalidate_packages_cache()
             clear_catalog_cache()
             flash(
                 "Builds on version were successfully deactivated."
@@ -1575,11 +1576,11 @@ class BuildView(DetailsNavigationMixin, SignResyncMixin, ModelView):
             os.remove(build_path)
 
     def after_model_change(self, form, model, is_created):
-        cache.delete("packages_versions")
+        invalidate_packages_cache()
         clear_catalog_cache()
 
     def after_model_delete(self, model):
-        cache.delete("packages_versions")
+        invalidate_packages_cache()
         clear_catalog_cache()
 
     @action(
@@ -1605,7 +1606,7 @@ class BuildView(DetailsNavigationMixin, SignResyncMixin, ModelView):
             for build in builds:
                 build.active = False
             db.session.commit()
-            cache.delete("packages_versions")
+            invalidate_packages_cache()
             clear_catalog_cache()
             flash(
                 "Build was successfully deactivated."

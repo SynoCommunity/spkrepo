@@ -28,6 +28,7 @@ from ..models import (
     Build,
     BuildDescription,
     DisplayName,
+    Language,
     Package,
     Version,
     group_builds_per_dsm,
@@ -43,6 +44,8 @@ logger = logging.getLogger(__name__)
 ARCH_COOKIE = "spk_arch"
 #: How long the architecture list is cached (nas catalog uses 600s too).
 ARCH_LIST_TIMEOUT = 600
+#: How long the packages list is cached, per architecture (or unfiltered).
+PACKAGES_CACHE_TIMEOUT = 300
 
 
 @cache.memoize(timeout=ARCH_LIST_TIMEOUT)
@@ -173,35 +176,64 @@ def profile():
 @frontend.route("/packages")
 def packages():
     """Render the package list page, showing each package's latest
-    version. Results are cached for 5 minutes under "packages_versions".
+    version. Results are memoized for 5 minutes per architecture (and for
+    the unfiltered case) by :func:`_packages_for_arch`.
 
     With ?arch=<code> (or the spk_arch cookie), only packages with a
     build for that architecture — or a universal noarch build — are
     shown, and "latest" means latest version carrying such a build.
-    Filtered views bypass the cache; the unfiltered list stays cached
-    so existing invalidation logic is untouched.
+    invalidate_packages_cache() clears every variant.
     """
     selected_arch, clear_cookie, param_present = _arch_request_context()
 
-    if selected_arch is None:
-        versions = cache.get("packages_versions")
-        if versions is None:
-            versions = _latest_versions_query(None)
-            cache.set("packages_versions", versions, timeout=300)
-    else:
-        versions = _latest_versions_query(selected_arch)
+    versions = _packages_for_arch(selected_arch)
+    active_versions = [v for v in versions if not v["archived"]]
+    archived_versions = [v for v in versions if v["archived"]]
     return _arch_response(
         "frontend/packages.html",
         param_present,
         clear_cookie,
         selected_arch,
-        versions=versions,
+        active_versions=active_versions,
+        archived_versions=archived_versions,
     )
+
+
+def _default_descriptions(version_ids):
+    """Map version id -> the enu description of its first build.
+
+    One small query instead of eager-loading every build and every
+    description for the whole page (which dominated the packages list).
+    """
+    if not version_ids:
+        return {}
+    first_build = (
+        db.select(
+            Build.version_id,
+            db.func.min(Build.id).label("build_id"),
+        )
+        .where(Build.version_id.in_(version_ids))
+        .group_by(Build.version_id)
+        .subquery()
+    )
+    rows = db.session.execute(
+        db.select(first_build.c.version_id, BuildDescription.description)
+        .join(Build, Build.id == first_build.c.build_id)
+        .join(BuildDescription, BuildDescription.build_id == Build.id)
+        .join(Language, Language.id == BuildDescription.language_id)
+        .where(Language.code == "enu")
+    ).all()
+    return dict(rows)
 
 
 def _latest_versions_query(arch_code):
     """Latest Version per package, optionally restricted to builds for
-    arch_code (universal noarch builds always count)."""
+    arch_code (universal noarch builds always count).
+
+    Returns plain dicts of just the fields the template renders, so the
+    result is cheap to cache (no ORM object graph to pickle) and avoids
+    loading the full build/description collections.
+    """
     latest_version = db.select(
         Version.package_id, db.func.max(Version.version).label("latest_version")
     ).join(Build)
@@ -213,20 +245,15 @@ def _latest_versions_query(arch_code):
             )
         )
     latest_version = latest_version.group_by(Version.package_id).subquery()
-    return (
+    versions = (
         db.session.execute(
             db.select(Version)
             .join(Version.package)
             .options(
-                # selectinload for one-to-many collections (joinedload would
-                # multiply rows); see get_catalog in views/nas.py for why.
-                db.joinedload(Version.package).joinedload(Package.download_counts),
-                db.joinedload(Version.package).undefer(Package.has_active_builds),
+                db.contains_eager(Version.package).joinedload(Package.download_counts),
+                db.contains_eager(Version.package).undefer(Package.has_active_builds),
                 db.selectinload(Version.icons),
                 db.selectinload(Version.displaynames).joinedload(DisplayName.language),
-                db.selectinload(Version.builds)
-                .selectinload(Build.descriptions)
-                .joinedload(BuildDescription.language),
             )
             .join(
                 latest_version,
@@ -242,6 +269,73 @@ def _latest_versions_query(arch_code):
         .all()
     )
 
+    descriptions = _default_descriptions([v.id for v in versions])
+    rows = []
+    for version in versions:
+        counts = version.package.download_counts
+        rows.append(
+            {
+                "name": version.package.name,
+                "displayname": version.displaynames["enu"].displayname,
+                "version_string": version.version_string,
+                "icon_path": version.icons["72"].path,
+                "description": descriptions.get(version.id, ""),
+                "recent_download_count": (
+                    counts.recent_download_count if counts else 0
+                ),
+                "archived": not version.package.has_active_builds,
+            }
+        )
+    return rows
+
+
+@cache.memoize(timeout=PACKAGES_CACHE_TIMEOUT)
+def _packages_for_arch(arch_code):
+    """Memoized packages-list rows for ``arch_code`` (None = all).
+
+    Memoizing (rather than manual get/set) lets invalidate_packages_cache()
+    drop every architecture variant with one call, with no need to
+    enumerate the architectures.
+    """
+    return _latest_versions_query(arch_code)
+
+
+def invalidate_packages_cache():
+    """Drop the memoized packages list for every architecture variant.
+
+    Called by admin actions and background tasks whenever build metadata or
+    activation state changes.
+    """
+    cache.delete_memoized(_packages_for_arch)
+
+
+def _package_detail_query(name):
+    """Load one package with everything the detail page renders.
+
+    Builds are loaded (the page lists them), but their descriptions are
+    not: only the default (enu) description of each version's first build
+    is shown, fetched separately via _default_descriptions.
+    """
+    return (
+        db.session.execute(
+            db.select(Package)
+            .filter_by(name=name)
+            .options(
+                db.joinedload(Package.download_counts),
+                db.undefer(Package.has_active_builds),
+                db.selectinload(Package.screenshots),
+                db.selectinload(Package.versions).selectinload(Version.icons),
+                db.selectinload(Package.versions)
+                .selectinload(Version.displaynames)
+                .joinedload(DisplayName.language),
+                db.selectinload(Package.versions).selectinload(Version.builds),
+            )
+        )
+        .unique()
+        .scalars()
+        .first()
+    )
+
 
 @frontend.route("/package/<name>")
 def package(name):
@@ -254,29 +348,10 @@ def package(name):
     targets the selected arch.
     """
     selected_arch, clear_cookie, param_present = _arch_request_context()
-    pkg = (
-        db.session.execute(
-            db.select(Package)
-            .filter_by(name=name)
-            .options(
-                # Same selectinload rule as above.
-                db.joinedload(Package.download_counts),
-                db.selectinload(Package.versions).selectinload(Version.icons),
-                db.selectinload(Package.versions).selectinload(Version.displaynames),
-                db.selectinload(Package.versions)
-                .selectinload(Version.builds)
-                .selectinload(Build.descriptions),
-                db.selectinload(Package.versions)
-                .selectinload(Version.builds)
-                .selectinload(Build.architectures),
-            )
-        )
-        .unique()
-        .scalars()
-        .first()
-    )
+    pkg = _package_detail_query(name)
     if pkg is None or not pkg.versions:
         abort(404)
+    descriptions = _default_descriptions([v.id for v in pkg.versions])
     display_versions = None
     version_build_groups = None
     header_version = pkg.versions[-1]
@@ -309,6 +384,7 @@ def package(name):
         clear_cookie,
         selected_arch,
         package=pkg,
+        descriptions=descriptions,
         display_versions=display_versions,
         version_build_groups=version_build_groups,
         header_version=header_version,

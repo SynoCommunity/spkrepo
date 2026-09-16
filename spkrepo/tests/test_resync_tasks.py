@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from flask import current_app
 
 from spkrepo.adapters.spk_io import SPK
-from spkrepo.ext import cache, db
+from spkrepo.ext import db
 from spkrepo.models import Build
 from spkrepo.tests.common import (
     Architecture,
@@ -16,7 +16,11 @@ from spkrepo.tests.common import (
     create_info,
     create_spk,
 )
+from spkrepo.views.frontend import _packages_for_arch
 from spkrepo.views.tasks import resync_build_file, resync_build_metadata
+
+#: Arbitrary key used only to observe the memoized packages-list cache.
+_PROBE_ARCH = "__probe__"
 
 
 def _build_stub(build_id, path=None):
@@ -144,29 +148,40 @@ class ResyncBuildMetadataTaskTestCase(BaseTestCase):
 
     def test_value_error_returns_error_without_retry_or_cache_invalidation(self):
         """ValueError (e.g. metadata mismatch) must return error, never retry,
-        and must leave the cache untouched — the commit never ran."""
+        and must leave the cached packages list untouched."""
         build = BuildFactory()
         db.session.commit()
-        cache.set("packages_versions", "stale")
 
         with patch(
-            "spkrepo.views.tasks.extract_version_metadata",
-            side_effect=ValueError("bad data"),
-        ):
-            result = resync_build_metadata(build.id, str(build))
+            "spkrepo.views.frontend._latest_versions_query", return_value=[]
+        ) as query:
+            _packages_for_arch(_PROBE_ARCH)  # prime
+            query.reset_mock()
+            with patch(
+                "spkrepo.views.tasks.extract_version_metadata",
+                side_effect=ValueError("bad data"),
+            ):
+                result = resync_build_metadata(build.id, str(build))
 
-        self.assertEqual(result["status"], "error")
-        self.assertEqual(result["error"], "bad data")
-        self.assertEqual(cache.get("packages_versions"), "stale")
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["error"], "bad data")
+            _packages_for_arch(_PROBE_ARCH)  # still cached
+            self.assertEqual(query.call_count, 0)
 
     def test_invalidates_cache_on_success(self):
         build = BuildFactory()
         db.session.commit()
-        cache.set("packages_versions", "stale")
-        result = resync_build_metadata(build.id, str(build))
 
-        self.assertEqual(result["status"], "ok")
-        self.assertIsNone(cache.get("packages_versions"))
+        with patch(
+            "spkrepo.views.frontend._latest_versions_query", return_value=[]
+        ) as query:
+            _packages_for_arch(_PROBE_ARCH)  # prime
+            query.reset_mock()
+            result = resync_build_metadata(build.id, str(build))
+
+            self.assertEqual(result["status"], "ok")
+            _packages_for_arch(_PROBE_ARCH)  # invalidated -> recomputed
+            self.assertEqual(query.call_count, 1)
 
     def test_each_sibling_spk_opened_exactly_once(self):
         """Verify O(n) sibling reads: 3 builds → 3 SPK opens, no duplicates."""
@@ -270,21 +285,34 @@ class ResyncBuildFileTaskTestCase(BaseTestCase):
     def test_invalidates_cache_on_success(self):
         build = BuildFactory()
         db.session.commit()
-        cache.set("packages_versions", "stale")
-        result = resync_build_file(build.id, str(build))
 
-        self.assertEqual(result["status"], "ok")
-        self.assertIsNone(cache.get("packages_versions"))
+        with patch(
+            "spkrepo.views.frontend._latest_versions_query", return_value=[]
+        ) as query:
+            _packages_for_arch(_PROBE_ARCH)  # prime
+            query.reset_mock()
+            result = resync_build_file(build.id, str(build))
+
+            self.assertEqual(result["status"], "ok")
+            _packages_for_arch(_PROBE_ARCH)  # invalidated -> recomputed
+            self.assertEqual(query.call_count, 1)
 
     def test_cache_not_invalidated_on_error(self):
         build = BuildFactory()
         db.session.commit()
-        cache.set("packages_versions", "stale")
-        # Use ValueError so it is caught without triggering the retry path
-        with patch.object(Build, "calculate_size", side_effect=ValueError("bad size")):
-            resync_build_file(build.id, str(build))
+        with patch(
+            "spkrepo.views.frontend._latest_versions_query", return_value=[]
+        ) as query:
+            _packages_for_arch(_PROBE_ARCH)  # prime
+            query.reset_mock()
+            # Use ValueError so it is caught without triggering the retry path
+            with patch.object(
+                Build, "calculate_size", side_effect=ValueError("bad size")
+            ):
+                resync_build_file(build.id, str(build))
 
-        self.assertEqual(cache.get("packages_versions"), "stale")
+            _packages_for_arch(_PROBE_ARCH)  # still cached
+            self.assertEqual(query.call_count, 0)
 
 
 class SidecarRoundTripTestCase(BaseTestCase):
@@ -319,3 +347,59 @@ class SidecarRoundTripTestCase(BaseTestCase):
         self.assertNotEqual(
             db.session.get(Build, build.id).version.upstream_version, "CORRUPT"
         )
+
+
+class CeleryAppBindingTestCase(BaseTestCase):
+    """Celery tasks must resolve the current app at call time.
+
+    Tasks are defined once and their FlaskTask base is resolved lazily; if it
+    closed over the create_app() app instead, the second and later apps in a
+    process (i.e. every test after the first) would run tasks against a stale,
+    dropped app context — surfacing as "no such table" in ordered runs.
+    """
+
+    def test_task_binds_to_current_app(self):
+        from spkrepo.ext import celery
+
+        self.assertIs(celery.spkrepo_app, self.app)
+
+    def test_task_callable_without_explicit_context(self):
+        # Calling a task directly (as tests and the worker do) must succeed
+        # because FlaskTask pushes the bound app's context itself.
+        build = BuildFactory()
+        db.session.commit()
+        result = resync_build_file(build.id, str(build))
+        self.assertEqual(result["status"], "ok")
+
+    def test_task_uses_latest_created_app(self):
+        # Regression: a task invoked after a second create_app() must run
+        # against that (latest) app, not the one it was first bound to. The
+        # build exists only in this test's app; if the task used a stale app
+        # it would not return "skipped".
+        import shutil
+        import tempfile
+
+        from spkrepo import create_app
+        from spkrepo.ext import db as _db
+
+        build = BuildFactory()
+        db.session.commit()
+
+        class SecondApp:
+            TESTING = True
+            SECRET_KEY = "x"
+            CACHE_TYPE = "SimpleCache"
+            CACHE_NO_NULL_WARNING = True
+            WTF_CSRF_ENABLED = False
+            DATA_PATH = tempfile.mkdtemp()
+            SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATA_PATH}/second.db"
+            RATELIMIT_STORAGE_URI = "memory://"
+
+        app2 = create_app(config=SecondApp())
+        try:
+            with app2.app_context():
+                _db.create_all()
+            result = resync_build_file(build.id, str(build))
+        finally:
+            shutil.rmtree(SecondApp.DATA_PATH, ignore_errors=True)
+        self.assertEqual(result["status"], "skipped")

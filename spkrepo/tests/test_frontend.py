@@ -64,6 +64,87 @@ class PackagesTestCase(BaseTestCase):
         response = self.client.get(url_for("frontend.packages"))
         self.assert200(response)
 
+    def test_package_description_rendered(self):
+        # The list page shows each package's (default build) description;
+        # this exercises the dedicated default-description query.
+        build = BuildFactory(active=True)
+        db.session.commit()
+        response = self.client.get(url_for("frontend.packages"))
+        self.assert200(response)
+        self.assertIn(build.descriptions["enu"].description, response.data.decode())
+
+    def test_active_only_has_no_archived_section(self):
+        BuildFactory(active=True)
+        db.session.commit()
+        response = self.client.get(url_for("frontend.packages"))
+        self.assert200(response)
+        self.assertNotIn("Archived Packages", response.data.decode())
+
+    def test_inactive_package_appears_in_archived_section(self):
+        build = BuildFactory(active=False)
+        db.session.commit()
+        response = self.client.get(url_for("frontend.packages"))
+        self.assert200(response)
+        data = response.data.decode()
+        self.assertIn("Archived Packages", data)
+        self.assertIn(build.version.displaynames["enu"].displayname, data)
+
+    def test_latest_versions_query_does_not_load_all_builds(self):
+        # Regression guard for the packages-list query: it must not eager-load
+        # every Build/Description (which joined firmware/architecture and was
+        # ~700ms). Query count stays small and constant as builds grow.
+        from sqlalchemy import event
+
+        from spkrepo.views.frontend import _latest_versions_query
+
+        for _ in range(5):
+            BuildFactory(active=True)
+        db.session.commit()
+
+        statements = []
+
+        def _record(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(db.engine, "before_cursor_execute", _record)
+        try:
+            rows = _latest_versions_query(None)
+        finally:
+            event.remove(db.engine, "before_cursor_execute", _record)
+
+        self.assertEqual(len(rows), 5)
+        self.assertLessEqual(len(statements), 6, statements)
+        joined = " ".join(statements).lower()
+        self.assertNotIn("firmware", joined)
+        self.assertNotIn("build_architecture", joined)
+
+    def test_filtered_page_is_cached(self):
+        BuildFactory(architectures=[Architecture.find("cedarview")], active=True)
+        db.session.commit()
+        with mock.patch(
+            "spkrepo.views.frontend._latest_versions_query", return_value=[]
+        ) as query:
+            self.client.get(url_for("frontend.packages", arch="cedarview"))
+            self.client.get(url_for("frontend.packages", arch="cedarview"))
+        self.assertEqual(query.call_count, 1)
+
+    def test_invalidate_packages_cache_clears_arch_variants(self):
+        from spkrepo.views.frontend import invalidate_packages_cache
+
+        BuildFactory(architectures=[Architecture.find("cedarview")], active=True)
+        db.session.commit()
+        # "noarch" is a valid filter value but not in the selectable
+        # architecture list, so invalidation must not rely on enumerating it.
+        for arch in ("cedarview", "noarch"):
+            with self.subTest(arch=arch):
+                with mock.patch(
+                    "spkrepo.views.frontend._latest_versions_query", return_value=[]
+                ) as query:
+                    self.client.get(url_for("frontend.packages", arch=arch))
+                    invalidate_packages_cache()
+                    self.client.get(url_for("frontend.packages", arch=arch))
+                self.assertEqual(query.call_count, 2)
+
     def test_filter_by_arch_shows_matching_hides_others(self):
         match = BuildFactory(
             architectures=[Architecture.find("cedarview")], active=True
@@ -206,6 +287,46 @@ class PackageTestCase(BaseTestCase):
         db.session.commit()
         response = self.client.get(url_for("frontend.package", name="empty-package"))
         self.assert404(response)
+
+    def test_detail_query_is_bounded(self):
+        # The detail page must not eager-load every build's descriptions nor
+        # lazily fetch Language per row; the default (enu) description comes
+        # from one dedicated query, so query count stays bounded.
+        from sqlalchemy import event
+
+        from spkrepo.views.frontend import _default_descriptions, _package_detail_query
+
+        package = PackageFactory()
+        for _ in range(3):
+            version = VersionFactory(package=package)
+            BuildFactory.create_batch(2, version=version, active=True)
+        db.session.commit()
+
+        statements = []
+
+        def _record(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(db.engine, "before_cursor_execute", _record)
+        try:
+            loaded = _package_detail_query(package.name)
+            _default_descriptions([v.id for v in loaded.versions])
+        finally:
+            event.remove(db.engine, "before_cursor_execute", _record)
+
+        self.assertEqual(len(loaded.versions), 3)
+        self.assertLessEqual(len(statements), 9, statements)
+        # descriptions are fetched only by the dedicated default-description query
+        self.assertEqual(
+            sum("build_description" in s.lower() for s in statements),
+            1,
+            statements,
+        )
+        # no per-row lazy Language load
+        self.assertFalse(
+            any(s.lower().lstrip().startswith("select language") for s in statements),
+            statements,
+        )
 
     def test_detail_filters_versions_by_arch(self):
         # Only versions with a matching build are shown when filtered.

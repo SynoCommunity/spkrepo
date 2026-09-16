@@ -19,6 +19,29 @@ babel = Babel()
 cache = Cache()
 # Celery
 celery = Celery()
+
+
+class SpkrepoTask(celery.Task):
+    """Celery task base that runs each task inside the current app context.
+
+    The app is resolved at call time from ``celery.spkrepo_app`` (set by
+    :func:`spkrepo.app.create_app`) rather than captured in a closure. This
+    keeps it correct when create_app() runs more than once (tests) and when
+    a task class is finalised before create_app() has run — both of which
+    left the base as the plain ``Task`` with a closed-over/dead app before.
+    """
+
+    def __call__(self, *args, **kwargs):
+        app = getattr(celery, "spkrepo_app", None)
+        if app is None:
+            return self.run(*args, **kwargs)
+        with app.app_context():
+            return self.run(*args, **kwargs)
+
+
+# Set before any ``@celery.task`` is declared (ext is imported first) so task
+# classes always inherit the app-context-running base.
+celery.Task = SpkrepoTask
 # Mail
 mail = Mail()
 # Migrate

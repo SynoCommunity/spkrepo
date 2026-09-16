@@ -49,8 +49,15 @@ the ``SPKREPO_CONFIG`` file (see :doc:`deployment`).
 
 Extensions
 ----------
-``ext`` holds the Flask extension singletons initialised by ``create_app``.
+``ext`` holds the Flask extension singletons initialised by ``create_app``,
+plus the Celery task base used by the background tasks.
+
+The module is documented without enumerating members: the extension
+singletons are data, and ``SpkrepoTask`` inherits Celery's ``Task`` whose own
+docstrings use roles this project does not register.
 
 .. automodule:: spkrepo.ext
-    :members:
-    :undoc-members:
+    :no-members:
+
+.. autoclass:: spkrepo.ext.SpkrepoTask
+    :no-members:

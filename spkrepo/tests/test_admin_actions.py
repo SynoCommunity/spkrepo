@@ -7,7 +7,7 @@ from flask import current_app, url_for
 
 from spkrepo.adapters.spk_io import SPK
 from spkrepo.domain.versions import extract_version_metadata
-from spkrepo.ext import cache, db
+from spkrepo.ext import db
 from spkrepo.models import Build, Firmware, Version
 from spkrepo.tests.common import (
     Architecture,
@@ -164,31 +164,34 @@ class _AdminActionTestMixin:
             self.assert200(response)
             self.assertNotIn("Resync Info", response.data.decode())
 
-    def test_action_resync_info_invalidates_cache(self):
+    def _assert_packages_cache_invalidated(self, action):
+        """The action must clear the memoized packages list so the next
+        request recomputes it."""
         build = BuildFactory()
         db.session.commit()
-        cache.set("packages_versions", "stale")
-        with self.logged_user("package_admin", "admin"):
-            with patch_resync_info():
-                self.client.post(
-                    url_for(self._action_endpoint),
-                    follow_redirects=True,
-                    data=dict(action="05_resync_info", rowid=[self._rowid(build)]),
-                )
-        self.assertIsNone(cache.get("packages_versions"))
+        patcher = (
+            patch_resync_info() if action == "05_resync_info" else patch_resync_file()
+        )
+        with patch(
+            "spkrepo.views.frontend._latest_versions_query", return_value=[]
+        ) as query:
+            self.client.get(url_for("frontend.packages"))  # prime the cache
+            query.reset_mock()
+            with self.logged_user("package_admin", "admin"):
+                with patcher:
+                    self.client.post(
+                        url_for(self._action_endpoint),
+                        follow_redirects=True,
+                        data=dict(action=action, rowid=[self._rowid(build)]),
+                    )
+            self.client.get(url_for("frontend.packages"))
+            self.assertEqual(query.call_count, 1)
+
+    def test_action_resync_info_invalidates_cache(self):
+        self._assert_packages_cache_invalidated("05_resync_info")
 
     def test_action_resync_file_invalidates_cache(self):
-        build = BuildFactory()
-        db.session.commit()
-        cache.set("packages_versions", "stale")
-        with self.logged_user("package_admin", "admin"):
-            with patch_resync_file():
-                self.client.post(
-                    url_for(self._action_endpoint),
-                    follow_redirects=True,
-                    data=dict(action="06_resync_file", rowid=[self._rowid(build)]),
-                )
-        self.assertIsNone(cache.get("packages_versions"))
+        self._assert_packages_cache_invalidated("06_resync_file")
 
     def test_action_resync_info_single_build_no_siblings_succeeds(self):
         build = BuildFactory()
@@ -483,32 +486,6 @@ class VersionTestCase(_AdminActionTestMixin, BaseTestCase):
             original_conf_privilege,
         )
         self.assertEqual(refreshed_build.md5, refreshed_build.calculate_md5())
-
-    def test_action_resync_info_invalidates_cache(self):
-        build = BuildFactory()
-        db.session.commit()
-        cache.set("packages_versions", "stale")
-        with self.logged_user("package_admin", "admin"):
-            with patch_resync_info():
-                self.client.post(
-                    url_for("version.action_view"),
-                    follow_redirects=True,
-                    data=dict(action="05_resync_info", rowid=[build.version.id]),
-                )
-        self.assertIsNone(cache.get("packages_versions"))
-
-    def test_action_resync_file_invalidates_cache(self):
-        build = BuildFactory()
-        db.session.commit()
-        cache.set("packages_versions", "stale")
-        with self.logged_user("package_admin", "admin"):
-            with patch_resync_file():
-                self.client.post(
-                    url_for("version.action_view"),
-                    follow_redirects=True,
-                    data=dict(action="06_resync_file", rowid=[build.version.id]),
-                )
-        self.assertIsNone(cache.get("packages_versions"))
 
     def test_action_resync_info_single_build_no_siblings_succeeds(self):
         build = BuildFactory()

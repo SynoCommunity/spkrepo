@@ -157,12 +157,9 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
     # Celery
     celery.config_from_object(app.config.get("CELERY", {}))
 
-    class FlaskTask(celery.Task):
-        def __call__(self, *args, **kwargs):
-            with app.app_context():
-                return self.run(*args, **kwargs)
-
-    celery.Task = FlaskTask
+    # The task base (ext.SpkrepoTask) resolves the app from this attribute at
+    # call time, so repeated create_app() calls rebind it (see ext.py).
+    celery.spkrepo_app = app
     app.extensions["celery"] = celery
 
     @app.after_request

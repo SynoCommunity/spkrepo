@@ -118,7 +118,7 @@ class StorageRoundTripE2E(BaseTestCase):
             ),
             patch(
                 "spkrepo.views.admin.upload_to_storage.delay",
-                side_effect=run_task_sync(upload_to_storage.run),
+                side_effect=run_task_sync(upload_to_storage),
             ),
             patch("spkrepo.views.tasks.storage.upload", return_value=True),
         ):
