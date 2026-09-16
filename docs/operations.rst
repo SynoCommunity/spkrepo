@@ -5,8 +5,8 @@ Object Storage
 --------------
 The ``storage`` module manages SPK packages in S3-compatible object
 storage. It handles uploading, downloading (rehoming),
-and deleting package files, and is configured via the storage environment
-variables described in :doc:`deployment`.
+and deleting package files, and is configured via the ``OBJECT_STORAGE_*``
+config-file keys described in :doc:`deployment`.
 
 .. automodule:: spkrepo.storage
     :members:

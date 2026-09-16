@@ -1,7 +1,11 @@
 Admin Interface
 ===============
 
-Access at ``/admin/`` after logging in with an admin account.
+Access at ``/admin/`` after logging in. Views are role-scoped: the
+reference lists (Architectures, Firmware, Services) need the
+``package_admin`` role; Users needs ``admin``; Packages/Versions/Builds are
+available to ``developer`` and ``package_admin`` (a ``developer`` only sees
+packages they maintain).
 
 Views
 -----
@@ -31,12 +35,15 @@ Actions
 -------
 Available actions appear in the dropdown after selecting items in a list view.
 
-**01 Activate (Versions / Builds)**
-    Marks the selected builds as active so they appear in the NAS catalog.
-    If the SPK file has no GPG signature, the build is skipped with a warning.
+**01 Activate (Users / Versions / Builds)**
+    For Versions/Builds: marks the selected builds as active so they appear
+    in the NAS catalog, and queues an upload when Object Storage is
+    configured. If the SPK file has no GPG signature, the build is skipped
+    with a warning. For Users: activates the account.
 
-**02 Deactivate (Versions / Builds)**
-    Removes builds from the NAS catalog without deleting them.
+**02 Deactivate (Users / Versions / Builds)**
+    For Versions/Builds: removes builds from the NAS catalog without deleting
+    them. For Users: deactivates the account.
 
 **03 Upload (Versions / Builds)**
     Uploads local SPK files to object storage (S3-compatible).
@@ -53,11 +60,11 @@ Available actions appear in the dropdown after selecting items in a list view.
 **06 Resync File (Versions / Builds)**
     Recalculates MD5 and file size from the local SPK.
 
-**07 Sign (Builds)**
+**07 Sign (Versions / Builds)**
     Signs the SPK file with the configured GPG key.
     Requires ``GNUPG_PATH`` to be configured.
 
-**08 Unsign (Builds)**
+**08 Unsign (Versions / Builds)**
     Removes the GPG signature from the SPK file.
     Build must be deactivated first.
 

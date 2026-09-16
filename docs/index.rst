@@ -8,11 +8,12 @@ Spkrepo is a feature rich Synology Package Repository application. It is compati
 and comes with an API, advanced permission management and an admin interface.
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :caption: Getting Started
 
    quickstart
    deployment
+   architecture
 
 .. toctree::
    :maxdepth: 1
@@ -31,6 +32,7 @@ and comes with an API, advanced permission management and an admin interface.
    utils
    operations
    infrastructure
+   views
    admin
    cli
    migrations

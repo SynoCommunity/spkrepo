@@ -21,10 +21,11 @@ Setup
     # Start PostgreSQL and Redis (Docker)
     docker compose up -d db redis
 
-    # Run database migrations
+    # Run database migrations (also inserts reference data: architectures,
+    # firmware, languages, roles, services)
     uv run flask db upgrade
 
-    # Seed the database with reference data
+    # Load sample packages for local development
     uv run flask spkrepo populate_db
 
     # Start the development server
@@ -40,11 +41,14 @@ Register an admin user
 
 Environment Variables
 ---------------------
+Most settings come from a config file pointed to by ``SPKREPO_CONFIG``
+(see :doc:`deployment`); the handful read from the environment are:
+
 .. code-block:: text
 
-    SPKREPO_SQLALCHEMY_DATABASE_URI   postgresql+psycopg2://spkrepo:spkrepo@localhost/spkrepo
     SPKREPO_CONFIG                    None (uses built-in defaults)
-    SECRET_KEY                        None (required in production)
+    SPKREPO_SQLALCHEMY_DATABASE_URI   postgresql+psycopg2://spkrepo:spkrepo@localhost/spkrepo
+    TURNSTILE_SECRET_KEY              None (registration fail-closes when unset)
 
 Celery uses the ``CELERY`` config dict (``broker_url`` defaults to
 ``redis://localhost:6379/1`` — see :doc:`deployment`).

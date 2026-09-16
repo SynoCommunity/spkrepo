@@ -24,11 +24,13 @@ and stores the file. Pre-signed packages are rejected.
 NAS catalog
 -----------
 The catalog endpoint returns available packages for a given architecture
-and firmware version. Parameters are sent as POST form data:
+and firmware version. Parameters are sent as POST form data (it is mounted
+at ``/nas/``; a bare ``GET /nas`` without parameters redirects browsers to
+the package list):
 
 .. code-block:: console
 
-    http POST http://packages.example.com/ \
+    http POST http://packages.example.com/nas/ \
         arch=apollolake \
         build=25556 \
         major=7 \
@@ -37,5 +39,10 @@ and firmware version. Parameters are sent as POST form data:
         language=enu \
         package_update_channel=stable
 
-The response is a JSON array of package entries with download URLs,
-descriptions, screenshots, and download counts.
+Only ``arch``, ``build`` and ``language`` are required; ``major`` and
+``package_update_channel`` are optional. ``minor``/``micro`` are accepted
+for DSM-client compatibility but ignored.
+
+The response is a JSON object with a ``packages`` list (DSM 5.1+) or a bare
+list (older builds), each entry carrying download URLs, descriptions,
+screenshots, and download counts.

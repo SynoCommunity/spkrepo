@@ -32,5 +32,5 @@ In case of an ambiguous error, a detailed explanation is returned in JSON as ``m
 
 Endpoints
 ---------
-.. autoflask:: spkrepo:create_app()
+.. autoflask:: spkrepo.app:create_app()
     :blueprints: api, nas

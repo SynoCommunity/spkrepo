@@ -27,7 +27,16 @@ A minimal production config file looks like this:
 
     SECRET_KEY = "replace-with-a-long-random-string"
     SQLALCHEMY_DATABASE_URI = "postgresql+psycopg2://spkrepo:password@db/spkrepo"
-    CELERY = {"broker_url": "redis://redis:6379/1"}
+
+    # Celery. This dict *replaces* the built-in default, so keep the keys the
+    # admin Task Status page relies on (result_backend) plus the queues.
+    CELERY = {
+        "broker_url": "redis://redis:6379/1",
+        "result_backend": "redis://redis:6379/1",
+        "result_expires": 86400,
+        "task_queues": {"celery": {}, "ops": {}},
+        "task_default_queue": "celery",
+    }
 
     # Rate limiting (per-IP counters shared across workers; memory fallback
     # covers redis outages)
@@ -53,6 +62,7 @@ A minimal production config file looks like this:
     OBJECT_STORAGE_LOGS_ENDPOINT = "https://s3.example.com"
     OBJECT_STORAGE_LOGS_REGION = "us-east-1"
     OBJECT_STORAGE_LOGS_BUCKET = "spkrepo-logs"
+    OBJECT_STORAGE_LOGS_PREFIX = "logs/"
     OBJECT_STORAGE_LOGS_ACCESS_KEY = "your-read-key"
     OBJECT_STORAGE_LOGS_SECRET_KEY = "your-read-secret"
 
