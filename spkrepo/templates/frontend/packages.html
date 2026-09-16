@@ -194,10 +194,11 @@ document.addEventListener('DOMContentLoaded', function () {
         function applyModel() {
           var raw = modelInput.value.trim();
           if (!raw) {
-            // Empty field means "no model filter" — clear it rather than
-            // reporting an unknown model, and leave the arch filter as-is.
+            // Empty field: clear the current architecture filter (and the
+            // remembered model) rather than reporting an unknown model.
             clearSavedModel();
             hideModelAlert();
+            navigate(null);
             return;
           }
           var wanted = raw.toUpperCase();
