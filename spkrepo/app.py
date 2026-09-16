@@ -157,9 +157,19 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
     # Celery
     celery.config_from_object(app.config.get("CELERY", {}))
 
+    # Store the app on the celery object so the task base can resolve the
+    # *current* app when a task runs. Tasks are defined once and their
+    # FlaskTask base may be resolved against an earlier create_app(); closing
+    # over `app` here would push a stale app context (whose DB may be gone)
+    # whenever create_app() is called more than once in a process (tests).
+    celery.spkrepo_app = app
+
     class FlaskTask(celery.Task):
         def __call__(self, *args, **kwargs):
-            with app.app_context():
+            current = getattr(celery, "spkrepo_app", None)
+            if current is None:
+                return self.run(*args, **kwargs)
+            with current.app_context():
                 return self.run(*args, **kwargs)
 
     celery.Task = FlaskTask
