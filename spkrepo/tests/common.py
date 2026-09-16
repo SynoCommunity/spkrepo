@@ -26,6 +26,7 @@ from flask_testing import TestCase
 
 from spkrepo import create_app
 from spkrepo.adapters.seed import populate_db
+from spkrepo.domain.shared_kernel import translate_arch_to_syno
 from spkrepo.ext import db
 from spkrepo.models import (
     Architecture,
@@ -61,7 +62,7 @@ class QueryFactory(factory.DictFactory):
     arch = factory.LazyAttribute(
         lambda x: random.choice(
             [
-                Architecture.to_syno.get(a.code, a.code)
+                translate_arch_to_syno(a.code)
                 for a in db.session.execute(
                     db.select(Architecture).filter(Architecture.code != "noarch")
                 ).scalars()
@@ -495,9 +496,7 @@ def create_info(build):
     info = {
         "package": build.version.package.name,
         "version": build.version.version_string,
-        "arch": " ".join(
-            Architecture.to_syno.get(a.code, a.code) for a in build.architectures
-        ),
+        "arch": " ".join(translate_arch_to_syno(a.code) for a in build.architectures),
         "displayname": build.version.displaynames["enu"].displayname,
         "description": build.descriptions["enu"].description,
         "firmware": build.firmware_min.firmware_string,

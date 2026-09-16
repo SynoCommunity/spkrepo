@@ -15,6 +15,8 @@ class TestSharedKernel:
     def test_translate_arch(self):
         assert shared_kernel.translate_arch_from_syno("88f6281") == "88f628x"
         assert shared_kernel.translate_arch_from_syno("x86_64") == "x86_64"
+        assert shared_kernel.translate_arch_to_syno("88f628x") == "88f6281"
+        assert shared_kernel.translate_arch_to_syno("x86_64") == "x86_64"
 
     def test_parse_firmware_ok(self):
         assert shared_kernel.parse_firmware("6.2-23739") == ("6.2", 23739)

@@ -69,19 +69,21 @@ def _resolve_arch_filter():
     Returns (arch_code or None, clear_cookie bool). An explicit ?arch=
     query param wins over the cookie; unknown codes abort with 404.
     """
+    from ..domain.shared_kernel import translate_arch_from_syno as _from_syno
+
     param = request.args.get("arch")
     if param is not None:
         if param in ("", "all"):
             return None, True
         # Accept Synology DSM/SRM spellings (e.g. 88f6281); canonical map is
-        # owned by spkrepo.domain.shared_kernel.ARCH_FROM_SYNO.
-        param = Architecture.from_syno.get(param, param)
+        # owned by spkrepo.domain.shared_kernel.
+        param = _from_syno(param)
         if Architecture.find(param) is None:
             abort(404)
         return param, False
     cookie = request.cookies.get(ARCH_COOKIE)
     if cookie and cookie not in ("", "all"):
-        cookie = Architecture.from_syno.get(cookie, cookie)
+        cookie = _from_syno(cookie)
         if Architecture.find(cookie) is not None:
             return cookie, False
     return None, False

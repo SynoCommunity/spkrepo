@@ -6,6 +6,7 @@ import tarfile
 from mock import Mock
 
 from spkrepo.adapters.spk_io import SPK
+from spkrepo.domain.shared_kernel import translate_arch_from_syno
 from spkrepo.domain.versions import (
     assert_version_metadata_matches_db,
     extract_version_metadata,
@@ -55,7 +56,7 @@ class SPKParseTestCase(BaseTestCase):
         ]
         self.assertEqual(set(info_keys), set(spk.info.keys()))
         self.assertEqual(
-            {Architecture.from_syno.get(a, a) for a in spk.info["arch"].split()},
+            {translate_arch_from_syno(a) for a in spk.info["arch"].split()},
             {a.code for a in build.architectures},
         )
         self.assertEqual(build.changelog, spk.info["changelog"])
@@ -381,8 +382,8 @@ class SPKUnsignTestCase(BaseTestCase):
 class ExtractVersionMetadataTestCase(BaseTestCase):
     """Single tar-wiring probe for extract_version_metadata.
 
-    Branch table below is fake-based (no DB/tar); truth Retired from
-    test_domain to keep that suite boundary-free.
+    Branch table moved to test_domain (fake-based) to keep that suite
+    boundary-free.
     """
 
     def test_displaynames_keyed_by_language_code(self):

@@ -20,10 +20,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.collections import attribute_mapped_collection
 from sqlalchemy.sql.expression import FunctionElement
 
-# _ARCH_* aliases stay for backward compatibility (tests, views); single
-# owner is domain.shared_kernel.
-from .domain.shared_kernel import ARCH_FROM_SYNO as _ARCH_FROM_SYNO
-from .domain.shared_kernel import ARCH_TO_SYNO as _ARCH_TO_SYNO
 from .ext import db
 
 user_role = db.Table(
@@ -152,11 +148,6 @@ class Architecture(db.Model):
     builds = db.relationship(
         "Build", secondary="build_architecture", back_populates="architectures"
     )
-
-    # Architecture code translation maps (owned by domain.shared_kernel;
-    # kept here for backward compatibility with existing readers).
-    from_syno = _ARCH_FROM_SYNO
-    to_syno = _ARCH_TO_SYNO
 
     @classmethod
     def find(cls, code, syno=False):

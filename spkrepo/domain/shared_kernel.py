@@ -25,6 +25,11 @@ def translate_arch_from_syno(code: str) -> str:
     return ARCH_FROM_SYNO.get(code, code)
 
 
+def translate_arch_to_syno(code: str) -> str:
+    """Translate a canonical arch code to its Synology-reported spelling."""
+    return ARCH_TO_SYNO.get(code, code)
+
+
 def parse_firmware(value: str) -> tuple[str, int]:
     """Parse '6.2-23739' -> ('6.2', 23739). Raises ValueError if malformed."""
     if not value:
