@@ -79,6 +79,10 @@ html_context = {
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 
+html_sidebars = {
+    "**": ["globaltoc.html"],
+}
+
 htmlhelp_basename = _project_title + "doc"
 
 # -- Options for LaTeX output ---------------------------------------------
