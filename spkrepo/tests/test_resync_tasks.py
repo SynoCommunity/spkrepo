@@ -370,3 +370,36 @@ class CeleryAppBindingTestCase(BaseTestCase):
         db.session.commit()
         result = resync_build_file(build.id, str(build))
         self.assertEqual(result["status"], "ok")
+
+    def test_task_uses_latest_created_app(self):
+        # Regression: a task invoked after a second create_app() must run
+        # against that (latest) app, not the one it was first bound to. The
+        # build exists only in this test's app; if the task used a stale app
+        # it would not return "skipped".
+        import shutil
+        import tempfile
+
+        from spkrepo import create_app
+        from spkrepo.ext import db as _db
+
+        build = BuildFactory()
+        db.session.commit()
+
+        class SecondApp:
+            TESTING = True
+            SECRET_KEY = "x"
+            CACHE_TYPE = "SimpleCache"
+            CACHE_NO_NULL_WARNING = True
+            WTF_CSRF_ENABLED = False
+            DATA_PATH = tempfile.mkdtemp()
+            SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATA_PATH}/second.db"
+            RATELIMIT_STORAGE_URI = "memory://"
+
+        app2 = create_app(config=SecondApp())
+        try:
+            with app2.app_context():
+                _db.create_all()
+            result = resync_build_file(build.id, str(build))
+        finally:
+            shutil.rmtree(SecondApp.DATA_PATH, ignore_errors=True)
+        self.assertEqual(result["status"], "skipped")

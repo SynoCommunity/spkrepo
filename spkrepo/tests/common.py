@@ -444,20 +444,22 @@ class BaseTestCase(TestCase):
         self.assertEqual(response.headers[header], value, message)
 
 
-def run_task_sync(task_func):
+def run_task_sync(task):
     """Return a mock for .delay() that runs the task synchronously in-process.
 
     Usage:
         with patch_resync_info(), patch_resync_file():
             ...
 
-    The mock captures the build_id and build_label arguments that the action
-    handler passes to .delay() and calls the underlying task function directly,
-    so DB state is updated before assertions run — no broker needed.
+    Calls the Celery *task object* (not ``.run``) so the FlaskTask
+    ``__call__`` path — including its app-context binding — is exercised,
+    matching how a worker dispatches the task. The mock captures the
+    build_id/build_label args the action passes to .delay() and returns a
+    fake result id, so DB state is updated before assertions run — no broker.
     """
 
     def fake_delay(build_id, build_label=""):
-        task_func(build_id, build_label)
+        task(build_id, build_label)
 
         class FakeResult:
             id = "fake-task-id"
@@ -473,7 +475,7 @@ def patch_resync_info():
     return patch.object(
         resync_build_metadata,
         "delay",
-        side_effect=run_task_sync(resync_build_metadata.run),
+        side_effect=run_task_sync(resync_build_metadata),
     )
 
 
@@ -481,7 +483,7 @@ def patch_resync_file():
     from spkrepo.views.tasks import resync_build_file
 
     return patch.object(
-        resync_build_file, "delay", side_effect=run_task_sync(resync_build_file.run)
+        resync_build_file, "delay", side_effect=run_task_sync(resync_build_file)
     )
 
 
