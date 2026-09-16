@@ -133,13 +133,17 @@ class PackagesTestCase(BaseTestCase):
 
         BuildFactory(architectures=[Architecture.find("cedarview")], active=True)
         db.session.commit()
-        with mock.patch(
-            "spkrepo.views.frontend._latest_versions_query", return_value=[]
-        ) as query:
-            self.client.get(url_for("frontend.packages", arch="cedarview"))
-            invalidate_packages_cache()
-            self.client.get(url_for("frontend.packages", arch="cedarview"))
-        self.assertEqual(query.call_count, 2)
+        # "noarch" is a valid filter value but not in the selectable
+        # architecture list, so invalidation must not rely on enumerating it.
+        for arch in ("cedarview", "noarch"):
+            with self.subTest(arch=arch):
+                with mock.patch(
+                    "spkrepo.views.frontend._latest_versions_query", return_value=[]
+                ) as query:
+                    self.client.get(url_for("frontend.packages", arch=arch))
+                    invalidate_packages_cache()
+                    self.client.get(url_for("frontend.packages", arch=arch))
+                self.assertEqual(query.call_count, 2)
 
     def test_filter_by_arch_shows_matching_hides_others(self):
         match = BuildFactory(

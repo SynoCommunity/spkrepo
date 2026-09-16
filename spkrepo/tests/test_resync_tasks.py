@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from flask import current_app
 
 from spkrepo.adapters.spk_io import SPK
-from spkrepo.ext import cache, db
+from spkrepo.ext import db
 from spkrepo.models import Build
 from spkrepo.tests.common import (
     Architecture,
@@ -16,7 +16,11 @@ from spkrepo.tests.common import (
     create_info,
     create_spk,
 )
+from spkrepo.views.frontend import _packages_for_arch
 from spkrepo.views.tasks import resync_build_file, resync_build_metadata
+
+#: Arbitrary key used only to observe the memoized packages-list cache.
+_PROBE_ARCH = "__probe__"
 
 
 def _build_stub(build_id, path=None):
@@ -144,29 +148,40 @@ class ResyncBuildMetadataTaskTestCase(BaseTestCase):
 
     def test_value_error_returns_error_without_retry_or_cache_invalidation(self):
         """ValueError (e.g. metadata mismatch) must return error, never retry,
-        and must leave the cache untouched — the commit never ran."""
+        and must leave the cached packages list untouched."""
         build = BuildFactory()
         db.session.commit()
-        cache.set("packages_versions", "stale")
 
         with patch(
-            "spkrepo.views.tasks.extract_version_metadata",
-            side_effect=ValueError("bad data"),
-        ):
-            result = resync_build_metadata(build.id, str(build))
+            "spkrepo.views.frontend._latest_versions_query", return_value=[]
+        ) as query:
+            _packages_for_arch(_PROBE_ARCH)  # prime
+            query.reset_mock()
+            with patch(
+                "spkrepo.views.tasks.extract_version_metadata",
+                side_effect=ValueError("bad data"),
+            ):
+                result = resync_build_metadata(build.id, str(build))
 
-        self.assertEqual(result["status"], "error")
-        self.assertEqual(result["error"], "bad data")
-        self.assertEqual(cache.get("packages_versions"), "stale")
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["error"], "bad data")
+            _packages_for_arch(_PROBE_ARCH)  # still cached
+            self.assertEqual(query.call_count, 0)
 
     def test_invalidates_cache_on_success(self):
         build = BuildFactory()
         db.session.commit()
-        cache.set("packages_versions", "stale")
-        result = resync_build_metadata(build.id, str(build))
 
-        self.assertEqual(result["status"], "ok")
-        self.assertIsNone(cache.get("packages_versions"))
+        with patch(
+            "spkrepo.views.frontend._latest_versions_query", return_value=[]
+        ) as query:
+            _packages_for_arch(_PROBE_ARCH)  # prime
+            query.reset_mock()
+            result = resync_build_metadata(build.id, str(build))
+
+            self.assertEqual(result["status"], "ok")
+            _packages_for_arch(_PROBE_ARCH)  # invalidated -> recomputed
+            self.assertEqual(query.call_count, 1)
 
     def test_each_sibling_spk_opened_exactly_once(self):
         """Verify O(n) sibling reads: 3 builds → 3 SPK opens, no duplicates."""
@@ -270,21 +285,34 @@ class ResyncBuildFileTaskTestCase(BaseTestCase):
     def test_invalidates_cache_on_success(self):
         build = BuildFactory()
         db.session.commit()
-        cache.set("packages_versions", "stale")
-        result = resync_build_file(build.id, str(build))
 
-        self.assertEqual(result["status"], "ok")
-        self.assertIsNone(cache.get("packages_versions"))
+        with patch(
+            "spkrepo.views.frontend._latest_versions_query", return_value=[]
+        ) as query:
+            _packages_for_arch(_PROBE_ARCH)  # prime
+            query.reset_mock()
+            result = resync_build_file(build.id, str(build))
+
+            self.assertEqual(result["status"], "ok")
+            _packages_for_arch(_PROBE_ARCH)  # invalidated -> recomputed
+            self.assertEqual(query.call_count, 1)
 
     def test_cache_not_invalidated_on_error(self):
         build = BuildFactory()
         db.session.commit()
-        cache.set("packages_versions", "stale")
-        # Use ValueError so it is caught without triggering the retry path
-        with patch.object(Build, "calculate_size", side_effect=ValueError("bad size")):
-            resync_build_file(build.id, str(build))
+        with patch(
+            "spkrepo.views.frontend._latest_versions_query", return_value=[]
+        ) as query:
+            _packages_for_arch(_PROBE_ARCH)  # prime
+            query.reset_mock()
+            # Use ValueError so it is caught without triggering the retry path
+            with patch.object(
+                Build, "calculate_size", side_effect=ValueError("bad size")
+            ):
+                resync_build_file(build.id, str(build))
 
-        self.assertEqual(cache.get("packages_versions"), "stale")
+            _packages_for_arch(_PROBE_ARCH)  # still cached
+            self.assertEqual(query.call_count, 0)
 
 
 class SidecarRoundTripTestCase(BaseTestCase):

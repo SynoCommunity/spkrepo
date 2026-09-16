@@ -44,34 +44,8 @@ logger = logging.getLogger(__name__)
 ARCH_COOKIE = "spk_arch"
 #: How long the architecture list is cached (nas catalog uses 600s too).
 ARCH_LIST_TIMEOUT = 600
-#: Cache key for the unfiltered packages list; per-arch keys append ":<code>".
-PACKAGES_CACHE_KEY = "packages_versions"
-#: How long the packages list is cached, unfiltered or per-architecture.
+#: How long the packages list is cached, per architecture (or unfiltered).
 PACKAGES_CACHE_TIMEOUT = 300
-
-
-def packages_cache_key(arch_code=None):
-    """Cache key for the packages list, unfiltered or for one architecture."""
-    if arch_code is None:
-        return PACKAGES_CACHE_KEY
-    return f"{PACKAGES_CACHE_KEY}:{arch_code}"
-
-
-def invalidate_packages_cache():
-    """Drop the cached packages list: unfiltered and every per-arch variant.
-
-    Called by admin actions and background tasks whenever build metadata or
-    activation state changes. Enumerating the (small, known) architecture
-    list keeps this a bounded number of deletes.
-    """
-    cache.delete(PACKAGES_CACHE_KEY)
-    try:
-        arch_codes = get_architectures()
-    except Exception:
-        # A cache/DB hiccup must not break the action that triggered this.
-        arch_codes = []
-    for code in arch_codes:
-        cache.delete(f"{PACKAGES_CACHE_KEY}:{code}")
 
 
 @cache.memoize(timeout=ARCH_LIST_TIMEOUT)
@@ -202,8 +176,8 @@ def profile():
 @frontend.route("/packages")
 def packages():
     """Render the package list page, showing each package's latest
-    version. Results are cached for 5 minutes per variant (unfiltered, and
-    each architecture) under keys derived from "packages_versions".
+    version. Results are memoized for 5 minutes per architecture (and for
+    the unfiltered case) by :func:`_packages_for_arch`.
 
     With ?arch=<code> (or the spk_arch cookie), only packages with a
     build for that architecture — or a universal noarch build — are
@@ -212,11 +186,7 @@ def packages():
     """
     selected_arch, clear_cookie, param_present = _arch_request_context()
 
-    key = packages_cache_key(selected_arch)
-    versions = cache.get(key)
-    if versions is None:
-        versions = _latest_versions_query(selected_arch)
-        cache.set(key, versions, timeout=PACKAGES_CACHE_TIMEOUT)
+    versions = _packages_for_arch(selected_arch)
     active_versions = [v for v in versions if not v["archived"]]
     archived_versions = [v for v in versions if v["archived"]]
     return _arch_response(
@@ -317,6 +287,26 @@ def _latest_versions_query(arch_code):
             }
         )
     return rows
+
+
+@cache.memoize(timeout=PACKAGES_CACHE_TIMEOUT)
+def _packages_for_arch(arch_code):
+    """Memoized packages-list rows for ``arch_code`` (None = all).
+
+    Memoizing (rather than manual get/set) lets invalidate_packages_cache()
+    drop every architecture variant with one call, with no need to
+    enumerate the architectures.
+    """
+    return _latest_versions_query(arch_code)
+
+
+def invalidate_packages_cache():
+    """Drop the memoized packages list for every architecture variant.
+
+    Called by admin actions and background tasks whenever build metadata or
+    activation state changes.
+    """
+    cache.delete_memoized(_packages_for_arch)
 
 
 @frontend.route("/package/<name>")
