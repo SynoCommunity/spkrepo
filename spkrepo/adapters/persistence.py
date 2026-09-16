@@ -19,8 +19,9 @@ def assign_version_common_fields(version, spk) -> None:
 
     Assigns upstream_version, report/distributor/maintainer URLs, wizards,
     startable (via domain), license and service dependencies. Localized
-    displaynames are handled by :func:`resolve_displayname_languages` +
-    caller-owned relationship assignment (create vs clear semantics differ).
+    displaynames/descriptions are deliberately *not* touched here: their
+    create-vs-clear semantics differ between the upload and resync paths, so
+    each caller assigns them itself.
     """
     from ..domain.shared_kernel import derive_startable as _startable
     from ..domain.shared_kernel import parse_version as _parse_version
@@ -39,28 +40,6 @@ def assign_version_common_fields(version, spk) -> None:
     version.startable = _startable(info)
     version.license = getattr(spk, "license", info.get("license"))
     version.service_dependencies = resolve_services(info.get("install_dep_services"))
-
-
-def extract_version_metadata(spk):
-    """Extract all version-level fields from an SPK into a plain dict.
-
-    Adapter over :mod:`spkrepo.domain.versions` (single owner); kept here
-    for backward compatibility.
-    """
-    from ..domain.versions import extract_version_metadata as _pure
-
-    return _pure(spk)
-
-
-def assert_version_metadata_matches_db(version, spk):
-    """Raise :exc:`ValueError` on version-level metadata conflicts.
-
-    Adapter over :mod:`spkrepo.domain.versions` (single owner); kept here
-    for backward compatibility.
-    """
-    from ..domain.versions import assert_version_metadata_matches_db as _pure
-
-    return _pure(version, spk)
 
 
 def apply_info_from_spk(session, build, spk, md5_hash):
@@ -93,7 +72,7 @@ def apply_info_from_spk(session, build, spk, md5_hash):
 
     :param session: SQLAlchemy session
     :param build: the :class:`~spkrepo.models.Build` to update
-    :param spk: a parsed :class:`SPK` instance
+    :param spk: a parsed :class:`~spkrepo.adapters.spk_io.SPK` instance
     :param md5_hash: pre-calculated MD5 hex string of the SPK file
     :raises ValueError: on any validation failure (package mismatch, bad version, etc.)
     """

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import io
 import os
+from unittest.mock import patch
 
 from flask import current_app, url_for
 
@@ -245,6 +246,56 @@ class _AdminActionTestMixin:
             self.assertIn("activated", response.data.decode())
             self.assertTrue(build1.active)
             self.assertTrue(build2.active)
+
+    def test_action_activate_queues_upload_when_storage_configured(self):
+        """Activating a signed local build with storage enabled must enqueue
+        upload_to_storage.delay for it (admin action -> Celery boundary)."""
+        build = BuildFactory(active=False, signed=True)
+        db.session.commit()
+
+        class _FakeResult:
+            id = "fake-task-id"
+
+        with self.logged_user("package_admin"):
+            with (
+                patch(
+                    "spkrepo.views.admin.storage_service.storage_configured",
+                    return_value=True,
+                ),
+                patch(
+                    "spkrepo.views.admin.upload_to_storage.delay",
+                    return_value=_FakeResult(),
+                ) as delay,
+            ):
+                response = self.client.post(
+                    url_for(self._action_endpoint),
+                    follow_redirects=True,
+                    data=dict(action="01_activate", rowid=[self._rowid(build)]),
+                )
+        self.assert200(response)
+        self.assertIn("queued for upload", response.data.decode())
+        delay.assert_called_once_with(build.id, str(build))
+
+    def test_action_activate_recovers_signature_from_file(self):
+        """Column says unsigned but the on-disk SPK is signed: recovery must
+        flip the flag and activate instead of rejecting the build."""
+        build = BuildFactory(active=False, signed=False)
+        db.session.commit()
+        with create_spk(build, signature="recovered-signature") as stream:
+            build.save(stream)
+
+        with self.logged_user("package_admin"):
+            response = self.client.post(
+                url_for(self._action_endpoint),
+                follow_redirects=True,
+                data=dict(action="01_activate", rowid=[self._rowid(build)]),
+            )
+        self.assert200(response)
+        self.assertNotIn("no signature", response.data.decode().lower())
+        db.session.expire_all()
+        refreshed = db.session.get(Build, build.id)
+        self.assertTrue(refreshed.signed)
+        self.assertTrue(refreshed.active)
 
     def test_action_deactivate_one(self):
         with self.logged_user("package_admin"):
@@ -881,6 +932,49 @@ class BuildTestCase(_AdminActionTestMixin, BaseTestCase):
                 data=dict(action="07_sign", rowid=[build.id]),
             )
         self.assert403(response)
+
+    def test_action_sign_recovers_existing_signature(self):
+        """A build whose column says unsigned but whose file is signed must be
+        corrected (recovered branch) without invoking GPG."""
+        build = BuildFactory(active=False, signed=False)
+        db.session.commit()
+        with create_spk(build, signature="recovered-signature") as stream:
+            build.save(stream)
+
+        with self.logged_user("admin", "package_admin"):
+            response = self.client.post(
+                url_for("build.action_view"),
+                follow_redirects=True,
+                data=dict(action="07_sign", rowid=[build.id]),
+            )
+        self.assert200(response)
+        self.assertIn("Signature status corrected", response.data.decode())
+        db.session.expire_all()
+        self.assertTrue(db.session.get(Build, build.id).signed)
+
+    def test_action_sign_success_sets_signed(self):
+        """GPG sign boundary mocked: a successful sign flips the flag and
+        resyncs md5/size from the (now signed) file."""
+        build = BuildFactory(active=False, signed=False)
+        db.session.commit()
+        self.app.config["GNUPG_PATH"] = "/tmp/gnupg-test"
+        try:
+            with self.logged_user("admin", "package_admin"):
+                with patch("spkrepo.views.admin.SPK.sign"):
+                    response = self.client.post(
+                        url_for("build.action_view"),
+                        follow_redirects=True,
+                        data=dict(action="07_sign", rowid=[build.id]),
+                    )
+        finally:
+            self.app.config["GNUPG_PATH"] = None
+        self.assert200(response)
+        self.assertIn("refreshed", response.data.decode())
+        db.session.expire_all()
+        refreshed = db.session.get(Build, build.id)
+        self.assertTrue(refreshed.signed)
+        self.assertIsNotNone(refreshed.md5)
+        self.assertGreater(refreshed.size, 0)
 
     def test_action_unsign_requires_admin(self):
         build = BuildFactory(active=False)

@@ -76,6 +76,12 @@ class PackagesTestCase(BaseTestCase):
         self.assertIn(match.version.displaynames["enu"].displayname, response_data)
         self.assertNotIn(other.version.displaynames["enu"].displayname, response_data)
         self.assertIn("Showing packages for", response_data)
+        # The clear-filter control is the hook the model/arch JS binds to; it
+        # must be present (and absent when unfiltered) so "show all" can also
+        # clear the remembered model.
+        self.assertIn('id="showAllArch"', response_data)
+        unfiltered = self.client.get(url_for("frontend.packages", arch="all"))
+        self.assertNotIn('id="showAllArch"', unfiltered.data.decode())
 
     def test_filter_includes_noarch_builds(self):
         universal = BuildFactory(

@@ -59,7 +59,11 @@ def _compile_days_ago_postgresql(element, compiler, **kw):
 
 @compiles(_days_ago)
 def _compile_days_ago_default(element, compiler, **kw):
-    """Fallback renderer (SQLite syntax) for other dialects."""
+    """Fallback renderer for unknown dialects (SQLite syntax).
+
+    Only SQLite and PostgreSQL are supported; any other backend gets SQLite
+    SQL and will fail loudly rather than silently mis-reporting.
+    """
     return f"date('now', '-{element.days} days')"
 
 
@@ -756,8 +760,8 @@ def group_builds_per_dsm(builds):
     group's builds also ordered by full firmware version, newest-first,
     so e.g. 7.2.x builds don't interleave with 7.1.x builds.
 
-    Adapter over :func:`spkrepo.domain.catalog.group_builds_per_dsm`
-    (single owner); kept here for backward compatibility.
+    Re-export of :func:`spkrepo.domain.catalog.group_builds_per_dsm`
+    (single owner); used by ``Version.builds_per_dsm`` and the frontend.
     """
     from .domain.catalog import group_builds_per_dsm as _pure
 
@@ -1062,11 +1066,17 @@ class Package(db.Model):
 
 
 def _before_insert_handler(mapper, connection, target):
+    """Stash the on-disk path before insert (used by the after-commit check)."""
     if hasattr(target, "_before_insert"):
         target._before_insert()
 
 
 def _after_insert_handler(mapper, connection, target):
+    """Run ``_after_insert`` only *after* the transaction commits.
+
+    The file-existence assertion must not fire while the insert can still be
+    rolled back, so it is deferred to the session's ``after_commit`` event.
+    """
     if not hasattr(target, "_after_insert"):
         return
     session = Session.object_session(target)
@@ -1079,11 +1089,13 @@ def _after_insert_handler(mapper, connection, target):
 
 
 def _before_delete_handler(mapper, connection, target):
+    """Stash the on-disk path before delete."""
     if hasattr(target, "_before_delete"):
         target._before_delete()
 
 
 def _after_delete_handler(mapper, connection, target):
+    """Delete the on-disk file/dir only after the transaction commits."""
     if not hasattr(target, "_after_delete"):
         return
     session = Session.object_session(target)

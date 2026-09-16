@@ -318,9 +318,9 @@ def package(name):
 def unique_user_username(form, field):
     """WTForms validator: reject usernames that are already taken.
 
-    Records the existing user on ``form.existing_username_user`` so that
-    :py:data:`SECURITY_RETURN_GENERIC_RESPONSES` can squash the error and avoid
-    leaking which usernames are registered.
+    Records the existing user on ``form.existing_username_user`` so that the
+    Flask-Security ``SECURITY_RETURN_GENERIC_RESPONSES`` setting can squash
+    the error and avoid leaking which usernames are registered.
     """
     form.existing_username_user = user_datastore.find_user(username=field.data)
     if form.existing_username_user is not None:

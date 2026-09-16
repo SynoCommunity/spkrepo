@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+"""Transport views: web frontend, REST API, NAS catalog, admin, tasks."""
+
 from .admin import (
     ArchitectureView,
     BuildView,

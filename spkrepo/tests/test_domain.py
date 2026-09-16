@@ -297,6 +297,9 @@ class TestDomainGaps:
     def test_resolve_client_ip_edge(self):
         assert access.resolve_client_ip({"X-Forwarded-For": "  "}, "r") == "r"
         assert access.resolve_client_ip({"x-forwarded-for": "a, , b,"}, "r") == "a"
+        # truthy header that yields zero entries -> remote_addr fallback
+        assert access.resolve_client_ip({"X-Forwarded-For": ","}, "r") == "r"
+        assert access.resolve_client_ip({"X-Forwarded-For": " , "}, "r") == "r"
         assert (
             access.resolve_client_ip({"FASTLY-CLIENT-IP": "9.9.9.9"}, "r") == "9.9.9.9"
         )
@@ -579,6 +582,50 @@ class TestDomainGaps:
         )
         assert m["install_wizard"] is True and m["upgrade_wizard"] is True
 
+    def test_extract_sidecar_metadata_matches_spk_extraction(self):
+        """Sidecar-derived metadata must use the same field list as the SPK
+        extractor (this parity is what the resync sibling check relies on)."""
+        sidecar = {
+            "info": {
+                "version": "1.2.3-10",
+                "displayname": "G",
+                "install_dep_services": "a b",
+                "report_url": "http://r",
+            },
+            "derived": {
+                "install_wizard": True,
+                "upgrade_wizard": False,
+                "startable": True,
+                "license": "MIT",
+            },
+        }
+        meta = _versions.extract_sidecar_metadata(sidecar)
+        assert meta["upstream_version"] == "1.2.3"
+        assert meta["displaynames"] == {"enu": "G"}
+        assert meta["install_dep_services"] == {"a", "b"}
+        assert meta["report_url"] == "http://r"
+        assert meta["install_wizard"] is True
+        assert meta["upgrade_wizard"] is False
+        assert meta["license"] == "MIT"
+
+        # Sidecar info holds raw "yes"/"no" strings; startable must come from
+        # the derived boolean, not be re-derived from those strings.
+        sidecar["info"]["startable"] = "no"
+        sidecar["derived"]["startable"] = False
+        assert _versions.extract_sidecar_metadata(sidecar)["startable"] is False
+
+        # Parity: the SPK extractor over the equivalent parsed object matches.
+        import types
+
+        sidecar["info"]["startable"] = None
+        sidecar["derived"]["startable"] = True
+        spk_like = types.SimpleNamespace(
+            info=sidecar["info"], wizards={"install"}, license="MIT"
+        )
+        assert _versions.extract_version_metadata(
+            spk_like
+        ) == _versions.extract_sidecar_metadata(sidecar)
+
     def test_assert_version_metadata_matches_db_fakes(self):
         """Fake-based pins for the consistency check (no DB)."""
         import types
@@ -672,6 +719,15 @@ class TestDomainGaps:
             ),
             _spk({"version": "1.2.3-4", "displayname": "G"}),
         )
+        # real startable mismatch (DB True vs SPK ctl_stop=no -> False) raises
+        with pytest.raises(ValueError, match="startable"):
+            _versions.assert_version_metadata_matches_db(
+                _ver(
+                    startable=True,
+                    displaynames={"enu": types.SimpleNamespace(displayname="G")},
+                ),
+                _spk(dict(ok_info, ctl_stop=False)),
+            )
 
     def test_branch_gaps(self):
         from spkrepo.domain import catalog as _cat

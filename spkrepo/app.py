@@ -167,6 +167,7 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
 
     @app.after_request
     def set_cache_control(response):
+        """Set Cache-Control: no-store for auth/admin pages, public for catalog."""
         endpoint = request.endpoint or ""
 
         if (

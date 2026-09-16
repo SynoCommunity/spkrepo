@@ -365,6 +365,30 @@ class CatalogTestCase(BaseTestCase):
         )
         self.assertEqual(len(packages), 0)
 
+    def test_catalog_memoization_and_invalidation(self):
+        """Catalog is memoized; DB changes surface only after invalidation."""
+        from spkrepo.views.nas import clear_catalog_cache
+
+        build = BuildFactory(
+            active=True,
+            version__report_url=None,
+            architectures=[Architecture.find("88f6281", syno=True)],
+            firmware_min=Firmware.find(1594),
+        )
+        db.session.commit()
+        data = dict(arch="88f6281", build="1594", language="enu")
+
+        self.assertEqual(len(self._catalog_post(data)), 1)
+
+        # Deactivate in DB without invalidating: memoized catalog is stale.
+        build.active = False
+        db.session.commit()
+        self.assertEqual(len(self._catalog_post(data)), 1)
+
+        # After invalidation the change is visible.
+        clear_catalog_cache()
+        self.assertEqual(len(self._catalog_post(data)), 0)
+
     def test_stable_channel_excludes_active_beta_build(self):
         BuildFactory(
             active=True,

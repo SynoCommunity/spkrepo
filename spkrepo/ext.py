@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+"""Flask extension singletons, initialised in :func:`spkrepo.app.create_app`."""
+
 from celery import Celery
 from flask_babel import Babel
 from flask_caching import Cache

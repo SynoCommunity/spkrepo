@@ -25,6 +25,10 @@ extensions = [
     "celery.contrib.sphinx",
 ]
 
+# celery.contrib.sphinx uses legacy class-based autodoc; set it explicitly
+# instead of relying on Sphinx 9's auto-enable warning.
+autodoc_use_legacy_class_based = True
+
 templates_path = ["_templates"]
 source_suffix = ".rst"
 root_doc = "index"

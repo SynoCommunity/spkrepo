@@ -89,7 +89,7 @@
 {% if selected_arch|default(None) %}
 <div class="alert alert-info">
   Showing packages for <strong>{{ selected_arch }}</strong> (including universal builds).
-  <a href="{{ url_for('frontend.packages', arch='all') }}">Show all architectures</a>
+  <a href="{{ url_for('frontend.packages', arch='all') }}" id="showAllArch">Show all architectures</a>
 </div>
 {% endif %}
 <div id="packages">
@@ -132,6 +132,9 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   var sel = document.getElementById('archSelector');
+  function clearSavedModel() {
+    try { localStorage.removeItem('spk_model'); } catch (e) {}
+  }
   function navigate(arch) {
     var params = new URLSearchParams(window.location.search);
     if (arch) {
@@ -143,9 +146,14 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     window.location.search = params.toString();
   }
+  // Clearing the arch filter (dropdown or "show all") must also drop the
+  // remembered model, otherwise the field repopulates from localStorage and
+  // the filter looks like it is still applied.
+  var showAll = document.getElementById('showAllArch');
+  if (showAll) showAll.addEventListener('click', clearSavedModel);
   if (sel) {
     sel.addEventListener('change', function () {
-      try { localStorage.removeItem('spk_model'); } catch (e) {}
+      clearSavedModel();
       navigate(sel.value);
     });
   }
@@ -160,6 +168,9 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!modelAlert) return;
     modelAlert.textContent = msg;
     modelAlert.classList.remove('d-none');
+  }
+  function hideModelAlert() {
+    if (modelAlert) modelAlert.classList.add('d-none');
   }
   if (modelInput && modelList) {
     try {
@@ -181,11 +192,20 @@ document.addEventListener('DOMContentLoaded', function () {
         var modelGo = document.getElementById('modelGo');
         if (modelGo) modelGo.addEventListener('click', applyModel);
         function applyModel() {
-          var wanted = modelInput.value.trim().toUpperCase();
+          var raw = modelInput.value.trim();
+          if (!raw) {
+            // Empty field: clear the current architecture filter (and the
+            // remembered model) rather than reporting an unknown model.
+            clearSavedModel();
+            hideModelAlert();
+            navigate(null);
+            return;
+          }
+          var wanted = raw.toUpperCase();
           var match = models.find(function (m) { return m.toUpperCase() === wanted; });
           if (!match) {
             showModelAlert(
-              'Unknown model "' + modelInput.value.trim() +
+              'Unknown model "' + raw +
               '" — pick one from the list or choose an architecture directly.'
             );
             return;

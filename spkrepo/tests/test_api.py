@@ -758,3 +758,51 @@ class PackagesTestCase(BaseTestCase):
         self.assertIn(
             "Unknown dependent service: no-such-service", response.data.decode()
         )
+
+
+class CleanupOnFailureTestCase(BaseTestCase):
+    """FS cleanup branches after a failed SPK save (filesystem boundary)."""
+
+    def test_removes_package_dir_when_package_created(self):
+        from spkrepo.views.api import _cleanup_on_failure
+
+        data_path = current_app.config["DATA_PATH"]
+        package_dir = os.path.join(data_path, "newpkg")
+        os.makedirs(os.path.join(package_dir, "1"))
+        _cleanup_on_failure(data_path, "newpkg", 1, "newpkg/1/x.spk", True, False)
+        self.assertFalse(os.path.exists(package_dir))
+
+    def test_removes_version_dir_when_version_created(self):
+        from spkrepo.views.api import _cleanup_on_failure
+
+        data_path = current_app.config["DATA_PATH"]
+        version_dir = os.path.join(data_path, "pkg", "2")
+        sibling_dir = os.path.join(data_path, "pkg", "1")
+        os.makedirs(version_dir)
+        os.makedirs(sibling_dir)
+        _cleanup_on_failure(data_path, "pkg", 2, "pkg/2/x.spk", False, True)
+        self.assertFalse(os.path.exists(version_dir))
+        self.assertTrue(os.path.exists(sibling_dir))
+
+    def test_removes_only_the_failed_build_file(self):
+        from spkrepo.views.api import _cleanup_on_failure
+
+        data_path = current_app.config["DATA_PATH"]
+        version_dir = os.path.join(data_path, "pkg", "3")
+        os.makedirs(version_dir)
+        failed = os.path.join(version_dir, "a.spk")
+        kept = os.path.join(version_dir, "b.spk")
+        for path in (failed, kept):
+            with open(path, "wb") as f:
+                f.write(b"x")
+        _cleanup_on_failure(data_path, "pkg", 3, "pkg/3/a.spk", False, False)
+        self.assertFalse(os.path.exists(failed))
+        self.assertTrue(os.path.exists(kept))
+        self.assertTrue(os.path.exists(version_dir))
+
+    def test_missing_build_file_does_not_raise(self):
+        from spkrepo.views.api import _cleanup_on_failure
+
+        data_path = current_app.config["DATA_PATH"]
+        os.makedirs(os.path.join(data_path, "pkg", "4"))
+        _cleanup_on_failure(data_path, "pkg", 4, "pkg/4/missing.spk", False, False)
