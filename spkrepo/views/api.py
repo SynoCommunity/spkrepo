@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """SPK upload API adapter (Flask-RESTful).
 
-Parses uploads via :mod:`spkrepo.utils`, validates against
+Parses uploads via :mod:`spkrepo.adapters.spk_io`, validates against
 :mod:`spkrepo.domain`, and maps outcomes to HTTP status codes.
 """
 import io
@@ -17,6 +17,9 @@ from flask_restful import Api, Resource, abort
 from flask_security import current_user
 from sqlalchemy.exc import IntegrityError
 
+from ..adapters.repositories import resolve_architectures, resolve_firmware
+from ..adapters.spk_io import SPK
+from ..domain.versions import assert_version_metadata_matches_db
 from ..exceptions import SPKParseError, SPKSignError
 from ..ext import db
 from ..models import (
@@ -29,12 +32,6 @@ from ..models import (
     Version,
     user_datastore,
 )
-from ..utils import (
-    SPK,
-    assert_version_metadata_matches_db,
-    resolve_architectures,
-    resolve_firmware,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +40,7 @@ api = Blueprint("api", __name__)
 
 def api_auth_required(f):
     """Require HTTP Basic auth with a ``developer``-role API key (else 401)."""
+
     @wraps(f)
     def wrapper(*args, **kwargs):
         if request.authorization and request.authorization.type == "basic":
@@ -176,10 +174,12 @@ class Packages(Resource):
             create_package = True
             package = Package(name=spk.info["package"], author=current_user)
 
-        # Version (shared writer in utils; pure parsing in domain.shared_kernel)
+        # Version (shared writer; pure parsing in domain.shared_kernel)
+        from ..adapters.persistence import assign_version_common_fields
+        from ..adapters.repositories import (
+            resolve_displayname_languages as _resolve_names,
+        )
         from ..domain.shared_kernel import parse_version as _parse_version
-        from ..utils import assign_version_common_fields
-        from ..utils import resolve_displayname_languages as _resolve_names
 
         create_version = False
         try:
@@ -267,8 +267,10 @@ class Packages(Resource):
             changelog=spk.info.get("changelog"),
         )
 
+        from ..adapters.repositories import (
+            resolve_description_languages as _resolve_desc,
+        )
         from ..domain.shared_kernel import map_descriptions as _descriptions
-        from ..utils import resolve_description_languages as _resolve_desc
 
         with db.session.no_autoflush:
             try:

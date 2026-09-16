@@ -37,6 +37,7 @@ from wtforms import PasswordField
 from wtforms.validators import Regexp
 
 from .. import storage as storage_service
+from ..adapters.spk_io import SPK
 from ..ext import cache, celery, db
 from ..models import (
     Architecture,
@@ -50,7 +51,6 @@ from ..models import (
     User,
     Version,
 )
-from ..utils import SPK
 from .nas import clear_catalog_cache
 from .tasks import (
     rehome_from_storage,

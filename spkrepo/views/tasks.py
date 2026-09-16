@@ -14,14 +14,11 @@ from datetime import datetime, timezone
 from flask import current_app
 
 from .. import storage
+from ..adapters.persistence import apply_info_from_spk, apply_sidecar_to_db
+from ..adapters.spk_io import SPK
+from ..domain.versions import extract_version_metadata
 from ..ext import cache, celery, db
 from ..models import Build
-from ..utils import (
-    SPK,
-    apply_info_from_spk,
-    apply_sidecar_to_db,
-    extract_version_metadata,
-)
 from .nas import clear_catalog_cache
 
 
@@ -212,11 +209,7 @@ def upload_to_storage(self, build_id, build_label):
         os.remove(sidecar_path)
 
     try:
-        from ..domain.spk import (
-            derive_startable_raw,
-            has_wizard,
-            parse_loose_info_text,
-        )
+        from ..domain.spk import derive_startable_raw, has_wizard, parse_loose_info_text
 
         info = {}
         install_wizard = False

@@ -19,7 +19,7 @@ translation, firmware/version parsing, filenames, display-name mapping.
 SPK Parsing
 -----------
 Strict and lenient ``.spk`` INFO/conf parsing over bytes and dicts
-(the tar adapter ``spkrepo.utils.SPK`` handles archive I/O).
+(the tar adapter ``spkrepo.adapters.spk_io.SPK`` handles archive I/O).
 
 .. automodule:: spkrepo.domain.spk
     :members:

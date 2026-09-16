@@ -25,6 +25,7 @@ from flask_security import hash_password
 from flask_testing import TestCase
 
 from spkrepo import create_app
+from spkrepo.adapters.seed import populate_db
 from spkrepo.ext import db
 from spkrepo.models import (
     Architecture,
@@ -43,7 +44,6 @@ from spkrepo.models import (
     User,
     Version,
 )
-from spkrepo.utils import populate_db
 
 fake = faker.Faker()
 

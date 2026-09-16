@@ -5,6 +5,11 @@ import tarfile
 
 from mock import Mock
 
+from spkrepo.adapters.spk_io import SPK
+from spkrepo.domain.versions import (
+    assert_version_metadata_matches_db,
+    extract_version_metadata,
+)
 from spkrepo.exceptions import SPKParseError
 from spkrepo.ext import db
 from spkrepo.models import Architecture, Package
@@ -14,11 +19,6 @@ from spkrepo.tests.common import (
     PackageFactory,
     create_info,
     create_spk,
-)
-from spkrepo.utils import (
-    SPK,
-    assert_version_metadata_matches_db,
-    extract_version_metadata,
 )
 
 

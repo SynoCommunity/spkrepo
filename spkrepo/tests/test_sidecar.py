@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
+from spkrepo.adapters.persistence import apply_sidecar_to_db
 from spkrepo.ext import db
 from spkrepo.models import Build
 from spkrepo.tests.common import BaseTestCase, BuildFactory
-from spkrepo.utils import apply_sidecar_to_db
 
 
 class ApplySidecarToDBTestCase(BaseTestCase):

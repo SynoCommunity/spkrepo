@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Pure SPK INFO/conf parsing. Operates on bytes/dicts, never on tarfiles.
 
-The tar adapter (utils.SPK) extracts raw bytes and delegates here, so all
+The tar adapter (adapters.spk_io.SPK) extracts raw bytes and delegates here, so all
 branch logic is unit-testable without fixture archives.
 """
 import base64
