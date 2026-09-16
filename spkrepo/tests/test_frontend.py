@@ -118,6 +118,29 @@ class PackagesTestCase(BaseTestCase):
         self.assertNotIn("firmware", joined)
         self.assertNotIn("build_architecture", joined)
 
+    def test_filtered_page_is_cached(self):
+        BuildFactory(architectures=[Architecture.find("cedarview")], active=True)
+        db.session.commit()
+        with mock.patch(
+            "spkrepo.views.frontend._latest_versions_query", return_value=[]
+        ) as query:
+            self.client.get(url_for("frontend.packages", arch="cedarview"))
+            self.client.get(url_for("frontend.packages", arch="cedarview"))
+        self.assertEqual(query.call_count, 1)
+
+    def test_invalidate_packages_cache_clears_arch_variants(self):
+        from spkrepo.views.frontend import invalidate_packages_cache
+
+        BuildFactory(architectures=[Architecture.find("cedarview")], active=True)
+        db.session.commit()
+        with mock.patch(
+            "spkrepo.views.frontend._latest_versions_query", return_value=[]
+        ) as query:
+            self.client.get(url_for("frontend.packages", arch="cedarview"))
+            invalidate_packages_cache()
+            self.client.get(url_for("frontend.packages", arch="cedarview"))
+        self.assertEqual(query.call_count, 2)
+
     def test_filter_by_arch_shows_matching_hides_others(self):
         match = BuildFactory(
             architectures=[Architecture.find("cedarview")], active=True

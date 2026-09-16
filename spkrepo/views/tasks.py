@@ -18,8 +18,9 @@ from .. import storage
 from ..adapters.persistence import apply_info_from_spk, apply_sidecar_to_db
 from ..adapters.spk_io import SPK
 from ..domain.versions import extract_sidecar_metadata, extract_version_metadata
-from ..ext import cache, celery, db
+from ..ext import celery, db
 from ..models import Build
+from .frontend import invalidate_packages_cache
 from .nas import clear_catalog_cache
 
 
@@ -44,7 +45,7 @@ def resync_build_metadata(self, build_id, build_label):
                 sidecar = json.load(f)
             apply_sidecar_to_db(db.session, build, sidecar)
             db.session.commit()
-            cache.delete("packages_versions")
+            invalidate_packages_cache()
             clear_catalog_cache()
             return {"status": "ok", "build_id": build_id, "label": build_label}
 
@@ -80,7 +81,7 @@ def resync_build_metadata(self, build_id, build_label):
             md5 = spk.calculate_md5()
             apply_info_from_spk(db.session, build, spk, md5)
             db.session.commit()
-            cache.delete("packages_versions")
+            invalidate_packages_cache()
             clear_catalog_cache()
 
         return {"status": "ok", "build_id": build_id, "label": build_label}
@@ -128,7 +129,7 @@ def resync_build_file(self, build_id, build_label):
             build.size = build.calculate_size()
 
         db.session.commit()
-        cache.delete("packages_versions")
+        invalidate_packages_cache()
         clear_catalog_cache()
         return {"status": "ok", "build_id": build_id, "label": build_label}
 
@@ -342,7 +343,7 @@ def rehome_from_storage(self, build_id, build_label):
 
         build.storage = "local"
         db.session.commit()
-        cache.delete("packages_versions")
+        invalidate_packages_cache()
         clear_catalog_cache()
         return {
             "status": "ok",
