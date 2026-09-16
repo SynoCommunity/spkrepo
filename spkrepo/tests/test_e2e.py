@@ -14,7 +14,13 @@ from flask import current_app, url_for
 
 from spkrepo.ext import db
 from spkrepo.models import Architecture, Build, Firmware, Role
-from spkrepo.tests.common import BaseTestCase, BuildFactory, UserFactory, create_spk
+from spkrepo.tests.common import (
+    BaseTestCase,
+    BuildFactory,
+    UserFactory,
+    create_spk,
+    run_task_sync,
+)
 from spkrepo.tests.test_api import authorization_header, get_only_build
 from spkrepo.views.tasks import rehome_from_storage, upload_to_storage
 
@@ -88,7 +94,7 @@ class UploadCatalogDownloadE2E(BaseTestCase):
 
 
 class StorageRoundTripE2E(BaseTestCase):
-    """Activate -> upload_to_storage (mocked S3) -> rehome (mocked S3)."""
+    """Activate (queues upload) -> upload_to_storage -> rehome."""
 
     def test_activate_upload_rehome(self):
         user = UserFactory(roles=[Role.find("developer"), Role.find("package_admin")])
@@ -101,13 +107,32 @@ class StorageRoundTripE2E(BaseTestCase):
         self.assert201(_upload_template(self.client, user, template))
         build = get_only_build()
         _sign(build)
-        _activate_build(self, build)
 
-        with patch("spkrepo.views.tasks.storage.upload", return_value=True):
-            result = upload_to_storage(build.id, str(build))
-        assert result["status"] == "ok"
+        # Activate with Object Storage enabled: the admin action must queue
+        # upload_to_storage; .delay runs the task synchronously here, so the
+        # whole action -> Celery -> S3 (mocked) seam is exercised.
+        with (
+            patch(
+                "spkrepo.views.admin.storage_service.storage_configured",
+                return_value=True,
+            ),
+            patch(
+                "spkrepo.views.admin.upload_to_storage.delay",
+                side_effect=run_task_sync(upload_to_storage.run),
+            ),
+            patch("spkrepo.views.tasks.storage.upload", return_value=True),
+        ):
+            with self.logged_user("package_admin"):
+                response = self.client.post(
+                    url_for("build.action_view"),
+                    follow_redirects=True,
+                    data=dict(action="01_activate", rowid=[build.id]),
+                )
+        self.assert200(response)
         db.session.expire_all()
-        assert db.session.get(Build, build.id).storage == "remote"
+        refreshed = db.session.get(Build, build.id)
+        self.assertTrue(refreshed.active)
+        self.assertEqual(refreshed.storage, "remote")
 
         local_path = os.path.join(current_app.config["DATA_PATH"], build.path)
         assert not os.path.exists(local_path)

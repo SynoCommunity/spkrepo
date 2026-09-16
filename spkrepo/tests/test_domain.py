@@ -297,6 +297,9 @@ class TestDomainGaps:
     def test_resolve_client_ip_edge(self):
         assert access.resolve_client_ip({"X-Forwarded-For": "  "}, "r") == "r"
         assert access.resolve_client_ip({"x-forwarded-for": "a, , b,"}, "r") == "a"
+        # truthy header that yields zero entries -> remote_addr fallback
+        assert access.resolve_client_ip({"X-Forwarded-For": ","}, "r") == "r"
+        assert access.resolve_client_ip({"X-Forwarded-For": " , "}, "r") == "r"
         assert (
             access.resolve_client_ip({"FASTLY-CLIENT-IP": "9.9.9.9"}, "r") == "9.9.9.9"
         )
@@ -672,6 +675,15 @@ class TestDomainGaps:
             ),
             _spk({"version": "1.2.3-4", "displayname": "G"}),
         )
+        # real startable mismatch (DB True vs SPK ctl_stop=no -> False) raises
+        with pytest.raises(ValueError, match="startable"):
+            _versions.assert_version_metadata_matches_db(
+                _ver(
+                    startable=True,
+                    displaynames={"enu": types.SimpleNamespace(displayname="G")},
+                ),
+                _spk(dict(ok_info, ctl_stop=False)),
+            )
 
     def test_branch_gaps(self):
         from spkrepo.domain import catalog as _cat

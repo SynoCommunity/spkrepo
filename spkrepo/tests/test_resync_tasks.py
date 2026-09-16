@@ -251,3 +251,37 @@ class ResyncBuildFileTaskTestCase(BaseTestCase):
             resync_build_file(build.id, str(build))
 
         self.assertEqual(cache.get("packages_versions"), "stale")
+
+
+class SidecarRoundTripTestCase(BaseTestCase):
+    """The sidecar written by upload_to_storage must be readable by
+    resync_build_metadata (writer/reader cross-task contract)."""
+
+    def test_upload_written_sidecar_is_applied_by_resync(self):
+        from spkrepo.views.tasks import upload_to_storage
+
+        build = BuildFactory(signed=True, active=True)
+        db.session.commit()
+
+        with patch("spkrepo.views.tasks.storage.upload", return_value=True):
+            result = upload_to_storage(build.id, str(build))
+        self.assertEqual(result["status"], "ok")
+
+        db.session.expire_all()
+        build = db.session.get(Build, build.id)
+        self.assertEqual(build.storage, "remote")
+        sidecar_path = os.path.join(
+            current_app.config["DATA_PATH"], build.path + ".json"
+        )
+        self.assertTrue(os.path.exists(sidecar_path))
+
+        # Corrupt a version field the sidecar carries, then resync.
+        build.version.upstream_version = "CORRUPT"
+        db.session.commit()
+
+        result = resync_build_metadata(build.id, str(build))
+        self.assertEqual(result["status"], "ok")
+        db.session.expire_all()
+        self.assertNotEqual(
+            db.session.get(Build, build.id).version.upstream_version, "CORRUPT"
+        )
