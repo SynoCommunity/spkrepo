@@ -436,21 +436,40 @@ def ingest_logs():
         rows = build_upsert_rows(counts, build_ids, target_noarchs, download_sources)
         try:
             dialect = db.engine.dialect.name
+            # ``constraint=`` (by unique-constraint name) is PostgreSQL-only;
+            # SQLite targets the same constraint via its columns.
+            conflict_target = {
+                "package_id",
+                "architecture_id",
+                "firmware_build",
+                "target_firmware_build",
+                "date",
+            }
             if dialect == "postgresql":
                 from sqlalchemy.dialects.postgresql import insert as upsert_insert
+
+                stmt = upsert_insert(DownloadStat).values(rows)
+                stmt = stmt.on_conflict_do_update(
+                    constraint="uq_download_stat",
+                    set_={
+                        "count": DownloadStat.count + stmt.excluded.count,
+                        "target_noarch": stmt.excluded.target_noarch,
+                    },
+                )
             elif dialect == "sqlite":
                 from sqlalchemy.dialects.sqlite import insert as upsert_insert
+
+                stmt = upsert_insert(DownloadStat).values(rows)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=sorted(conflict_target),
+                    set_={
+                        "count": DownloadStat.count + stmt.excluded.count,
+                        "target_noarch": stmt.excluded.target_noarch,
+                    },
+                )
             else:
                 raise RuntimeError(f"Upsert not supported for dialect: {dialect}")
 
-            stmt = upsert_insert(DownloadStat).values(rows)
-            stmt = stmt.on_conflict_do_update(
-                constraint="uq_download_stat",
-                set_={
-                    "count": DownloadStat.count + stmt.excluded.count,
-                    "target_noarch": stmt.excluded.target_noarch,
-                },
-            )
             db.session.execute(stmt)
             db.session.commit()
         except Exception as e:
