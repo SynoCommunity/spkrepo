@@ -64,6 +64,60 @@ class PackagesTestCase(BaseTestCase):
         response = self.client.get(url_for("frontend.packages"))
         self.assert200(response)
 
+    def test_package_description_rendered(self):
+        # The list page shows each package's (default build) description;
+        # this exercises the dedicated default-description query.
+        build = BuildFactory(active=True)
+        db.session.commit()
+        response = self.client.get(url_for("frontend.packages"))
+        self.assert200(response)
+        self.assertIn(build.descriptions["enu"].description, response.data.decode())
+
+    def test_active_only_has_no_archived_section(self):
+        BuildFactory(active=True)
+        db.session.commit()
+        response = self.client.get(url_for("frontend.packages"))
+        self.assert200(response)
+        self.assertNotIn("Archived Packages", response.data.decode())
+
+    def test_inactive_package_appears_in_archived_section(self):
+        build = BuildFactory(active=False)
+        db.session.commit()
+        response = self.client.get(url_for("frontend.packages"))
+        self.assert200(response)
+        data = response.data.decode()
+        self.assertIn("Archived Packages", data)
+        self.assertIn(build.version.displaynames["enu"].displayname, data)
+
+    def test_latest_versions_query_does_not_load_all_builds(self):
+        # Regression guard for the packages-list query: it must not eager-load
+        # every Build/Description (which joined firmware/architecture and was
+        # ~700ms). Query count stays small and constant as builds grow.
+        from sqlalchemy import event
+
+        from spkrepo.views.frontend import _latest_versions_query
+
+        for _ in range(5):
+            BuildFactory(active=True)
+        db.session.commit()
+
+        statements = []
+
+        def _record(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(db.engine, "before_cursor_execute", _record)
+        try:
+            rows = _latest_versions_query(None)
+        finally:
+            event.remove(db.engine, "before_cursor_execute", _record)
+
+        self.assertEqual(len(rows), 5)
+        self.assertLessEqual(len(statements), 6, statements)
+        joined = " ".join(statements).lower()
+        self.assertNotIn("firmware", joined)
+        self.assertNotIn("build_architecture", joined)
+
     def test_filter_by_arch_shows_matching_hides_others(self):
         match = BuildFactory(
             architectures=[Architecture.find("cedarview")], active=True

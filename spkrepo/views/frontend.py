@@ -28,6 +28,7 @@ from ..models import (
     Build,
     BuildDescription,
     DisplayName,
+    Language,
     Package,
     Version,
     group_builds_per_dsm,
@@ -190,18 +191,53 @@ def packages():
             cache.set("packages_versions", versions, timeout=300)
     else:
         versions = _latest_versions_query(selected_arch)
+    active_versions = [v for v in versions if not v["archived"]]
+    archived_versions = [v for v in versions if v["archived"]]
     return _arch_response(
         "frontend/packages.html",
         param_present,
         clear_cookie,
         selected_arch,
-        versions=versions,
+        active_versions=active_versions,
+        archived_versions=archived_versions,
     )
+
+
+def _default_descriptions(version_ids):
+    """Map version id -> the enu description of its first build.
+
+    One small query instead of eager-loading every build and every
+    description for the whole page (which dominated the packages list).
+    """
+    if not version_ids:
+        return {}
+    first_build = (
+        db.select(
+            Build.version_id,
+            db.func.min(Build.id).label("build_id"),
+        )
+        .where(Build.version_id.in_(version_ids))
+        .group_by(Build.version_id)
+        .subquery()
+    )
+    rows = db.session.execute(
+        db.select(first_build.c.version_id, BuildDescription.description)
+        .join(Build, Build.id == first_build.c.build_id)
+        .join(BuildDescription, BuildDescription.build_id == Build.id)
+        .join(Language, Language.id == BuildDescription.language_id)
+        .where(Language.code == "enu")
+    ).all()
+    return dict(rows)
 
 
 def _latest_versions_query(arch_code):
     """Latest Version per package, optionally restricted to builds for
-    arch_code (universal noarch builds always count)."""
+    arch_code (universal noarch builds always count).
+
+    Returns plain dicts of just the fields the template renders, so the
+    result is cheap to cache (no ORM object graph to pickle) and avoids
+    loading the full build/description collections.
+    """
     latest_version = db.select(
         Version.package_id, db.func.max(Version.version).label("latest_version")
     ).join(Build)
@@ -213,20 +249,15 @@ def _latest_versions_query(arch_code):
             )
         )
     latest_version = latest_version.group_by(Version.package_id).subquery()
-    return (
+    versions = (
         db.session.execute(
             db.select(Version)
             .join(Version.package)
             .options(
-                # selectinload for one-to-many collections (joinedload would
-                # multiply rows); see get_catalog in views/nas.py for why.
-                db.joinedload(Version.package).joinedload(Package.download_counts),
-                db.joinedload(Version.package).undefer(Package.has_active_builds),
+                db.contains_eager(Version.package).joinedload(Package.download_counts),
+                db.contains_eager(Version.package).undefer(Package.has_active_builds),
                 db.selectinload(Version.icons),
                 db.selectinload(Version.displaynames).joinedload(DisplayName.language),
-                db.selectinload(Version.builds)
-                .selectinload(Build.descriptions)
-                .joinedload(BuildDescription.language),
             )
             .join(
                 latest_version,
@@ -241,6 +272,25 @@ def _latest_versions_query(arch_code):
         .scalars()
         .all()
     )
+
+    descriptions = _default_descriptions([v.id for v in versions])
+    rows = []
+    for version in versions:
+        counts = version.package.download_counts
+        rows.append(
+            {
+                "name": version.package.name,
+                "displayname": version.displaynames["enu"].displayname,
+                "version_string": version.version_string,
+                "icon_path": version.icons["72"].path,
+                "description": descriptions.get(version.id, ""),
+                "recent_download_count": (
+                    counts.recent_download_count if counts else 0
+                ),
+                "archived": not version.package.has_active_builds,
+            }
+        )
+    return rows
 
 
 @frontend.route("/package/<name>")
