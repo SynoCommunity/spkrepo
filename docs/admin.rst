@@ -1,39 +1,67 @@
 Admin Interface
 ===============
 
-Access at ``/admin/`` after logging in. Views are role-scoped: the
-reference lists (Architectures, Firmware, Services) need the
-``package_admin`` role; Users needs ``admin``; Packages/Versions/Builds are
-available to ``developer`` and ``package_admin`` (a ``developer`` only sees
-packages they maintain).
+Access at ``/admin/`` after logging in.
+
+Dashboard
+---------
+The landing page shows repository totals (packages, builds, inactive
+builds), the five most recent versions, and download charts broken down by
+firmware, architecture, and package over the last 7, 30, and 90 days. Users
+without the ``package_admin`` or ``admin`` role see figures scoped to the
+packages they maintain.
 
 Views
 -----
-+-----------------+----------------------------------------------------+
-| View            | Description                                        |
-+=================+====================================================+
-| Users           | Manage user accounts and roles                     |
-+-----------------+----------------------------------------------------+
-| Architectures   | Reference list of supported CPU architectures      |
-+-----------------+----------------------------------------------------+
-| Firmware        | Reference list of DSM / SRM firmware builds        |
-+-----------------+----------------------------------------------------+
-| Services        | Reference list of package service dependencies     |
-+-----------------+----------------------------------------------------+
-| Screenshots     | Package screenshot images                          |
-+-----------------+----------------------------------------------------+
-| Packages        | Package metadata and maintainers                   |
-+-----------------+----------------------------------------------------+
-| Versions        | Package versions — activate/deactivate builds      |
-+-----------------+----------------------------------------------------+
-| Builds          | Individual builds per architecture/firmware        |
-+-----------------+----------------------------------------------------+
-| Task Status     | Background task queue monitor                      |
-+-----------------+----------------------------------------------------+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 57 25
+
+   * - View
+     - Description
+     - Required role
+   * - Dashboard
+     - Repository totals, recent versions, and download charts
+     - ``developer``, ``package_admin``, ``admin``
+   * - Task Status
+     - Background task queue monitor
+     - ``developer``, ``package_admin``, ``admin``
+   * - Packages
+     - Package metadata and maintainers
+     - ``package_admin``
+   * - Screenshots
+     - Package screenshot images
+     - ``package_admin``
+   * - Architectures
+     - Reference list of supported CPU architectures
+     - ``package_admin``
+   * - Firmware
+     - Reference list of DSM / SRM firmware builds
+     - ``package_admin``
+   * - Services
+     - Reference list of package service dependencies
+     - ``package_admin``
+   * - Versions
+     - Package versions — activate/deactivate builds
+     - ``developer`` or ``package_admin``
+   * - Builds
+     - Individual builds per architecture/firmware
+     - ``developer`` or ``package_admin``
+   * - Users
+     - Manage user accounts and roles
+     - ``admin``
+
+A ``developer`` sees only the Versions and Builds of packages they maintain.
+The Packages list has an ``Archived`` filter (all / active only / archived
+only), and package, version, and build detail pages include previous/next
+navigation that follows the originating list's sort and filters.
 
 Actions
 -------
 Available actions appear in the dropdown after selecting items in a list view.
+Sign and unsign require the ``admin`` role; upload, rehome, and resync
+require ``admin`` or ``package_admin``. Deleting packages, versions, or
+builds requires ``admin``.
 
 **01 Activate (Users / Versions / Builds)**
     For Versions/Builds: marks the selected builds as active so they appear
