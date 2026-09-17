@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """SPK upload API adapter (Flask-RESTful).
 
-Parses uploads via :mod:`spkrepo.adapters.spk_io`, validates against
-:mod:`spkrepo.domain`, and maps outcomes to HTTP status codes.
+Implements ``POST /api/packages``. Parses uploads via
+:mod:`spkrepo.adapters.spk_io`, validates against :mod:`spkrepo.domain`,
+and maps outcomes to HTTP status codes.
 """
 
 import io

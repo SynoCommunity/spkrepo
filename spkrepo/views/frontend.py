@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Web frontend views: package browsing, auth pages, user profile."""
+"""Web frontend views: package browsing, auth pages, user profile.
+
+Renders the HTML pages: ``/`` landing, ``/packages`` with an architecture
+filter (persisted in a cookie), ``/package/<name>`` detail with version
+history, and ``/profile`` for API-key management. Registration and login
+are provided by Flask-Security with Turnstile bot protection.
+"""
 
 import logging
 import secrets

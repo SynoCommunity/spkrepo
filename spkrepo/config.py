@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Default configuration values (overridden by the ``SPKREPO_CONFIG`` file)."""
+"""Default configuration values (overridden by the ``SPKREPO_CONFIG`` file).
+
+See :doc:`deployment` for the production overrides.
+"""
 
 import os
 

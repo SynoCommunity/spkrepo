@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """Celery ``ops``-queue tasks: metadata resync and storage round-trips.
 
-Sidecar/SPK decisions delegate to :mod:`spkrepo.domain`; DB, filesystem,
-and Object Storage I/O stay here.
+Long-running operations triggered from the admin interface, tracked per
+user via Redis for 24 hours and shown on
+:ref:`the Task Status page <task-status>`. Sidecar/SPK decisions delegate
+to :mod:`spkrepo.domain`; DB, filesystem, and Object Storage I/O stay here.
 """
 
 import hashlib

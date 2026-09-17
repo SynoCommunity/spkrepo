@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""S3 Object Storage and CDN purge adapter (implements domain ports)."""
+"""S3 Object Storage and CDN purge adapter (implements domain ports).
+
+Manages SPK packages in S3-compatible object storage — upload, download
+(rehoming), and delete — and purges the CDN. Configured via the
+``OBJECT_STORAGE_PACKAGES_*`` keys (see :doc:`deployment`).
+"""
 
 import logging
 import os

@@ -8,8 +8,6 @@ planners — no Flask, database, or network access here.
 
 Activation
 ----------
-Decides which builds activate and queue for upload
-(used by both admin activate actions).
 
 .. automodule:: spkrepo.application.activation
     :members:
