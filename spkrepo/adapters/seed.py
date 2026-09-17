@@ -5,8 +5,9 @@ from ..ext import db
 from ..models import Architecture, Firmware, Language, Role, Service
 
 
-def populate_db():
-    """Populate the database"""
+def populate_reference_data():
+    """Insert the reference rows: architectures, firmware, languages, roles,
+    services."""
     db.session.execute(
         Architecture.__table__.insert().values(
             [

@@ -25,7 +25,7 @@ from flask_security import hash_password
 from flask_testing import TestCase
 
 from spkrepo import create_app
-from spkrepo.adapters.seed import populate_db
+from spkrepo.adapters.seed import populate_reference_data
 from spkrepo.domain.shared_kernel import translate_arch_to_syno
 from spkrepo.ext import db
 from spkrepo.models import (
@@ -386,7 +386,7 @@ class BaseTestCase(TestCase):
     def setUp(self):
         db.drop_all()
         db.create_all()
-        populate_db()
+        populate_reference_data()
         db.session.commit()
         db.session.autoflush = False
 
