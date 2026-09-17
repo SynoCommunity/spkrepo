@@ -1,4 +1,7 @@
-"""Flask ``spkrepo`` administrative commands and CDN log ingestion."""
+"""Flask ``spkrepo`` administrative commands and CDN log ingestion.
+
+See the :doc:`cli` page for command usage.
+"""
 
 import logging
 import os

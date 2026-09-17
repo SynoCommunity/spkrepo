@@ -76,6 +76,12 @@ def _bool_formatter(v, c, m, p):
     return Markup('<i class="fa fa-times-circle text-danger"></i>')
 
 
+def _count_formatter(v, c, m, p):
+    """Flask-Admin column formatter: thousands-separated count, "0" if null."""
+    value = getattr(m, p)
+    return f"{value:,}" if value else "0"
+
+
 def _storage_formatter(v, c, m, p):
     """Flask-Admin column formatter: cloud for remote, disk for local."""
     if m.storage == "remote":
@@ -103,6 +109,20 @@ def _flash_action_results(successes, failures, skipped=None, item_label="item"):
         )
     for name, message in failures:
         flash(f"Failed to process {name}: {message}", "error")
+
+
+def _filter_maintainer(q):
+    """Restrict a Package-rooted query to packages the current user maintains."""
+    return q.join(Package.maintainers).filter(User.id == current_user.id)
+
+
+def _apply_archived_filter(q, archived):
+    """Apply the PackageView ``?archived=yes|no`` filter to a query."""
+    if archived == "yes":
+        return q.filter(~Package.has_active_builds)
+    if archived == "no":
+        return q.filter(Package.has_active_builds)
+    return q
 
 
 def _task_redis_key():
@@ -290,34 +310,34 @@ class SignResyncMixin:
     def can_rehome(self):
         return current_user.has_role("admin") or current_user.has_role("package_admin")
 
+    #: Action name -> permission property name. Consumed by both
+    #: :meth:`is_action_allowed` (dropdown) and :meth:`handle_action`
+    #: (server guard) so the two can never disagree.
+    ACTION_CHECKS = {
+        "07_sign": "can_sign",
+        "08_unsign": "can_unsign",
+        "05_resync_info": "can_resync_info",
+        "06_resync_file": "can_resync_file",
+        "03_upload": "can_upload",
+        "04_rehome": "can_rehome",
+    }
+
     # -- Permission guards --------------------------------------------------
+
+    def _action_check_allowed(self, name):
+        """Return True if ``name`` is unrestricted or its role check passes."""
+        attr = self.ACTION_CHECKS.get(name)
+        return attr is None or getattr(self, attr)
 
     def is_action_allowed(self, name):
         """Hide role-restricted actions from the dropdown for other roles."""
-        checks = {
-            "07_sign": self.can_sign,
-            "08_unsign": self.can_unsign,
-            "05_resync_info": self.can_resync_info,
-            "06_resync_file": self.can_resync_file,
-            "03_upload": self.can_upload,
-            "04_rehome": self.can_rehome,
-        }
-        if name in checks and not checks[name]:
+        if not self._action_check_allowed(name):
             return False
         return super().is_action_allowed(name)
 
     def handle_action(self, return_view=None):
         """Server-side guard: 403 if the posted action's role check fails."""
-        action_name = request.form.get("action")
-        checks = {
-            "07_sign": self.can_sign,
-            "08_unsign": self.can_unsign,
-            "05_resync_info": self.can_resync_info,
-            "06_resync_file": self.can_resync_file,
-            "03_upload": self.can_upload,
-            "04_rehome": self.can_rehome,
-        }
-        if action_name in checks and not checks[action_name]:
+        if not self._action_check_allowed(request.form.get("action")):
             abort(403)
         return super().handle_action(return_view)
 
@@ -329,6 +349,36 @@ class SignResyncMixin:
         Override in VersionView to expand version -> builds.
         """
         raise NotImplementedError
+
+    # -- Task queueing ------------------------------------------------------
+
+    def _queue_build_tasks(
+        self, ids, task, task_type, verb, empty_message, predicate=None
+    ):
+        """Queue ``task`` per selected build and flash a summary.
+
+        ``predicate`` optionally filters the builds yielded by
+        :meth:`_iter_builds`; ``verb`` labels the flash (e.g. "upload") and
+        ``empty_message`` is shown when nothing qualifies.
+        """
+        tasks = []
+        for label, build in self._iter_builds(ids):
+            if predicate is not None and not predicate(build):
+                continue
+            result = task.delay(build.id, str(build))
+            tasks.append({"id": result.id, "type": task_type, "label": label})
+        if tasks:
+            _store_task_tasks(tasks)
+            count = len(tasks)
+            flash(
+                Markup(
+                    f"{count} {verb} task(s) queued. "
+                    f'<a href="/admin/tasks/">View status</a>',
+                ),
+                "info",
+            )
+        else:
+            flash(empty_message, "warning")
 
     # -- Shared actions -----------------------------------------------------
 
@@ -460,29 +510,15 @@ class SignResyncMixin:
     )
     def action_03_upload(self, ids):
         """Queue an upload_to_storage task per selected signed local build."""
-        tasks = []
-        for label, build in self._iter_builds(ids):
-            if build.storage != "local":
-                continue
-            if not build.signed and not _detect_and_fix_signed(build):
-                continue
-            result = upload_to_storage.delay(build.id, str(build))
-            tasks.append({"id": result.id, "type": "upload", "label": label})
-        if tasks:
-            _store_task_tasks(tasks)
-            count = len(tasks)
-            flash(
-                Markup(
-                    f"{count} upload task(s) queued. "
-                    f'<a href="/admin/tasks/">View status</a>',
-                ),
-                "info",
-            )
-        else:
-            flash(
-                "No builds found to upload (must be local and signed).",
-                "warning",
-            )
+        self._queue_build_tasks(
+            ids,
+            upload_to_storage,
+            "upload",
+            "upload",
+            "No builds found to upload (must be local and signed).",
+            predicate=lambda build: build.storage == "local"
+            and (build.signed or _detect_and_fix_signed(build)),
+        )
 
     @action(
         "04_rehome",
@@ -491,29 +527,14 @@ class SignResyncMixin:
     )
     def action_04_rehome(self, ids):
         """Queue a rehome_from_storage task per selected remote build."""
-        tasks = []
-        for label, build in self._iter_builds(ids):
-            if build.active:
-                continue
-            if build.storage != "remote":
-                continue
-            result = rehome_from_storage.delay(build.id, str(build))
-            tasks.append({"id": result.id, "type": "rehome", "label": label})
-        if tasks:
-            _store_task_tasks(tasks)
-            count = len(tasks)
-            flash(
-                Markup(
-                    f"{count} re-home task(s) queued. "
-                    f'<a href="/admin/tasks/">View status</a>',
-                ),
-                "info",
-            )
-        else:
-            flash(
-                "No builds found to re-home (must be inactive and in Object Storage).",
-                "warning",
-            )
+        self._queue_build_tasks(
+            ids,
+            rehome_from_storage,
+            "rehome",
+            "re-home",
+            "No builds found to re-home (must be inactive and in Object Storage).",
+            predicate=lambda build: not build.active and build.storage == "remote",
+        )
 
     @action(
         "05_resync_info",
@@ -522,22 +543,13 @@ class SignResyncMixin:
     )
     def action_05_resync_info(self, ids):
         """Queue a metadata resync per selected build (sidecar or SPK)."""
-        tasks = []
-        for label, build in self._iter_builds(ids):
-            result = resync_build_metadata.delay(build.id, str(build))
-            tasks.append({"id": result.id, "type": "resync_info", "label": label})
-        if tasks:
-            _store_task_tasks(tasks)
-            count = len(tasks)
-            flash(
-                Markup(
-                    f"{count} resync task(s) queued. "
-                    f'<a href="/admin/tasks/">View status</a>',
-                ),
-                "info",
-            )
-        else:
-            flash("No builds found to resync.", "warning")
+        self._queue_build_tasks(
+            ids,
+            resync_build_metadata,
+            "resync_info",
+            "resync",
+            "No builds found to resync.",
+        )
 
     @action(
         "06_resync_file",
@@ -546,22 +558,95 @@ class SignResyncMixin:
     )
     def action_06_resync_file(self, ids):
         """Queue an md5/size recalculation per selected build."""
-        tasks = []
-        for label, build in self._iter_builds(ids):
-            result = resync_build_file.delay(build.id, str(build))
-            tasks.append({"id": result.id, "type": "resync_file", "label": label})
-        if tasks:
-            _store_task_tasks(tasks)
-            count = len(tasks)
-            flash(
-                Markup(
-                    f"{count} file resync task(s) queued. "
-                    f'<a href="/admin/tasks/">View status</a>',
-                ),
-                "info",
-            )
-        else:
-            flash("No builds found to resync.", "warning")
+        self._queue_build_tasks(
+            ids,
+            resync_build_file,
+            "resync_file",
+            "file resync",
+            "No builds found to resync.",
+        )
+
+
+class MaintainerScopedMixin:
+    """Restrict list and count queries to the current user's packages.
+
+    ``package_admin`` users see every package; everyone else (``developer``)
+    sees only packages they maintain. Subclasses set :attr:`_maintainer_joins`
+    to the relationship path from their model to :class:`Package`.
+    """
+
+    #: Relationship path from the view's model to Package.
+    _maintainer_joins = ()
+
+    def _scope_to_maintainer(self, q):
+        if current_user.has_role("package_admin"):
+            return q
+        for join in self._maintainer_joins:
+            q = q.join(join)
+        return q.join(Package.maintainers).filter(User.id == current_user.id)
+
+    def get_query(self):
+        """List query, scoped to the maintainer's packages for developers."""
+        return self._scope_to_maintainer(super().get_query())
+
+    def get_count_query(self):
+        """Count query, scoped like :meth:`get_query`."""
+        return self._scope_to_maintainer(super().get_count_query())
+
+
+class ActivationActionsMixin:
+    """Activate/deactivate actions shared by VersionView and BuildView.
+
+    Selection is expanded through :meth:`_iter_builds`, so both views act on
+    the same build set as the sign/resync actions. :meth:`_deactivated_message`
+    is overridable because the two views report different units (versions vs
+    builds).
+    """
+
+    def _selected_builds(self, ids):
+        """Return the builds implied by the selected ids."""
+        return [build for _, build in self._iter_builds(ids)]
+
+    def _deactivated_message(self, ids, builds):
+        """Summary flashed after deactivation (builds by default)."""
+        count = len(builds)
+        return (
+            "Build was successfully deactivated."
+            if count == 1
+            else f"{count} builds were successfully deactivated."
+        )
+
+    @action(
+        "01_activate", "Activate", "Are you sure you want to activate selected builds?"
+    )
+    def action_01_activate(self, ids):
+        """Activate the selected builds, queuing uploads where configured."""
+        try:
+            _run_activation_action(self._selected_builds(ids))
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception("Failed to activate builds")
+            flash("Failed to activate builds. Please check the logs.", "error")
+
+    @action(
+        "02_deactivate",
+        "Deactivate",
+        "Are you sure you want to deactivate selected builds?",
+    )
+    def action_02_deactivate(self, ids):
+        """Deactivate the selected builds and invalidate the caches."""
+        try:
+            builds = self._selected_builds(ids)
+            for build in builds:
+                build.active = False
+            db.session.commit()
+            invalidate_packages_cache()
+            clear_catalog_cache()
+            flash(self._deactivated_message(ids, builds))
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception("Failed to deactivate builds")
+            flash("Failed to deactivate builds. Please check the logs.", "error")
 
 
 # ---------------------------------------------------------------------------
@@ -677,20 +762,10 @@ class ArchitectureView(ModelView):
         ("recent_target_download_count", "recent_target_download_count"),
     )
     column_formatters = {
-        "download_count": lambda v, c, m, p: (
-            f"{m.download_count:,}" if m.download_count else "0"
-        ),
-        "recent_download_count": lambda v, c, m, p: (
-            f"{m.recent_download_count:,}" if m.recent_download_count else "0"
-        ),
-        "target_download_count": lambda v, c, m, p: (
-            f"{m.target_download_count:,}" if m.target_download_count else "0"
-        ),
-        "recent_target_download_count": lambda v, c, m, p: (
-            f"{m.recent_target_download_count:,}"
-            if m.recent_target_download_count
-            else "0"
-        ),
+        "download_count": _count_formatter,
+        "recent_download_count": _count_formatter,
+        "target_download_count": _count_formatter,
+        "recent_target_download_count": _count_formatter,
     }
 
 
@@ -733,20 +808,10 @@ class FirmwareView(ModelView):
         ("recent_target_download_count", "recent_target_download_count"),
     )
     column_formatters = {
-        "download_count": lambda v, c, m, p: (
-            f"{m.download_count:,}" if m.download_count else "0"
-        ),
-        "recent_download_count": lambda v, c, m, p: (
-            f"{m.recent_download_count:,}" if m.recent_download_count else "0"
-        ),
-        "target_download_count": lambda v, c, m, p: (
-            f"{m.target_download_count:,}" if m.target_download_count else "0"
-        ),
-        "recent_target_download_count": lambda v, c, m, p: (
-            f"{m.recent_target_download_count:,}"
-            if m.recent_target_download_count
-            else "0"
-        ),
+        "download_count": _count_formatter,
+        "recent_download_count": _count_formatter,
+        "target_download_count": _count_formatter,
+        "recent_target_download_count": _count_formatter,
     }
 
     form_columns = ("version", "build", "type")
@@ -819,6 +884,7 @@ class ScreenshotView(ModelView):
     column_filters = ("package.name",)
 
     def on_model_delete(self, model):
+        """Delete the screenshot file from disk."""
         screenshot_path = os.path.join(current_app.config["DATA_PATH"], model.path)
         if os.path.exists(screenshot_path):
             os.remove(screenshot_path)
@@ -908,11 +974,7 @@ class DetailsNavigationMixin:
 
         # Custom archived filter on PackageView is not a standard flt* filter
         if hasattr(self.model, "has_active_builds"):
-            archived = qs.get("archived", [None])[0]
-            if archived == "yes":
-                query = query.filter(~self.model.has_active_builds)
-            elif archived == "no":
-                query = query.filter(self.model.has_active_builds)
+            query = _apply_archived_filter(query, qs.get("archived", [None])[0])
 
         ids = [row[0] for row in query.with_entities(self.model.id).all()]
         if obj_id not in ids:
@@ -990,12 +1052,14 @@ class PackageView(DetailsNavigationMixin, ModelView):
         return form_class
 
     def on_model_change(self, form, model, is_created):
+        """Create the package's data directory when a new package is added."""
         if is_created:
             package_path = os.path.join(current_app.config["DATA_PATH"], model.name)
             if not os.path.exists(package_path):
                 os.mkdir(package_path)
 
     def on_model_delete(self, model):
+        """Remove the package's data directory and all of its files."""
         package_path = os.path.join(current_app.config["DATA_PATH"], model.name)
         if os.path.exists(package_path):
             shutil.rmtree(package_path)
@@ -1014,6 +1078,7 @@ class PackageView(DetailsNavigationMixin, ModelView):
 
     @expose("/details/")
     def details_view(self):
+        """Details view with the download-breakdown charts added."""
         self._template_args["arch_breakdown"] = self._get_arch_breakdown()
         self._template_args["firmware_breakdown"] = self._get_firmware_breakdown()
         return super().details_view()
@@ -1077,11 +1142,14 @@ class PackageView(DetailsNavigationMixin, ModelView):
         ]
 
     def get_query(self):
-        # Explicitly outer-join PackageDownloadCounts so that Flask-Admin's
-        # sort can reference its columns directly. Without this, sorting by
-        # download_counts.download_count produces a join but NULLs (packages
-        # with no download_stat rows) sort above real values in descending
-        # order. The COALESCE in column_sortable_list below fixes that.
+        """List query, outer-joined to download counts and archived-filtered.
+
+        The explicit outer join lets Flask-Admin sort on the matview columns
+        directly; without it NULLs (packages with no download_stat rows) sort
+        above real values in descending order. The COALESCE in
+        ``column_sortable_list`` fixes that, and ``?archived=yes|no`` filters
+        on :attr:`Package.has_active_builds`.
+        """
         q = (
             super()
             .get_query()
@@ -1090,21 +1158,13 @@ class PackageView(DetailsNavigationMixin, ModelView):
                 Package.id == PackageDownloadCounts.package_id,
             )
         )
-        archived = request.args.get("archived")
-        if archived == "yes":
-            q = q.filter(~Package.has_active_builds)
-        elif archived == "no":
-            q = q.filter(Package.has_active_builds)
-        return q
+        return _apply_archived_filter(q, request.args.get("archived"))
 
     def get_count_query(self):
-        q = super().get_count_query()
-        archived = request.args.get("archived")
-        if archived == "yes":
-            q = q.filter(~Package.has_active_builds)
-        elif archived == "no":
-            q = q.filter(Package.has_active_builds)
-        return q
+        """Count query, applying the same ``?archived=`` filter as the list."""
+        return _apply_archived_filter(
+            super().get_count_query(), request.args.get("archived")
+        )
 
     column_list = (
         "name",
@@ -1197,8 +1257,16 @@ class PackageView(DetailsNavigationMixin, ModelView):
     form_args = {"name": {"validators": [Regexp(SPK.package_re)]}}
 
 
-class VersionView(DetailsNavigationMixin, SignResyncMixin, ModelView):
+class VersionView(
+    DetailsNavigationMixin,
+    SignResyncMixin,
+    MaintainerScopedMixin,
+    ActivationActionsMixin,
+    ModelView,
+):
     """View for :class:`~spkrepo.models.Version`"""
+
+    _maintainer_joins = (Version.package,)
 
     def __init__(self, **kwargs):
         super().__init__(Version, db, **kwargs)
@@ -1217,13 +1285,24 @@ class VersionView(DetailsNavigationMixin, SignResyncMixin, ModelView):
         return current_user.has_role("admin")
 
     def _iter_builds(self, ids):
+        """Yield (label, build) for every build under the selected versions."""
         versions = get_query_for_ids(self.get_query(), self.model, ids).all()
         for version in versions:
             for build in version.builds:
                 label = os.path.basename(build.path) if build.path else str(build.id)
                 yield label, build
 
+    def _deactivated_message(self, ids, builds):
+        """Report the number of selected versions, not builds."""
+        count = len(get_query_for_ids(self.get_query(), self.model, ids).all())
+        return (
+            "Builds on version were successfully deactivated."
+            if count == 1
+            else f"Builds have been successfully deactivated for {count} versions."
+        )
+
     def on_model_delete(self, model):
+        """Delete each build's remote/sidecar files and the version directory."""
         for build in model.builds:
             if build.storage == "remote":
                 storage_service.delete(build.path)
@@ -1345,87 +1424,25 @@ class VersionView(DetailsNavigationMixin, SignResyncMixin, ModelView):
         "all_builds_uploaded": _bool_formatter,
         "startable": _bool_formatter,
         "license": _truncate_formatter,
-        "download_count": lambda v, c, m, p: (
-            f"{m.download_count:,}" if m.download_count else "0"
-        ),
-        "recent_download_count": lambda v, c, m, p: (
-            f"{m.recent_download_count:,}" if m.recent_download_count else "0"
-        ),
+        "download_count": _count_formatter,
+        "recent_download_count": _count_formatter,
         "last_download_date": lambda v, c, m, p: (
             m.last_download_date.strftime("%Y-%m-%d") if m.last_download_date else "—"
         ),
     }
     column_default_sort = (Version.insert_date, True)
 
-    def get_query(self):
-        q = super().get_query()
-        if not current_user.has_role("package_admin"):
-            q = (
-                q.join(self.model.package)
-                .join(Package.maintainers)
-                .filter(User.id == current_user.id)
-            )
-        return q
 
-    def get_count_query(self):
-        q = super().get_count_query()
-        if not current_user.has_role("package_admin"):
-            q = (
-                q.join(self.model.package)
-                .join(Package.maintainers)
-                .filter(User.id == current_user.id)
-            )
-        return q
-
-    @action(
-        "01_activate",
-        "Activate",
-        "Are you sure you want to activate selected versions' builds?",
-    )
-    def action_01_activate(self, ids):
-        try:
-            versions = get_query_for_ids(self.get_query(), self.model, ids).all()
-            builds = [b for v in versions for b in v.builds]
-            _run_activation_action(builds)
-        except SQLAlchemyError:
-            db.session.rollback()
-            current_app.logger.exception("Failed to activate versions' builds")
-            flash(
-                "Failed to activate versions' builds. Please check the logs.", "error"
-            )
-
-    @action(
-        "02_deactivate",
-        "Deactivate",
-        "Are you sure you want to deactivate selected versions' builds?",
-    )
-    def action_02_deactivate(self, ids):
-        try:
-            versions = get_query_for_ids(self.get_query(), self.model, ids).all()
-            for version in versions:
-                for build in version.builds:
-                    build.active = False
-            db.session.commit()
-            invalidate_packages_cache()
-            clear_catalog_cache()
-            flash(
-                "Builds on version were successfully deactivated."
-                if len(versions) == 1
-                else (
-                    "Builds have been successfully deactivated for "
-                    f"{len(versions)} versions."
-                )
-            )
-        except SQLAlchemyError:
-            db.session.rollback()
-            current_app.logger.exception("Failed to deactivate versions' builds")
-            flash(
-                "Failed to deactivate versions' builds. Please check the logs.", "error"
-            )
-
-
-class BuildView(DetailsNavigationMixin, SignResyncMixin, ModelView):
+class BuildView(
+    DetailsNavigationMixin,
+    SignResyncMixin,
+    MaintainerScopedMixin,
+    ActivationActionsMixin,
+    ModelView,
+):
     """View for :class:`~spkrepo.models.Build`"""
+
+    _maintainer_joins = (Build.version, Version.package)
 
     def __init__(self, **kwargs):
         super().__init__(Build, db, **kwargs)
@@ -1444,6 +1461,7 @@ class BuildView(DetailsNavigationMixin, SignResyncMixin, ModelView):
         return current_user.has_role("admin")
 
     def _iter_builds(self, ids):
+        """Yield (label, build) for the selected build ids, skipping bad ids."""
         for build_id in ids:
             try:
                 build = db.session.get(self.model, int(build_id))
@@ -1542,29 +1560,8 @@ class BuildView(DetailsNavigationMixin, SignResyncMixin, ModelView):
     }
     column_default_sort = (Build.insert_date, True)
 
-    def get_query(self):
-        q = super().get_query()
-        if not current_user.has_role("package_admin"):
-            q = (
-                q.join(self.model.version)
-                .join(Version.package)
-                .join(Package.maintainers)
-                .filter(User.id == current_user.id)
-            )
-        return q
-
-    def get_count_query(self):
-        q = super().get_count_query()
-        if not current_user.has_role("package_admin"):
-            q = (
-                q.join(self.model.version)
-                .join(Version.package)
-                .join(Package.maintainers)
-                .filter(User.id == current_user.id)
-            )
-        return q
-
     def on_model_delete(self, model):
+        """Delete the build's remote object, sidecar, and local file."""
         if model.storage == "remote":
             storage_service.delete(model.path)
             storage_service.purge_cdn("/" + model.path)
@@ -1583,45 +1580,273 @@ class BuildView(DetailsNavigationMixin, SignResyncMixin, ModelView):
         invalidate_packages_cache()
         clear_catalog_cache()
 
-    @action(
-        "01_activate", "Activate", "Are you sure you want to activate selected builds?"
-    )
-    def action_01_activate(self, ids):
-        try:
-            builds = get_query_for_ids(self.get_query(), self.model, ids).all()
-            _run_activation_action(builds)
-        except SQLAlchemyError:
-            db.session.rollback()
-            current_app.logger.exception("Failed to activate builds")
-            flash("Failed to activate builds. Please check the logs.", "error")
-
-    @action(
-        "02_deactivate",
-        "Deactivate",
-        "Are you sure you want to deactivate selected builds?",
-    )
-    def action_02_deactivate(self, ids):
-        try:
-            builds = get_query_for_ids(self.get_query(), self.model, ids).all()
-            for build in builds:
-                build.active = False
-            db.session.commit()
-            invalidate_packages_cache()
-            clear_catalog_cache()
-            flash(
-                "Build was successfully deactivated."
-                if len(builds) == 1
-                else f"{len(builds)} builds were successfully deactivated."
-            )
-        except SQLAlchemyError:
-            db.session.rollback()
-            current_app.logger.exception("Failed to deactivate builds")
-            flash("Failed to deactivate builds. Please check the logs.", "error")
-
 
 # ---------------------------------------------------------------------------
 # Admin index
 # ---------------------------------------------------------------------------
+
+#: Chart colour palette, cycled when there are more versions than colours.
+_CHART_PALETTE = [
+    "rgba(91,155,213,0.8)",
+    "rgba(230,126,34,0.8)",
+    "rgba(46,204,113,0.8)",
+    "rgba(155,89,182,0.8)",
+    "rgba(231,76,60,0.8)",
+    "rgba(52,152,219,0.8)",
+    "rgba(26,188,156,0.8)",
+    "rgba(241,196,15,0.8)",
+    "rgba(149,165,166,0.8)",
+    "rgba(44,62,80,0.8)",
+    "rgba(231,76,60,0.6)",
+    "rgba(52,152,219,0.6)",
+    "rgba(46,204,113,0.6)",
+    "rgba(155,89,182,0.6)",
+    "rgba(241,196,15,0.6)",
+    "rgba(230,126,34,0.6)",
+]
+
+
+def _index_stats(
+    is_privileged: bool,
+) -> tuple[int, int, int, list[Version], int, int | None]:
+    """Collect the admin landing page counters.
+
+    Privileged users (``package_admin``/``admin``) see repository-wide
+    figures; others see only packages they maintain. Returns
+    ``(package_count, build_count, inactive_build_count, recent_versions,
+    recent_downloads)``.
+    """
+    if is_privileged:
+        package_count = db.session.scalar(
+            db.select(db.func.count()).select_from(Package)
+        )
+        build_count = db.session.scalar(db.select(db.func.count()).select_from(Build))
+        inactive_build_count = db.session.scalar(
+            db.select(db.func.count()).select_from(Build).filter_by(active=False)
+        )
+        recent_versions = (
+            db.session.execute(
+                db.select(Version).order_by(Version.insert_date.desc()).limit(5)
+            )
+            .scalars()
+            .all()
+        )
+    else:
+        package_count = db.session.scalar(
+            db.select(db.func.count()).select_from(
+                _filter_maintainer(db.select(Package)).subquery()
+            )
+        )
+        build_count = db.session.scalar(
+            db.select(db.func.count()).select_from(
+                _filter_maintainer(
+                    db.select(Build).join(Build.version).join(Version.package)
+                ).subquery()
+            )
+        )
+        inactive_build_count = db.session.scalar(
+            db.select(db.func.count()).select_from(
+                _filter_maintainer(
+                    db.select(Build)
+                    .filter_by(active=False)
+                    .join(Build.version)
+                    .join(Version.package)
+                ).subquery()
+            )
+        )
+        recent_versions = (
+            db.session.execute(
+                _filter_maintainer(db.select(Version).join(Version.package))
+                .order_by(Version.insert_date.desc())
+                .limit(5)
+            )
+            .scalars()
+            .all()
+        )
+
+    cutoff = date.today() - timedelta(days=90)
+    if is_privileged:
+        recent_downloads = db.session.execute(
+            db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0)).where(
+                DownloadStat.date >= cutoff
+            )
+        ).scalar()
+    else:
+        recent_downloads = db.session.execute(
+            db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
+            .join(Package, Package.id == DownloadStat.package_id)
+            .join(Package.maintainers)
+            .where(
+                db.and_(
+                    User.id == current_user.id,
+                    DownloadStat.date >= cutoff,
+                )
+            )
+        ).scalar()
+
+    unconfirmed_user_count = (
+        db.session.scalar(
+            db.select(db.func.count()).select_from(User).filter_by(confirmed_at=None)
+        )
+        if current_user.has_role("admin")
+        else None
+    )
+
+    return (
+        package_count,
+        build_count,
+        inactive_build_count,
+        recent_versions,
+        recent_downloads,
+        unconfirmed_user_count,
+    )
+
+
+def _download_charts(is_privileged: bool) -> tuple[dict, dict, dict]:
+    """Build the three admin landing page charts.
+
+    Returns ``(fw_chart, arch_chart, pkg_chart)``, each keyed by the 7/30/90
+    day windows. Non-privileged users only see their maintained packages.
+    """
+    fw_chart = {}
+    arch_chart = {}
+    pkg_chart = {}
+    today = date.today()
+    for label, days in (("7d", 7), ("30d", 30), ("90d", 90)):
+        cutoff = today - timedelta(days=days)
+
+        q = (
+            db.select(
+                Firmware.version,
+                db.func.coalesce(db.func.sum(DownloadStat.count), 0),
+            )
+            .select_from(Firmware)
+            .join(
+                DownloadStat,
+                DownloadStat.firmware_build == Firmware.build,
+                isouter=True,
+            )
+        )
+        if not is_privileged:
+            q = (
+                q.join(Package, Package.id == DownloadStat.package_id)
+                .join(Package.maintainers)
+                .where(User.id == current_user.id)
+            )
+        fw_chart[label] = [
+            (ver, int(total))
+            for ver, total in db.session.execute(
+                q.where(DownloadStat.date >= cutoff)
+                .group_by(Firmware.version)
+                .order_by(db.desc(db.func.coalesce(db.func.sum(DownloadStat.count), 0)))
+                .limit(10)
+            ).all()
+            if total
+        ]
+
+        # Step 1: get top-10 packages by total downloads
+        pq = (
+            db.select(
+                Package.name,
+                Package.id,
+                db.func.coalesce(db.func.sum(DownloadStat.count), 0),
+            )
+            .select_from(Package)
+            .join(
+                DownloadStat,
+                DownloadStat.package_id == Package.id,
+                isouter=True,
+            )
+        )
+        if not is_privileged:
+            pq = pq.join(Package.maintainers).where(User.id == current_user.id)
+        top_pkgs = [
+            (name, pid)
+            for name, pid, total in db.session.execute(
+                pq.where(DownloadStat.date >= cutoff)
+                .group_by(Package.name, Package.id)
+                .order_by(db.desc(db.func.coalesce(db.func.sum(DownloadStat.count), 0)))
+                .limit(10)
+            ).all()
+            if total
+        ]
+
+        # Step 2: version breakdown for those packages
+        pkg_ids = [pid for _, pid in top_pkgs]
+        pkg_names = [name for name, _ in top_pkgs]
+        name_index = {name: i for i, name in enumerate(pkg_names)}
+        _ver_str = db.func.coalesce(
+            Version.upstream_version + "-" + db.cast(Version.version, db.Unicode),
+            "Unknown",
+        )
+        _ver_sort = db.func.coalesce(Version.version, 0)
+        rows = db.session.execute(
+            db.select(
+                Package.name,
+                _ver_str,
+                db.func.coalesce(db.func.sum(DownloadStat.count), 0),
+            )
+            .join(
+                DownloadStat,
+                DownloadStat.package_id == Package.id,
+            )
+            .outerjoin(Build, Build.id == DownloadStat.build_id)
+            .outerjoin(Version, Version.id == Build.version_id)
+            .where(
+                Package.id.in_(pkg_ids),
+                DownloadStat.date >= cutoff,
+            )
+            .group_by(Package.name, _ver_str, _ver_sort)
+            .order_by(Package.name, db.desc(_ver_sort))
+        ).all()
+
+        # Build version -> colour mapping
+        all_versions = sorted(set(r[1] for r in rows))
+        ver_colors = {
+            v: _CHART_PALETTE[i % len(_CHART_PALETTE)]
+            for i, v in enumerate(all_versions)
+        }
+        ver_data = {v: [0] * len(pkg_names) for v in all_versions}
+        for name, ver, cnt in rows:
+            ver_data[ver][name_index[name]] = int(cnt)
+
+        pkg_chart[label] = {
+            "packages": pkg_names,
+            "versions": all_versions,
+            "segments": [ver_data[v] for v in all_versions],
+            "colors": [ver_colors[v] for v in all_versions],
+        }
+
+        q = (
+            db.select(
+                Architecture.code,
+                db.func.coalesce(db.func.sum(DownloadStat.count), 0),
+            )
+            .select_from(Architecture)
+            .join(
+                DownloadStat,
+                DownloadStat.architecture_id == Architecture.id,
+                isouter=True,
+            )
+        )
+        if not is_privileged:
+            q = (
+                q.join(Package, Package.id == DownloadStat.package_id)
+                .join(Package.maintainers)
+                .where(User.id == current_user.id)
+            )
+        arch_chart[label] = [
+            (code, int(total))
+            for code, total in db.session.execute(
+                q.where(DownloadStat.date >= cutoff)
+                .group_by(Architecture.code)
+                .order_by(db.desc(db.func.coalesce(db.func.sum(DownloadStat.count), 0)))
+                .limit(10)
+            ).all()
+            if total
+        ]
+
+    return fw_chart, arch_chart, pkg_chart
 
 
 class IndexView(AdminIndexView):
@@ -1638,256 +1863,23 @@ class IndexView(AdminIndexView):
         is_privileged = current_user.has_role("package_admin") or current_user.has_role(
             "admin"
         )
+        (
+            package_count,
+            build_count,
+            inactive_build_count,
+            recent_versions,
+            recent_downloads,
+            unconfirmed_user_count,
+        ) = _index_stats(is_privileged)
 
-        def _maintainer_filter(q):
-            """Apply maintainer filter for non-privileged users."""
-            return q.join(Package.maintainers).filter(User.id == current_user.id)
-
-        if is_privileged:
-            package_count = db.session.scalar(
-                db.select(db.func.count()).select_from(Package)
-            )
-            build_count = db.session.scalar(
-                db.select(db.func.count()).select_from(Build)
-            )
-            inactive_build_count = db.session.scalar(
-                db.select(db.func.count()).select_from(Build).filter_by(active=False)
-            )
-            recent_versions = (
-                db.session.execute(
-                    db.select(Version).order_by(Version.insert_date.desc()).limit(5)
-                )
-                .scalars()
-                .all()
-            )
-        else:
-            package_count = db.session.scalar(
-                db.select(db.func.count()).select_from(
-                    _maintainer_filter(db.select(Package)).subquery()
-                )
-            )
-            build_count = db.session.scalar(
-                db.select(db.func.count()).select_from(
-                    _maintainer_filter(
-                        db.select(Build).join(Build.version).join(Version.package)
-                    ).subquery()
-                )
-            )
-            inactive_build_count = db.session.scalar(
-                db.select(db.func.count()).select_from(
-                    _maintainer_filter(
-                        db.select(Build)
-                        .filter_by(active=False)
-                        .join(Build.version)
-                        .join(Version.package)
-                    ).subquery()
-                )
-            )
-            recent_versions = (
-                db.session.execute(
-                    _maintainer_filter(db.select(Version).join(Version.package))
-                    .order_by(Version.insert_date.desc())
-                    .limit(5)
-                )
-                .scalars()
-                .all()
-            )
-
-        cutoff = date.today() - timedelta(days=90)
-        if is_privileged:
-            recent_downloads = db.session.execute(
-                db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0)).where(
-                    DownloadStat.date >= cutoff
-                )
-            ).scalar()
-        else:
-            recent_downloads = db.session.execute(
-                db.select(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
-                .join(Package, Package.id == DownloadStat.package_id)
-                .join(Package.maintainers)
-                .where(
-                    db.and_(
-                        User.id == current_user.id,
-                        DownloadStat.date >= cutoff,
-                    )
-                )
-            ).scalar()
-
-        fw_chart = {}
-        arch_chart = {}
-        pkg_chart = {}
-        today = date.today()
-        for label, days in (("7d", 7), ("30d", 30), ("90d", 90)):
-            cutoff = today - timedelta(days=days)
-
-            q = (
-                db.select(
-                    Firmware.version,
-                    db.func.coalesce(db.func.sum(DownloadStat.count), 0),
-                )
-                .select_from(Firmware)
-                .join(
-                    DownloadStat,
-                    DownloadStat.firmware_build == Firmware.build,
-                    isouter=True,
-                )
-            )
-            if not is_privileged:
-                q = (
-                    q.join(Package, Package.id == DownloadStat.package_id)
-                    .join(Package.maintainers)
-                    .where(User.id == current_user.id)
-                )
-            fw_chart[label] = [
-                (ver, int(total))
-                for ver, total in db.session.execute(
-                    q.where(DownloadStat.date >= cutoff)
-                    .group_by(Firmware.version)
-                    .order_by(
-                        db.desc(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
-                    )
-                    .limit(10)
-                ).all()
-                if total
-            ]
-
-            # Step 1: get top-10 packages by total downloads
-            pq = (
-                db.select(
-                    Package.name,
-                    Package.id,
-                    db.func.coalesce(db.func.sum(DownloadStat.count), 0),
-                )
-                .select_from(Package)
-                .join(
-                    DownloadStat,
-                    DownloadStat.package_id == Package.id,
-                    isouter=True,
-                )
-            )
-            if not is_privileged:
-                pq = pq.join(Package.maintainers).where(User.id == current_user.id)
-            top_pkgs = [
-                (name, pid)
-                for name, pid, total in db.session.execute(
-                    pq.where(DownloadStat.date >= cutoff)
-                    .group_by(Package.name, Package.id)
-                    .order_by(
-                        db.desc(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
-                    )
-                    .limit(10)
-                ).all()
-                if total
-            ]
-
-            # Step 2: version breakdown for those packages
-            pkg_ids = [pid for _, pid in top_pkgs]
-            pkg_names = [name for name, _ in top_pkgs]
-            _ver_str = db.func.coalesce(
-                Version.upstream_version + "-" + db.cast(Version.version, db.Unicode),
-                "Unknown",
-            )
-            _ver_sort = db.func.coalesce(Version.version, 0)
-            rows = db.session.execute(
-                db.select(
-                    Package.name,
-                    _ver_str,
-                    db.func.coalesce(db.func.sum(DownloadStat.count), 0),
-                )
-                .join(
-                    DownloadStat,
-                    DownloadStat.package_id == Package.id,
-                )
-                .outerjoin(Build, Build.id == DownloadStat.build_id)
-                .outerjoin(Version, Version.id == Build.version_id)
-                .where(
-                    Package.id.in_(pkg_ids),
-                    DownloadStat.date >= cutoff,
-                )
-                .group_by(Package.name, _ver_str, _ver_sort)
-                .order_by(Package.name, db.desc(_ver_sort))
-            ).all()
-
-            # Build version -> colour mapping
-            all_versions = sorted(set(r[1] for r in rows))
-            palette = [
-                "rgba(91,155,213,0.8)",
-                "rgba(230,126,34,0.8)",
-                "rgba(46,204,113,0.8)",
-                "rgba(155,89,182,0.8)",
-                "rgba(231,76,60,0.8)",
-                "rgba(52,152,219,0.8)",
-                "rgba(26,188,156,0.8)",
-                "rgba(241,196,15,0.8)",
-                "rgba(149,165,166,0.8)",
-                "rgba(44,62,80,0.8)",
-                "rgba(231,76,60,0.6)",
-                "rgba(52,152,219,0.6)",
-                "rgba(46,204,113,0.6)",
-                "rgba(155,89,182,0.6)",
-                "rgba(241,196,15,0.6)",
-                "rgba(230,126,34,0.6)",
-            ]
-            ver_colors = {
-                v: palette[i % len(palette)] for i, v in enumerate(all_versions)
-            }
-            ver_data = {v: [0] * len(pkg_names) for v in all_versions}
-            for name, ver, cnt in rows:
-                idx = pkg_names.index(name)
-                ver_data[ver][idx] = int(cnt)
-
-            pkg_chart[label] = {
-                "packages": pkg_names,
-                "versions": all_versions,
-                "segments": [ver_data[v] for v in all_versions],
-                "colors": [ver_colors[v] for v in all_versions],
-            }
-
-            q = (
-                db.select(
-                    Architecture.code,
-                    db.func.coalesce(db.func.sum(DownloadStat.count), 0),
-                )
-                .select_from(Architecture)
-                .join(
-                    DownloadStat,
-                    DownloadStat.architecture_id == Architecture.id,
-                    isouter=True,
-                )
-            )
-            if not is_privileged:
-                q = (
-                    q.join(Package, Package.id == DownloadStat.package_id)
-                    .join(Package.maintainers)
-                    .where(User.id == current_user.id)
-                )
-            arch_chart[label] = [
-                (code, int(total))
-                for code, total in db.session.execute(
-                    q.where(DownloadStat.date >= cutoff)
-                    .group_by(Architecture.code)
-                    .order_by(
-                        db.desc(db.func.coalesce(db.func.sum(DownloadStat.count), 0))
-                    )
-                    .limit(10)
-                ).all()
-                if total
-            ]
+        fw_chart, arch_chart, pkg_chart = _download_charts(is_privileged)
 
         return self.render(
             "admin/index.html",
             package_count=package_count,
             build_count=build_count,
             inactive_build_count=inactive_build_count,
-            unconfirmed_user_count=(
-                db.session.scalar(
-                    db.select(db.func.count())
-                    .select_from(User)
-                    .filter_by(confirmed_at=None)
-                )
-                if current_user.has_role("admin")
-                else None
-            ),
+            unconfirmed_user_count=unconfirmed_user_count,
             recent_versions=recent_versions,
             recent_downloads=recent_downloads,
             fw_chart=fw_chart,
@@ -1899,6 +1891,36 @@ class IndexView(AdminIndexView):
 # ---------------------------------------------------------------------------
 # Task status
 # ---------------------------------------------------------------------------
+
+
+def _collect_task_states() -> tuple[list[dict], int]:
+    """Return (tasks, pending_count) for the current user's queued tasks.
+
+    Each task dict carries ``id``, ``type``, ``label`` (from the queued
+    entry), ``state``, and ``result`` (the Celery payload once ready),
+    matching what the Task Status template renders.
+    """
+    tasks = []
+    pending_count = 0
+    for entry in _get_task_ids():
+        task_id = entry["id"] if isinstance(entry, dict) else entry
+        task_type = entry.get("type", "") if isinstance(entry, dict) else ""
+        task_label = entry.get("label", task_id) if isinstance(entry, dict) else task_id
+        result = AsyncResult(task_id, app=celery)
+        state = result.state
+        info = result.info if result.ready() else None
+        if state in ("PENDING", "STARTED", "RETRY"):
+            pending_count += 1
+        tasks.append(
+            {
+                "id": task_id,
+                "type": task_type,
+                "label": task_label,
+                "state": state,
+                "result": info,
+            }
+        )
+    return tasks, pending_count
 
 
 class TaskStatusView(BaseView):
@@ -1915,29 +1937,7 @@ class TaskStatusView(BaseView):
     @expose("/")
     def index(self):
         """Render the task list with each task's Celery state and progress."""
-        task_list = _get_task_ids()
-        tasks = []
-        pending_count = 0
-        for entry in task_list:
-            task_id = entry["id"] if isinstance(entry, dict) else entry
-            task_type = entry.get("type", "") if isinstance(entry, dict) else ""
-            task_label = (
-                entry.get("label", task_id) if isinstance(entry, dict) else task_id
-            )
-            result = AsyncResult(task_id, app=celery)
-            state = result.state
-            info = result.info if result.ready() else None
-            if state in ("PENDING", "STARTED", "RETRY"):
-                pending_count += 1
-            tasks.append(
-                {
-                    "id": task_id,
-                    "type": task_type,
-                    "label": task_label,
-                    "state": state,
-                    "result": info,
-                }
-            )
+        tasks, pending_count = _collect_task_states()
         return self.render(
             "admin/task_status.html",
             tasks=tasks,
@@ -1951,40 +1951,28 @@ class TaskStatusView(BaseView):
         if not self.is_accessible():
             return jsonify({"error": "forbidden"}), 403
 
-        task_list = _get_task_ids()
-        tasks = []
-        pending_count = 0
-        for entry in task_list:
-            task_id = entry["id"] if isinstance(entry, dict) else entry
-            task_type = entry.get("type", "") if isinstance(entry, dict) else ""
-            task_label = (
-                entry.get("label", task_id) if isinstance(entry, dict) else task_id
-            )
-            result = AsyncResult(task_id, app=celery)
-            state = result.state
-            info = result.info if result.ready() else None
-            label = (
-                (info or {}).get("label", task_label)
-                if isinstance(info, dict)
-                else task_label
-            )
-            error = (
-                (info or {}).get("error")
-                if isinstance(info, dict)
-                else (str(info) if info else None)
-            )
-            if state in ("PENDING", "STARTED", "RETRY"):
-                pending_count += 1
-            tasks.append(
+        tasks, pending_count = _collect_task_states()
+        payload = []
+        for task in tasks:
+            info = task["result"]
+            payload.append(
                 {
-                    "id": task_id,
-                    "type": task_type,
-                    "state": state,
-                    "label": label,
-                    "error": error,
+                    "id": task["id"],
+                    "type": task["type"],
+                    "state": task["state"],
+                    "label": (
+                        (info or {}).get("label", task["label"])
+                        if isinstance(info, dict)
+                        else task["label"]
+                    ),
+                    "error": (
+                        (info or {}).get("error")
+                        if isinstance(info, dict)
+                        else (str(info) if info else None)
+                    ),
                 }
             )
-        return jsonify({"tasks": tasks, "pending_count": pending_count})
+        return jsonify({"tasks": payload, "pending_count": pending_count})
 
     @expose("/clear/", methods=["POST"])
     def clear(self):
