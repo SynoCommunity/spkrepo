@@ -9,7 +9,6 @@ Proxy-aware client-IP resolution (used for rate limiting).
 
 .. automodule:: spkrepo.net
     :members:
-    :undoc-members:
 
 Template Filters
 ----------------
@@ -17,7 +16,6 @@ Jinja2 helpers for the web frontend.
 
 .. automodule:: spkrepo.filters
     :members:
-    :undoc-members:
 
 Mail
 ----
@@ -25,7 +23,6 @@ Registration and notification mail with bot-template suppression.
 
 .. automodule:: spkrepo.mail
     :members:
-    :undoc-members:
 
 CLI
 ---
@@ -33,7 +30,6 @@ CLI
 
 .. automodule:: spkrepo.cli
     :members:
-    :undoc-members:
 
 Web Frontend
 ------------

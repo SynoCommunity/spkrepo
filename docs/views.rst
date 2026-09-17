@@ -11,7 +11,6 @@ endpoint they download from.
 
 .. automodule:: spkrepo.views.nas
     :members:
-    :undoc-members:
 
 Upload API
 ----------
@@ -19,7 +18,6 @@ Upload API
 
 .. automodule:: spkrepo.views.api
     :members:
-    :undoc-members:
 
 Web Frontend
 ------------
@@ -28,7 +26,6 @@ profile) and the registration form.
 
 .. automodule:: spkrepo.views.frontend
     :members:
-    :undoc-members:
 
 Application Factory
 -------------------
@@ -36,7 +33,6 @@ Application Factory
 
 .. automodule:: spkrepo.app
     :members:
-    :undoc-members:
 
 Configuration
 -------------
@@ -45,7 +41,6 @@ the ``SPKREPO_CONFIG`` file (see :doc:`deployment`).
 
 .. automodule:: spkrepo.config
     :members:
-    :undoc-members:
 
 Extensions
 ----------

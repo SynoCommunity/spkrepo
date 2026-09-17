@@ -10,7 +10,6 @@ config-file keys described in :doc:`deployment`.
 
 .. automodule:: spkrepo.storage
     :members:
-    :undoc-members:
 
 Background Tasks
 ----------------
@@ -21,4 +20,3 @@ Redis for 24 hours after completion. Task progress is visible on the
 
 .. automodule:: spkrepo.views.tasks
     :members:
-    :undoc-members:

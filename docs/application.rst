@@ -13,4 +13,3 @@ Decides which builds activate and queue for upload
 
 .. automodule:: spkrepo.application.activation
     :members:
-    :undoc-members:

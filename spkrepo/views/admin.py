@@ -1625,6 +1625,8 @@ class BuildView(DetailsNavigationMixin, SignResyncMixin, ModelView):
 
 
 class IndexView(AdminIndexView):
+    """Admin landing page: role-gated redirect plus download charts."""
+
     @expose("/")
     def index(self):
         """Admin landing page: role-gated redirect plus download charts."""

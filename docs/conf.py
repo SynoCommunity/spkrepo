@@ -29,6 +29,17 @@ extensions = [
 # instead of relying on Sphinx 9's auto-enable warning.
 autodoc_use_legacy_class_based = True
 
+# Autodoc renders only members that carry a docstring. :undoc-members: is
+# deliberately not enabled project-wide: it dumps SQLAlchemy columns, WTForms
+# fields, and inherited framework internals as bare, undefined-looking names.
+# ``query`` is Flask-SQLAlchemy's legacy Model attribute; ``methods`` is
+# Flask's view-registration attribute. Both are inherited and only repeat the
+# same framework docstring on every object, so they are excluded.
+autodoc_default_options = {
+    "members": True,
+    "exclude-members": "query, methods",
+}
+
 templates_path = ["_templates"]
 source_suffix = ".rst"
 root_doc = "index"
