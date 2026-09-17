@@ -76,6 +76,12 @@ def _bool_formatter(v, c, m, p):
     return Markup('<i class="fa fa-times-circle text-danger"></i>')
 
 
+def _count_formatter(v, c, m, p):
+    """Flask-Admin column formatter: thousands-separated count, "0" if null."""
+    value = getattr(m, p)
+    return f"{value:,}" if value else "0"
+
+
 def _storage_formatter(v, c, m, p):
     """Flask-Admin column formatter: cloud for remote, disk for local."""
     if m.storage == "remote":
@@ -108,6 +114,15 @@ def _flash_action_results(successes, failures, skipped=None, item_label="item"):
 def _filter_maintainer(q):
     """Restrict a Package-rooted query to packages the current user maintains."""
     return q.join(Package.maintainers).filter(User.id == current_user.id)
+
+
+def _apply_archived_filter(q, archived):
+    """Apply the PackageView ``?archived=yes|no`` filter to a query."""
+    if archived == "yes":
+        return q.filter(~Package.has_active_builds)
+    if archived == "no":
+        return q.filter(Package.has_active_builds)
+    return q
 
 
 def _task_redis_key():
@@ -335,6 +350,36 @@ class SignResyncMixin:
         """
         raise NotImplementedError
 
+    # -- Task queueing ------------------------------------------------------
+
+    def _queue_build_tasks(
+        self, ids, task, task_type, verb, empty_message, predicate=None
+    ):
+        """Queue ``task`` per selected build and flash a summary.
+
+        ``predicate`` optionally filters the builds yielded by
+        :meth:`_iter_builds`; ``verb`` labels the flash (e.g. "upload") and
+        ``empty_message`` is shown when nothing qualifies.
+        """
+        tasks = []
+        for label, build in self._iter_builds(ids):
+            if predicate is not None and not predicate(build):
+                continue
+            result = task.delay(build.id, str(build))
+            tasks.append({"id": result.id, "type": task_type, "label": label})
+        if tasks:
+            _store_task_tasks(tasks)
+            count = len(tasks)
+            flash(
+                Markup(
+                    f"{count} {verb} task(s) queued. "
+                    f'<a href="/admin/tasks/">View status</a>',
+                ),
+                "info",
+            )
+        else:
+            flash(empty_message, "warning")
+
     # -- Shared actions -----------------------------------------------------
 
     @action("07_sign", "Sign", "Are you sure you want to sign selected builds?")
@@ -465,29 +510,15 @@ class SignResyncMixin:
     )
     def action_03_upload(self, ids):
         """Queue an upload_to_storage task per selected signed local build."""
-        tasks = []
-        for label, build in self._iter_builds(ids):
-            if build.storage != "local":
-                continue
-            if not build.signed and not _detect_and_fix_signed(build):
-                continue
-            result = upload_to_storage.delay(build.id, str(build))
-            tasks.append({"id": result.id, "type": "upload", "label": label})
-        if tasks:
-            _store_task_tasks(tasks)
-            count = len(tasks)
-            flash(
-                Markup(
-                    f"{count} upload task(s) queued. "
-                    f'<a href="/admin/tasks/">View status</a>',
-                ),
-                "info",
-            )
-        else:
-            flash(
-                "No builds found to upload (must be local and signed).",
-                "warning",
-            )
+        self._queue_build_tasks(
+            ids,
+            upload_to_storage,
+            "upload",
+            "upload",
+            "No builds found to upload (must be local and signed).",
+            predicate=lambda build: build.storage == "local"
+            and (build.signed or _detect_and_fix_signed(build)),
+        )
 
     @action(
         "04_rehome",
@@ -496,29 +527,14 @@ class SignResyncMixin:
     )
     def action_04_rehome(self, ids):
         """Queue a rehome_from_storage task per selected remote build."""
-        tasks = []
-        for label, build in self._iter_builds(ids):
-            if build.active:
-                continue
-            if build.storage != "remote":
-                continue
-            result = rehome_from_storage.delay(build.id, str(build))
-            tasks.append({"id": result.id, "type": "rehome", "label": label})
-        if tasks:
-            _store_task_tasks(tasks)
-            count = len(tasks)
-            flash(
-                Markup(
-                    f"{count} re-home task(s) queued. "
-                    f'<a href="/admin/tasks/">View status</a>',
-                ),
-                "info",
-            )
-        else:
-            flash(
-                "No builds found to re-home (must be inactive and in Object Storage).",
-                "warning",
-            )
+        self._queue_build_tasks(
+            ids,
+            rehome_from_storage,
+            "rehome",
+            "re-home",
+            "No builds found to re-home (must be inactive and in Object Storage).",
+            predicate=lambda build: not build.active and build.storage == "remote",
+        )
 
     @action(
         "05_resync_info",
@@ -527,22 +543,13 @@ class SignResyncMixin:
     )
     def action_05_resync_info(self, ids):
         """Queue a metadata resync per selected build (sidecar or SPK)."""
-        tasks = []
-        for label, build in self._iter_builds(ids):
-            result = resync_build_metadata.delay(build.id, str(build))
-            tasks.append({"id": result.id, "type": "resync_info", "label": label})
-        if tasks:
-            _store_task_tasks(tasks)
-            count = len(tasks)
-            flash(
-                Markup(
-                    f"{count} resync task(s) queued. "
-                    f'<a href="/admin/tasks/">View status</a>',
-                ),
-                "info",
-            )
-        else:
-            flash("No builds found to resync.", "warning")
+        self._queue_build_tasks(
+            ids,
+            resync_build_metadata,
+            "resync_info",
+            "resync",
+            "No builds found to resync.",
+        )
 
     @action(
         "06_resync_file",
@@ -551,22 +558,13 @@ class SignResyncMixin:
     )
     def action_06_resync_file(self, ids):
         """Queue an md5/size recalculation per selected build."""
-        tasks = []
-        for label, build in self._iter_builds(ids):
-            result = resync_build_file.delay(build.id, str(build))
-            tasks.append({"id": result.id, "type": "resync_file", "label": label})
-        if tasks:
-            _store_task_tasks(tasks)
-            count = len(tasks)
-            flash(
-                Markup(
-                    f"{count} file resync task(s) queued. "
-                    f'<a href="/admin/tasks/">View status</a>',
-                ),
-                "info",
-            )
-        else:
-            flash("No builds found to resync.", "warning")
+        self._queue_build_tasks(
+            ids,
+            resync_build_file,
+            "resync_file",
+            "file resync",
+            "No builds found to resync.",
+        )
 
 
 class MaintainerScopedMixin:
@@ -594,6 +592,61 @@ class MaintainerScopedMixin:
     def get_count_query(self):
         """Count query, scoped like :meth:`get_query`."""
         return self._scope_to_maintainer(super().get_count_query())
+
+
+class ActivationActionsMixin:
+    """Activate/deactivate actions shared by VersionView and BuildView.
+
+    Selection is expanded through :meth:`_iter_builds`, so both views act on
+    the same build set as the sign/resync actions. :meth:`_deactivated_message`
+    is overridable because the two views report different units (versions vs
+    builds).
+    """
+
+    def _selected_builds(self, ids):
+        """Return the builds implied by the selected ids."""
+        return [build for _, build in self._iter_builds(ids)]
+
+    def _deactivated_message(self, ids, builds):
+        """Summary flashed after deactivation (builds by default)."""
+        count = len(builds)
+        return (
+            "Build was successfully deactivated."
+            if count == 1
+            else f"{count} builds were successfully deactivated."
+        )
+
+    @action(
+        "01_activate", "Activate", "Are you sure you want to activate selected builds?"
+    )
+    def action_01_activate(self, ids):
+        """Activate the selected builds, queuing uploads where configured."""
+        try:
+            _run_activation_action(self._selected_builds(ids))
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception("Failed to activate builds")
+            flash("Failed to activate builds. Please check the logs.", "error")
+
+    @action(
+        "02_deactivate",
+        "Deactivate",
+        "Are you sure you want to deactivate selected builds?",
+    )
+    def action_02_deactivate(self, ids):
+        """Deactivate the selected builds and invalidate the caches."""
+        try:
+            builds = self._selected_builds(ids)
+            for build in builds:
+                build.active = False
+            db.session.commit()
+            invalidate_packages_cache()
+            clear_catalog_cache()
+            flash(self._deactivated_message(ids, builds))
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception("Failed to deactivate builds")
+            flash("Failed to deactivate builds. Please check the logs.", "error")
 
 
 # ---------------------------------------------------------------------------
@@ -709,20 +762,10 @@ class ArchitectureView(ModelView):
         ("recent_target_download_count", "recent_target_download_count"),
     )
     column_formatters = {
-        "download_count": lambda v, c, m, p: (
-            f"{m.download_count:,}" if m.download_count else "0"
-        ),
-        "recent_download_count": lambda v, c, m, p: (
-            f"{m.recent_download_count:,}" if m.recent_download_count else "0"
-        ),
-        "target_download_count": lambda v, c, m, p: (
-            f"{m.target_download_count:,}" if m.target_download_count else "0"
-        ),
-        "recent_target_download_count": lambda v, c, m, p: (
-            f"{m.recent_target_download_count:,}"
-            if m.recent_target_download_count
-            else "0"
-        ),
+        "download_count": _count_formatter,
+        "recent_download_count": _count_formatter,
+        "target_download_count": _count_formatter,
+        "recent_target_download_count": _count_formatter,
     }
 
 
@@ -765,20 +808,10 @@ class FirmwareView(ModelView):
         ("recent_target_download_count", "recent_target_download_count"),
     )
     column_formatters = {
-        "download_count": lambda v, c, m, p: (
-            f"{m.download_count:,}" if m.download_count else "0"
-        ),
-        "recent_download_count": lambda v, c, m, p: (
-            f"{m.recent_download_count:,}" if m.recent_download_count else "0"
-        ),
-        "target_download_count": lambda v, c, m, p: (
-            f"{m.target_download_count:,}" if m.target_download_count else "0"
-        ),
-        "recent_target_download_count": lambda v, c, m, p: (
-            f"{m.recent_target_download_count:,}"
-            if m.recent_target_download_count
-            else "0"
-        ),
+        "download_count": _count_formatter,
+        "recent_download_count": _count_formatter,
+        "target_download_count": _count_formatter,
+        "recent_target_download_count": _count_formatter,
     }
 
     form_columns = ("version", "build", "type")
@@ -941,11 +974,7 @@ class DetailsNavigationMixin:
 
         # Custom archived filter on PackageView is not a standard flt* filter
         if hasattr(self.model, "has_active_builds"):
-            archived = qs.get("archived", [None])[0]
-            if archived == "yes":
-                query = query.filter(~self.model.has_active_builds)
-            elif archived == "no":
-                query = query.filter(self.model.has_active_builds)
+            query = _apply_archived_filter(query, qs.get("archived", [None])[0])
 
         ids = [row[0] for row in query.with_entities(self.model.id).all()]
         if obj_id not in ids:
@@ -1129,22 +1158,13 @@ class PackageView(DetailsNavigationMixin, ModelView):
                 Package.id == PackageDownloadCounts.package_id,
             )
         )
-        archived = request.args.get("archived")
-        if archived == "yes":
-            q = q.filter(~Package.has_active_builds)
-        elif archived == "no":
-            q = q.filter(Package.has_active_builds)
-        return q
+        return _apply_archived_filter(q, request.args.get("archived"))
 
     def get_count_query(self):
         """Count query, applying the same ``?archived=`` filter as the list."""
-        q = super().get_count_query()
-        archived = request.args.get("archived")
-        if archived == "yes":
-            q = q.filter(~Package.has_active_builds)
-        elif archived == "no":
-            q = q.filter(Package.has_active_builds)
-        return q
+        return _apply_archived_filter(
+            super().get_count_query(), request.args.get("archived")
+        )
 
     column_list = (
         "name",
@@ -1238,7 +1258,11 @@ class PackageView(DetailsNavigationMixin, ModelView):
 
 
 class VersionView(
-    DetailsNavigationMixin, SignResyncMixin, MaintainerScopedMixin, ModelView
+    DetailsNavigationMixin,
+    SignResyncMixin,
+    MaintainerScopedMixin,
+    ActivationActionsMixin,
+    ModelView,
 ):
     """View for :class:`~spkrepo.models.Version`"""
 
@@ -1267,6 +1291,15 @@ class VersionView(
             for build in version.builds:
                 label = os.path.basename(build.path) if build.path else str(build.id)
                 yield label, build
+
+    def _deactivated_message(self, ids, builds):
+        """Report the number of selected versions, not builds."""
+        count = len(get_query_for_ids(self.get_query(), self.model, ids).all())
+        return (
+            "Builds on version were successfully deactivated."
+            if count == 1
+            else f"Builds have been successfully deactivated for {count} versions."
+        )
 
     def on_model_delete(self, model):
         """Delete each build's remote/sidecar files and the version directory."""
@@ -1391,67 +1424,21 @@ class VersionView(
         "all_builds_uploaded": _bool_formatter,
         "startable": _bool_formatter,
         "license": _truncate_formatter,
-        "download_count": lambda v, c, m, p: (
-            f"{m.download_count:,}" if m.download_count else "0"
-        ),
-        "recent_download_count": lambda v, c, m, p: (
-            f"{m.recent_download_count:,}" if m.recent_download_count else "0"
-        ),
+        "download_count": _count_formatter,
+        "recent_download_count": _count_formatter,
         "last_download_date": lambda v, c, m, p: (
             m.last_download_date.strftime("%Y-%m-%d") if m.last_download_date else "—"
         ),
     }
     column_default_sort = (Version.insert_date, True)
 
-    @action(
-        "01_activate",
-        "Activate",
-        "Are you sure you want to activate selected versions' builds?",
-    )
-    def action_01_activate(self, ids):
-        try:
-            versions = get_query_for_ids(self.get_query(), self.model, ids).all()
-            builds = [b for v in versions for b in v.builds]
-            _run_activation_action(builds)
-        except SQLAlchemyError:
-            db.session.rollback()
-            current_app.logger.exception("Failed to activate versions' builds")
-            flash(
-                "Failed to activate versions' builds. Please check the logs.", "error"
-            )
-
-    @action(
-        "02_deactivate",
-        "Deactivate",
-        "Are you sure you want to deactivate selected versions' builds?",
-    )
-    def action_02_deactivate(self, ids):
-        try:
-            versions = get_query_for_ids(self.get_query(), self.model, ids).all()
-            for version in versions:
-                for build in version.builds:
-                    build.active = False
-            db.session.commit()
-            invalidate_packages_cache()
-            clear_catalog_cache()
-            flash(
-                "Builds on version were successfully deactivated."
-                if len(versions) == 1
-                else (
-                    "Builds have been successfully deactivated for "
-                    f"{len(versions)} versions."
-                )
-            )
-        except SQLAlchemyError:
-            db.session.rollback()
-            current_app.logger.exception("Failed to deactivate versions' builds")
-            flash(
-                "Failed to deactivate versions' builds. Please check the logs.", "error"
-            )
-
 
 class BuildView(
-    DetailsNavigationMixin, SignResyncMixin, MaintainerScopedMixin, ModelView
+    DetailsNavigationMixin,
+    SignResyncMixin,
+    MaintainerScopedMixin,
+    ActivationActionsMixin,
+    ModelView,
 ):
     """View for :class:`~spkrepo.models.Build`"""
 
@@ -1593,41 +1580,6 @@ class BuildView(
         invalidate_packages_cache()
         clear_catalog_cache()
 
-    @action(
-        "01_activate", "Activate", "Are you sure you want to activate selected builds?"
-    )
-    def action_01_activate(self, ids):
-        try:
-            builds = get_query_for_ids(self.get_query(), self.model, ids).all()
-            _run_activation_action(builds)
-        except SQLAlchemyError:
-            db.session.rollback()
-            current_app.logger.exception("Failed to activate builds")
-            flash("Failed to activate builds. Please check the logs.", "error")
-
-    @action(
-        "02_deactivate",
-        "Deactivate",
-        "Are you sure you want to deactivate selected builds?",
-    )
-    def action_02_deactivate(self, ids):
-        try:
-            builds = get_query_for_ids(self.get_query(), self.model, ids).all()
-            for build in builds:
-                build.active = False
-            db.session.commit()
-            invalidate_packages_cache()
-            clear_catalog_cache()
-            flash(
-                "Build was successfully deactivated."
-                if len(builds) == 1
-                else f"{len(builds)} builds were successfully deactivated."
-            )
-        except SQLAlchemyError:
-            db.session.rollback()
-            current_app.logger.exception("Failed to deactivate builds")
-            flash("Failed to deactivate builds. Please check the logs.", "error")
-
 
 # ---------------------------------------------------------------------------
 # Admin index
@@ -1654,7 +1606,9 @@ _CHART_PALETTE = [
 ]
 
 
-def _index_stats(is_privileged):
+def _index_stats(
+    is_privileged: bool,
+) -> tuple[int, int, int, list[Version], int, int | None]:
     """Collect the admin landing page counters.
 
     Privileged users (``package_admin``/``admin``) see repository-wide
@@ -1730,16 +1684,25 @@ def _index_stats(is_privileged):
             )
         ).scalar()
 
+    unconfirmed_user_count = (
+        db.session.scalar(
+            db.select(db.func.count()).select_from(User).filter_by(confirmed_at=None)
+        )
+        if current_user.has_role("admin")
+        else None
+    )
+
     return (
         package_count,
         build_count,
         inactive_build_count,
         recent_versions,
         recent_downloads,
+        unconfirmed_user_count,
     )
 
 
-def _download_charts(is_privileged):
+def _download_charts(is_privileged: bool) -> tuple[dict, dict, dict]:
     """Build the three admin landing page charts.
 
     Returns ``(fw_chart, arch_chart, pkg_chart)``, each keyed by the 7/30/90
@@ -1906,6 +1869,7 @@ class IndexView(AdminIndexView):
             inactive_build_count,
             recent_versions,
             recent_downloads,
+            unconfirmed_user_count,
         ) = _index_stats(is_privileged)
 
         fw_chart, arch_chart, pkg_chart = _download_charts(is_privileged)
@@ -1915,15 +1879,7 @@ class IndexView(AdminIndexView):
             package_count=package_count,
             build_count=build_count,
             inactive_build_count=inactive_build_count,
-            unconfirmed_user_count=(
-                db.session.scalar(
-                    db.select(db.func.count())
-                    .select_from(User)
-                    .filter_by(confirmed_at=None)
-                )
-                if current_user.has_role("admin")
-                else None
-            ),
+            unconfirmed_user_count=unconfirmed_user_count,
             recent_versions=recent_versions,
             recent_downloads=recent_downloads,
             fw_chart=fw_chart,
@@ -1937,7 +1893,7 @@ class IndexView(AdminIndexView):
 # ---------------------------------------------------------------------------
 
 
-def _collect_task_states():
+def _collect_task_states() -> tuple[list[dict], int]:
     """Return (tasks, pending_count) for the current user's queued tasks.
 
     Each task dict carries ``id``, ``type``, ``label`` (from the queued

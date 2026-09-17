@@ -37,6 +37,9 @@ documented in full.
 .. autoclass:: spkrepo.views.admin.SignResyncMixin
     :members:
 
+.. autoclass:: spkrepo.views.admin.ActivationActionsMixin
+    :members:
+
 .. autoclass:: spkrepo.views.admin.MaintainerScopedMixin
     :members:
 
