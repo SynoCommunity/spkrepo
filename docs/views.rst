@@ -27,6 +27,59 @@ profile) and the registration form.
 .. automodule:: spkrepo.views.frontend
     :members:
 
+Admin
+-----
+``views/admin`` implements the Flask-Admin interface described in
+:doc:`admin`. Flask-Admin copies its own members onto each view subclass, so
+autodoc would list a large amount of framework API; the views are therefore
+summarised here and described in the guide. The reusable mixins and helpers
+are documented in full.
+
+.. automodule:: spkrepo.views.admin
+    :no-members:
+
+.. autofunction:: spkrepo.views.admin.screenshot_namegen
+
+.. autoclass:: spkrepo.views.admin.SignResyncMixin
+    :members:
+
+.. autoclass:: spkrepo.views.admin.MaintainerScopedMixin
+    :members:
+
+.. autoclass:: spkrepo.views.admin.DetailsNavigationMixin
+    :members:
+
+.. autoclass:: spkrepo.views.admin.IndexView
+    :no-members:
+
+.. autoclass:: spkrepo.views.admin.TaskStatusView
+    :no-members:
+
+.. autoclass:: spkrepo.views.admin.UserView
+    :no-members:
+
+.. autoclass:: spkrepo.views.admin.ArchitectureView
+    :no-members:
+
+.. autoclass:: spkrepo.views.admin.FirmwareView
+    :no-members:
+
+.. autoclass:: spkrepo.views.admin.ServiceView
+    :no-members:
+
+.. autoclass:: spkrepo.views.admin.ScreenshotView
+    :no-members:
+
+.. autoclass:: spkrepo.views.admin.PackageView
+    :no-members:
+
+.. autoclass:: spkrepo.views.admin.VersionView
+    :no-members:
+
+.. autoclass:: spkrepo.views.admin.BuildView
+    :no-members:
+
+
 Application Factory
 -------------------
 ``app.create_app`` wires the extensions and blueprints.
