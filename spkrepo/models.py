@@ -923,7 +923,6 @@ class Version(db.Model):
     def total_size(self):
         """Combined file size in bytes across all builds with a known
         size, or None if no build has one."""
-        # Returns None if no builds have a known size, rather than 0
         total = sum(b.size for b in self.builds if b.size is not None)
         return total or None
 

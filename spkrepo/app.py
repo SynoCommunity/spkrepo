@@ -51,7 +51,19 @@ CACHEABLE_ENDPOINTS = {
 
 
 def create_app(config=None, register_blueprints=True, init_admin=True):
-    """Create a Flask app."""
+    """Create and configure the Flask application.
+
+    Loads the built-in :mod:`spkrepo.config` defaults, then any
+    ``SPKREPO_CONFIG`` file, then ``config`` on top, and wires the
+    extensions, blueprints, admin interface, CLI, and Celery.
+
+    :param config: extra config object or dotted import path applied last
+                   (after the defaults and the ``SPKREPO_CONFIG`` file)
+    :param register_blueprints: register the frontend, API, and NAS
+                                blueprints; disable to build a bare app
+    :param init_admin: initialise the Flask-Admin interface
+    :return: the configured Flask app
+    """
     app = Flask("spkrepo")
 
     # Logging setup

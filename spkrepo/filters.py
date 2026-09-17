@@ -10,10 +10,7 @@ def is_hidden_field(field):
 
 
 def sort_fields(form, field_names=None):
-    """
-    Return form fields in the order specified by field_names, with any
-    remaining fields appended in their original order.
-    """
+    """Return form fields in ``field_names`` order, then the rest as-is."""
     field_names = field_names or []
     fields = []
     for field in form:

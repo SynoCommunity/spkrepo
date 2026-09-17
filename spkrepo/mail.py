@@ -29,6 +29,12 @@ class SpkrepoMailUtil(MailUtil):
     """
 
     def send_mail(self, template, subject, recipient, sender, body, html, **kwargs):
+        """Drop suppressed bot templates, otherwise send normally.
+
+        Returns ``None`` without sending when ``template`` is in
+        :data:`SUPPRESSED_BOT_TEMPLATES`; otherwise delegates to
+        :meth:`flask_security.MailUtil.send_mail`.
+        """
         if template in SUPPRESSED_BOT_TEMPLATES:
             logger.warning(
                 "Suppressed bot registration email %r to %r", template, recipient
