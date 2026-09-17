@@ -5,7 +5,13 @@ from flask import current_app, url_for
 
 from spkrepo.ext import db
 from spkrepo.models import Package
-from spkrepo.tests.common import BaseTestCase, PackageFactory, create_image
+from spkrepo.tests.common import (
+    BaseTestCase,
+    BuildFactory,
+    DownloadStatFactory,
+    PackageFactory,
+    create_image,
+)
 
 
 class PackageTestCase(BaseTestCase):
@@ -130,3 +136,22 @@ class IndexTestCase(BaseTestCase):
     def test_admin(self):
         with self.logged_user("admin"):
             self.assert200(self.client.get(url_for("admin.index")))
+
+    def test_renders_download_charts(self):
+        """The index charts aggregate real download stats for privileged users."""
+        build = BuildFactory()
+        DownloadStatFactory(build=build, count=987654)
+        db.session.commit()
+        with self.logged_user("package_admin"):
+            response = self.client.get(url_for("admin.index"))
+        self.assert200(response)
+        self.assertIn(b"987654", response.data)
+
+    def test_renders_charts_for_developer(self):
+        """The maintainer-scoped chart queries run for non-privileged users."""
+        build = BuildFactory()
+        DownloadStatFactory(build=build, count=987654)
+        db.session.commit()
+        with self.logged_user("developer"):
+            response = self.client.get(url_for("admin.index"))
+        self.assert200(response)
