@@ -12,6 +12,7 @@ import io
 import json
 import os
 import tarfile
+import tempfile
 from datetime import datetime, timezone
 
 from flask import current_app
@@ -265,11 +266,20 @@ def upload_to_storage(self, build_id, build_label):
             },
         }
 
-        # Atomic write: readers never see a half-written sidecar.
-        tmp_sidecar = sidecar_path + ".tmp"
-        with io.open(tmp_sidecar, "w", encoding="utf-8") as f:
-            json.dump(sidecar, f, indent=2, ensure_ascii=False)
-        os.rename(tmp_sidecar, sidecar_path)
+        # Atomic write: readers never see a half-written sidecar. The temp name
+        # is short and directory-local rather than "<sidecar>.tmp", so it stays
+        # independent of the build path — which can approach the filesystem's
+        # per-name length limit — and cannot push it over that limit.
+        tmp_fd, tmp_sidecar = tempfile.mkstemp(
+            dir=os.path.dirname(sidecar_path), prefix=".sidecar-", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                json.dump(sidecar, f, indent=2, ensure_ascii=False)
+            os.replace(tmp_sidecar, sidecar_path)
+        except BaseException:
+            os.unlink(tmp_sidecar)
+            raise
 
         if not storage.upload(spk_path, object_key):
             os.remove(sidecar_path)

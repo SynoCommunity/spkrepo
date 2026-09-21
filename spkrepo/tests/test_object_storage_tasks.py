@@ -60,6 +60,29 @@ class UploadToStorageTestCase(BaseTestCase):
         self.assertNotEqual(result["status"], "skipped")
         self.assertFalse(os.path.exists(sidecar))
 
+    def test_long_build_path_sidecar_write(self):
+        """A build path near the filename length limit must still write a sidecar.
+
+        The temp name is independent of the build path length, so it cannot
+        push a long path over the filesystem's per-name limit.
+        """
+        build = BuildFactory(signed=True, active=True)
+        db.session.commit()
+        old_spk = os.path.join(current_app.config["DATA_PATH"], build.path)
+        # 250-byte basename: ".json" fits (255) but ".json.tmp" would not (259).
+        basename = "x" * 246 + ".spk"
+        new_rel = os.path.join(os.path.dirname(build.path), basename)
+        os.rename(old_spk, os.path.join(current_app.config["DATA_PATH"], new_rel))
+        build.path = new_rel
+        db.session.commit()
+
+        with patch("spkrepo.views.tasks.storage.upload", return_value=True):
+            result = upload_to_storage(build.id, str(build))
+
+        self.assertEqual(result["status"], "ok")
+        sidecar = os.path.join(current_app.config["DATA_PATH"], new_rel + ".json")
+        self.assertTrue(os.path.exists(sidecar))
+
     def test_skipped_when_build_not_found(self):
         result = upload_to_storage(999999, "nonexistent")
         self.assertEqual(result["status"], "skipped")
