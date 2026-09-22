@@ -5,6 +5,7 @@ Pure value-object logic shared by upload, catalog, resync and downloads.
 No Flask/DB/FS imports.
 """
 
+import hashlib
 import re
 
 #: Synology-reported -> canonical arch code.
@@ -62,12 +63,54 @@ def parse_upstream_lenient(value: str) -> str:
     return upstream
 
 
+#: Hard cap for a generated ``.spk`` filename, in bytes (``NAME_MAX`` is
+#: typically 255). Leaves headroom for the ``.json`` sidecar and future
+#: suffixes.
+MAX_BUILD_FILENAME = 240
+#: Number of hex characters in the truncated arch-list token.
+_ARCH_TOKEN_LEN = 8
+
+
+def _arch_token(arch_codes: list[str]) -> str:
+    """Short deterministic token for an arch set (uniqueness on truncation)."""
+    joined = "-".join(arch_codes)
+    return hashlib.sha1(joined.encode("utf-8")).hexdigest()[:_ARCH_TOKEN_LEN]
+
+
 def build_filename(
     package_name: str, version: int, firmware_build: int, arch_codes: list[str]
 ) -> str:
-    """Build a Build's .spk filename from its parts (pre-insert usable)."""
-    arch_part = "-".join(arch_codes)
-    return f"{package_name}.v{version}.f{firmware_build}[{arch_part}].spk"
+    """Build a Build's .spk filename from its parts (pre-insert usable).
+
+    Uses the Synology convention
+    ``<package>.v<version>.f<firmware>[<archs>].spk``. If the full arch list
+    would push the name past :data:`MAX_BUILD_FILENAME`, the leading archs are
+    kept and the remainder collapses to a short deterministic token, so the
+    name stays bounded and unique while remaining readable. ``noarch`` is the
+    only arch token the filename parser reads (target_noarch), so it is kept
+    first and never truncated.
+    """
+    stem = f"{package_name}.v{version}.f{firmware_build}"
+    full = f"{stem}[{'-'.join(arch_codes)}].spk"
+    if len(full.encode("utf-8")) <= MAX_BUILD_FILENAME:
+        return full
+
+    ordered = (["noarch"] if "noarch" in arch_codes else []) + [
+        code for code in arch_codes if code != "noarch"
+    ]
+    # Budget for the kept archs: total minus the stem, the opening "[", the
+    # "-<token>].spk" tail, and a byte of margin.
+    available = MAX_BUILD_FILENAME - len(stem.encode("utf-8")) - _ARCH_TOKEN_LEN - 8
+    kept: list[str] = []
+    used = 0
+    for code in ordered:
+        add = len(code.encode("utf-8")) + (1 if kept else 0)
+        if used + add > available:
+            break
+        kept.append(code)
+        used += add
+    token = _arch_token(ordered[len(kept) :])
+    return f"{stem}[{'-'.join(kept + [token])}].spk"
 
 
 def derive_startable(info: dict) -> bool:
