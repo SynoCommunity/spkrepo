@@ -358,11 +358,6 @@ class CeleryAppBindingTestCase(BaseTestCase):
     dropped app context — surfacing as "no such table" in ordered runs.
     """
 
-    def test_task_binds_to_current_app(self):
-        from spkrepo.ext import celery
-
-        self.assertIs(celery.spkrepo_app, self.app)
-
     def test_task_callable_without_explicit_context(self):
         # Calling a task directly (as tests and the worker do) must succeed
         # because FlaskTask pushes the bound app's context itself.

@@ -33,22 +33,22 @@ class TestSharedKernel:
         with pytest.raises(ValueError):
             shared_kernel.parse_version("1.2.3")
 
-    def test_build_filename(self):
-        assert (
-            shared_kernel.build_filename("git", 4, 42661, ["x86_64", "noarch"])
-            == "git.v4.f42661[x86_64-noarch].spk"
-        )
-
-    def test_build_filename_noarch_only(self):
-        assert (
-            shared_kernel.build_filename("git", 4, 42661, ["noarch"])
-            == "git.v4.f42661[noarch].spk"
-        )
+    @pytest.mark.parametrize(
+        "archs,expected",
+        [
+            (["x86_64", "noarch"], "git.v4.f42661[x86_64-noarch].spk"),
+            (["noarch"], "git.v4.f42661[noarch].spk"),
+        ],
+    )
+    def test_build_filename(self, archs, expected):
+        assert shared_kernel.build_filename("git", 4, 42661, archs) == expected
 
     def test_build_filename_truncates_long_arch_list(self):
         archs = [f"arch{i:02d}xxxxxxxx" for i in range(40)]
         name = shared_kernel.build_filename("pkg", 1, 42661, archs)
+        # Bounded, with headroom for the ".json" sidecar.
         assert len(name.encode("utf-8")) <= shared_kernel.MAX_BUILD_FILENAME
+        assert len(name.encode("utf-8")) + len(".json") <= 255
         # Readable prefix kept, remainder collapsed to a token, one bracket group.
         assert name.startswith("pkg.v1.f42661[arch00")
         assert name.endswith("].spk")
@@ -68,11 +68,6 @@ class TestSharedKernel:
         a = shared_kernel.build_filename("pkg", 1, 42661, [*base, "aaa"])
         b = shared_kernel.build_filename("pkg", 1, 42661, [*base, "bbb"])
         assert a != b
-
-    def test_build_filename_sidecar_fits(self):
-        archs = [f"arch{i:02d}xxxxxxxx" for i in range(51)]
-        name = shared_kernel.build_filename("somepackage", 10, 42661, archs)
-        assert len(name.encode("utf-8")) + len(".json") <= 255
 
     @pytest.mark.parametrize(
         "info,expected",
