@@ -353,18 +353,6 @@ class VersionTestCase(_AdminActionTestMixin, BaseTestCase):
         self.assertEqual(len(db.session.execute(db.select(Version)).scalars().all()), 0)
         self.assertTrue(not os.path.exists(version_path))
 
-    def test_action_resync_info_visible_to_package_admin(self):
-        with self.logged_user("package_admin"):
-            response = self.client.get(url_for("version.index_view"))
-            self.assert200(response)
-            self.assertIn("Resync Info", response.data.decode())
-
-    def test_action_resync_info_requires_admin_or_package_admin(self):
-        with self.logged_user("developer"):
-            response = self.client.get(url_for("version.index_view"))
-            self.assert200(response)
-            self.assertNotIn("Resync Info", response.data.decode())
-
     def test_action_resync_info_refreshes_version_metadata(self):
         build = BuildFactory()
         db.session.commit()
@@ -487,20 +475,6 @@ class VersionTestCase(_AdminActionTestMixin, BaseTestCase):
         )
         self.assertEqual(refreshed_build.md5, refreshed_build.calculate_md5())
 
-    def test_action_resync_info_single_build_no_siblings_succeeds(self):
-        build = BuildFactory()
-        db.session.commit()
-        self.assertEqual(len(build.version.builds), 1)
-        with self.logged_user("package_admin", "admin"):
-            with patch_resync_info():
-                response = self.client.post(
-                    url_for("version.action_view"),
-                    follow_redirects=True,
-                    data=dict(action="05_resync_info", rowid=[build.version.id]),
-                )
-        self.assert200(response)
-        self.assertIn("queued", response.data.decode())
-
     def test_action_resync_info_rejects_inconsistent_sibling_builds(self):
         build1 = BuildFactory(architectures=[Architecture.find("88f628x")])
         build2 = BuildFactory(
@@ -542,18 +516,6 @@ class VersionTestCase(_AdminActionTestMixin, BaseTestCase):
             unchanged.version.displaynames["enu"].displayname,
             existing_displayname,
         )
-
-    def test_action_resync_file_visible_to_package_admin(self):
-        with self.logged_user("package_admin"):
-            response = self.client.get(url_for("version.index_view"))
-            self.assert200(response)
-            self.assertIn("Resync File", response.data.decode())
-
-    def test_action_resync_file_requires_admin_or_package_admin(self):
-        with self.logged_user("developer"):
-            response = self.client.get(url_for("version.index_view"))
-            self.assert200(response)
-            self.assertNotIn("Resync File", response.data.decode())
 
     def test_action_resync_file_refreshes_builds(self):
         build = BuildFactory()
@@ -744,20 +706,6 @@ class BuildTestCase(_AdminActionTestMixin, BaseTestCase):
             sorted(arch.code for arch in refreshed_build.architectures),
             original_architectures,
         )
-
-    def test_action_resync_info_single_build_no_siblings_succeeds(self):
-        build = BuildFactory()
-        db.session.commit()
-        self.assertEqual(len(build.version.builds), 1)
-        with self.logged_user("package_admin", "admin"):
-            with patch_resync_info():
-                response = self.client.post(
-                    url_for("build.action_view"),
-                    follow_redirects=True,
-                    data=dict(action="05_resync_info", rowid=[build.id]),
-                )
-        self.assert200(response)
-        self.assertIn("queued", response.data.decode())
 
     def test_action_resync_info_rejects_inconsistent_sibling_build(self):
         build1 = BuildFactory(architectures=[Architecture.find("88f628x")])

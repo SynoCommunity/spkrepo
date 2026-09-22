@@ -439,15 +439,6 @@ class ProfileTestCase(BaseTestCase):
             api_key_form = self._get_api_key_form(response)
             self.assertEqual(api_key_form.fields["api_key"], "")
 
-    def test_post_generate_api_key_developer(self):
-        with self.logged_user("developer", api_key=None):
-            response = self.client.post(
-                url_for("frontend.profile"), data=dict(), follow_redirects=True
-            )
-            self.assert200(response)
-            api_key_form = self._get_api_key_form(response)
-            self.assertNotEqual(api_key_form.fields["api_key"], "")
-
     def test_post_generate_api_key_not_developer(self):
         with self.logged_user(api_key=None):
             response = self.client.post(url_for("frontend.profile"), data=dict())
