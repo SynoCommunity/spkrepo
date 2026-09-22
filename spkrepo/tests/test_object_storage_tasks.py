@@ -83,6 +83,13 @@ class UploadToStorageTestCase(BaseTestCase):
         sidecar = os.path.join(current_app.config["DATA_PATH"], new_rel + ".json")
         self.assertTrue(os.path.exists(sidecar))
 
+        # The sidecar must keep the umask-based permissions of a normally
+        # created file, not mkstemp's restrictive 0600.
+        ref = os.path.join(current_app.config["DATA_PATH"], "reference.txt")
+        with io.open(ref, "w", encoding="utf-8") as f:
+            f.write("x")
+        self.assertEqual(os.stat(sidecar).st_mode & 0o777, os.stat(ref).st_mode & 0o777)
+
     def test_skipped_when_build_not_found(self):
         result = upload_to_storage(999999, "nonexistent")
         self.assertEqual(result["status"], "skipped")
