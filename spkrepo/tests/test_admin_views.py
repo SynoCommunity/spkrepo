@@ -1,7 +1,23 @@
 # -*- coding: utf-8 -*-
 from flask import url_for
 
-from spkrepo.tests.common import BaseTestCase
+from spkrepo.ext import db
+from spkrepo.tests.common import BaseTestCase, UserFactory
+
+
+class UserDefaultSortTestCase(BaseTestCase):
+    def test_default_sort_active_first_then_username(self):
+        # Users default to active (desc) then username (asc).
+        UserFactory(username="zzzsortzeta", active=True)
+        UserFactory(username="aaasortalpha", active=True)
+        UserFactory(username="mmmsortmike", active=False)
+        db.session.commit()
+        with self.logged_user("admin"):
+            response = self.client.get(url_for("user.index_view"))
+        self.assert200(response)
+        data = response.data.decode()
+        self.assertLess(data.index("aaasortalpha"), data.index("zzzsortzeta"))
+        self.assertLess(data.index("zzzsortzeta"), data.index("mmmsortmike"))
 
 
 class ReferenceViewTestCase(BaseTestCase):
