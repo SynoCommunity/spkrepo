@@ -22,6 +22,11 @@ SUPPRESSED_BOT_TEMPLATES = frozenset(
 )
 
 
+def _template_basename(template: str) -> str:
+    """Return a template name without its directory path."""
+    return template.rsplit("/", 1)[-1]
+
+
 class SpkrepoMailUtil(MailUtil):
     """MailUtil that drops bot-triggered registration emails.
 
@@ -31,11 +36,12 @@ class SpkrepoMailUtil(MailUtil):
     def send_mail(self, template, subject, recipient, sender, body, html, **kwargs):
         """Drop suppressed bot templates, otherwise send normally.
 
-        Returns ``None`` without sending when ``template`` is in
-        :data:`SUPPRESSED_BOT_TEMPLATES`; otherwise delegates to
+        Matches on the template's base name so the suppression holds wherever
+        Flask-Security keeps its email templates. Returns ``None`` without
+        sending when the template is suppressed; otherwise delegates to
         :meth:`flask_security.MailUtil.send_mail`.
         """
-        if template in SUPPRESSED_BOT_TEMPLATES:
+        if _template_basename(template) in SUPPRESSED_BOT_TEMPLATES:
             logger.warning(
                 "Suppressed bot registration email %r to %r", template, recipient
             )
