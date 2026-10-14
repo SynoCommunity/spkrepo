@@ -666,6 +666,7 @@ class UserView(ModelView):
     can_create = False
 
     column_list = ("username", "email", "roles", "active", "confirmed_at")
+    column_default_sort = [("active", True), ("username", False)]
     column_formatters = {
         "active": _bool_formatter,
         "confirmed_at": lambda v, c, m, p: (
@@ -761,6 +762,7 @@ class ArchitectureView(ModelView):
         ("target_download_count", "target_download_count"),
         ("recent_target_download_count", "recent_target_download_count"),
     )
+    column_default_sort = "code"
     column_formatters = {
         "download_count": _count_formatter,
         "recent_download_count": _count_formatter,
@@ -807,6 +809,7 @@ class FirmwareView(ModelView):
         ("target_download_count", "target_download_count"),
         ("recent_target_download_count", "recent_target_download_count"),
     )
+    column_default_sort = [("type", False), ("build", False)]
     column_formatters = {
         "download_count": _count_formatter,
         "recent_download_count": _count_formatter,
@@ -832,6 +835,7 @@ class ServiceView(ModelView):
 
     can_edit = False
     can_delete = False
+    column_default_sort = "code"
 
 
 ALLOWED_SCREENSHOT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
