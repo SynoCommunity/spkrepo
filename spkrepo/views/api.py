@@ -84,9 +84,10 @@ class Packages(Resource):
         """Post a :abbr:`SPK (Synology Package)` to the repository.
 
         First a :class:`~spkrepo.models.Package` is created if not existing already,
-        based on the :attr:`~spkrepo.models.Package.name`. Only users with
-        ``package_admin`` role can create new packages, other users must be defined
-        as :attr:`~spkrepo.models.Package.maintainers` to be able to continue.
+        based on the :attr:`~spkrepo.models.Package.name`. Only users with the
+        ``package_admin`` role can create new packages (and become its author);
+        other users must be listed as :attr:`~spkrepo.models.Package.maintainers`
+        of the existing package to publish to it.
 
         Then a :class:`~spkrepo.models.Version` is created with its appropriate
         relationships if not existing already, based on the

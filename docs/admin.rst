@@ -56,6 +56,20 @@ The Packages list has an ``Archived`` filter (all / active only / archived
 only), and package, version, and build detail pages include previous/next
 navigation that follows the originating list's sort and filters.
 
+Ownership
+---------
+Creating a package requires the ``package_admin`` role; a ``developer``
+cannot create one. (``admin`` alone does not grant it either — admins are
+normally given ``package_admin`` as well.)
+
+The **author** field is informational and grants no access. Via the API it is
+set to the creating user; the admin Packages form can set it to any user.
+
+Access is controlled entirely by a package's **Maintainers**. A ``developer``
+added as a maintainer can publish new versions/builds for that package and
+sees it in the Versions/Builds lists and the dashboard; a ``developer`` who is
+not a maintainer can do neither.
+
 Actions
 -------
 Available actions appear in the dropdown after selecting items in a list view.
