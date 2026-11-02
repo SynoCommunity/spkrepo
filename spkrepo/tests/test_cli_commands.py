@@ -5,6 +5,8 @@ import os
 import shutil
 import tempfile
 
+from flask_security import verify_password
+
 from spkrepo.ext import db
 from spkrepo.models import Package, User
 from spkrepo.tests.common import BaseTestCase, BuildFactory, PackageFactory
@@ -32,6 +34,8 @@ class CreateUserTestCase(BaseTestCase):
             .one()
         )
         self.assertTrue(user.active)
+        self.assertIsNotNone(user.confirmed_at)
+        self.assertTrue(verify_password("pw", user.password))
         self.assertEqual(user.email, "alice@example.com")
 
 
