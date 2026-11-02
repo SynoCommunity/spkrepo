@@ -393,6 +393,7 @@ class BaseTestCase(TestCase):
     def tearDown(self):
         db.session.remove()
         db.drop_all()
+        db.engine.dispose()
         db.session.autoflush = True
         shutil.rmtree(self.DATA_PATH)
 

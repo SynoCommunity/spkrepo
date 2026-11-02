@@ -13,11 +13,8 @@ from flask_sqlalchemy import SQLAlchemy
 from .mail import SpkrepoMailUtil
 from .net import get_client_ip
 
-# Flask-Babel
 babel = Babel()
-# Cache
 cache = Cache()
-# Celery
 celery = Celery()
 
 
@@ -42,16 +39,13 @@ class SpkrepoTask(celery.Task):
 # Set before any ``@celery.task`` is declared (ext is imported first) so task
 # classes always inherit the app-context-running base.
 celery.Task = SpkrepoTask
-# Mail
 mail = Mail()
-# Migrate
 migrate = Migrate()
 # Rate limiting (storage backend comes from RATELIMIT_STORAGE_URI app config;
 # per-endpoint limits are applied to views in create_app)
 limiter = Limiter(key_func=get_client_ip)
 # Security (custom MailUtil suppresses bot-triggered registration emails)
 security = Security(mail_util_cls=SpkrepoMailUtil)
-# SQLAlchemy
 db = SQLAlchemy()
 
 # Debug Toolbar — dev dependency, may not be installed in production

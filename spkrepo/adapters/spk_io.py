@@ -102,7 +102,6 @@ class SPK(object):
                     except UnicodeDecodeError:
                         raise SPKParseError("Wrong LICENSE encoding")
 
-                # read syno_signature.asc file
                 if "syno_signature.asc" in names:
                     try:
                         self.signature = (
