@@ -1,0 +1,22 @@
+version: 2
+updates:
+  # Python dependencies (pyproject.toml + uv.lock). Group everything into one
+  # weekly PR so upgrades arrive in a single reviewable batch.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns:
+          - "*"
+
+  # GitHub Actions used by .github/workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
