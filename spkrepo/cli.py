@@ -451,9 +451,10 @@ def ingest_logs():
         try:
             dialect = db.engine.dialect.name
             # ``constraint=`` (by unique-constraint name) is PostgreSQL-only;
-            # SQLite targets the same constraint via its columns. Note both
-            # dialects treat NULLs as distinct, so rows with NULL device
-            # dimensions (manual downloads) don't conflict and can duplicate.
+            # SQLite targets the same constraint via its columns. Postgres uses
+            # NULLS NOT DISTINCT, so manual rows (NULL device dimensions)
+            # conflict and update; SQLite treats NULLs as distinct, so those
+            # rows can duplicate there.
             conflict_target = {
                 "package_id",
                 "architecture_id",

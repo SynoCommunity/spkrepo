@@ -413,9 +413,7 @@ class DownloadStat(db.Model):
 
     # Columns
     id = db.Column(db.Integer, primary_key=True)
-    package_id = db.Column(
-        db.Integer, db.ForeignKey("package.id"), nullable=False, index=True
-    )
+    package_id = db.Column(db.Integer, db.ForeignKey("package.id"), nullable=False)
     build_id = db.Column(
         db.Integer,
         db.ForeignKey("build.id", ondelete="SET NULL"),
@@ -445,6 +443,7 @@ class DownloadStat(db.Model):
             "target_firmware_build",
             "date",
             name="uq_download_stat",
+            postgresql_nulls_not_distinct=True,
         ),
         db.Index("ix_download_stat_package_id_date", "package_id", "date"),
     )
