@@ -9,8 +9,8 @@ jobs:
   pre-commit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version-file: ".python-version"
       - uses: pre-commit/action@v3.0.1
@@ -20,8 +20,8 @@ jobs:
     env:
       UV_CACHE_DIR: /tmp/.uv-cache
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version-file: ".python-version"
       - name: Install uv
@@ -34,7 +34,7 @@ jobs:
           sudo apt-get install -y imagemagick
       - name: Restore uv cache
         id: cached-uv-dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /tmp/.uv-cache
           key: uv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/pyproject.toml') }}
