@@ -47,6 +47,7 @@ from ..models import (
     Firmware,
     Package,
     PackageDownloadCounts,
+    Role,
     Screenshot,
     Service,
     User,
@@ -114,6 +115,21 @@ def _flash_action_results(successes, failures, skipped=None, item_label="item"):
 def _filter_maintainer(q):
     """Restrict a Package-rooted query to packages the current user maintains."""
     return q.join(Package.maintainers).filter(User.id == current_user.id)
+
+
+def _users_with_role(role_name):
+    """Return users holding ``role_name``, ordered by username."""
+    return (
+        db.session.execute(
+            db.select(User)
+            .join(User.roles)
+            .where(Role.name == role_name)
+            .order_by(User.username)
+        )
+        .scalars()
+        .unique()
+        .all()
+    )
 
 
 def _apply_archived_filter(q, archived):
@@ -1258,7 +1274,11 @@ class PackageView(DetailsNavigationMixin, ModelView):
     }
 
     form_columns = ("name", "author", "maintainers")
-    form_args = {"name": {"validators": [Regexp(SPK.package_re)]}}
+    form_args = {
+        "name": {"validators": [Regexp(SPK.package_re)]},
+        "author": {"query_factory": lambda: _users_with_role("package_admin")},
+        "maintainers": {"query_factory": lambda: _users_with_role("developer")},
+    }
 
 
 class VersionView(

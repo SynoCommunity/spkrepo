@@ -1,8 +1,59 @@
 # -*- coding: utf-8 -*-
+import re
+
 from flask import url_for
 
 from spkrepo.ext import db
-from spkrepo.tests.common import BaseTestCase, UserFactory
+from spkrepo.models import Role
+from spkrepo.tests.common import BaseTestCase, PackageFactory, UserFactory
+
+
+def _select_values(html, name):
+    """Return the integer option values of the <select name="...">."""
+    match = re.search(rf'<select[^>]*name="{name}"[^>]*>(.*?)</select>', html, re.S)
+    if not match:
+        return set()
+    return {int(v) for v in re.findall(r'<option[^>]*value="(\d+)"', match.group(1))}
+
+
+class PackageFormChoicesTestCase(BaseTestCase):
+    def test_author_and_maintainer_choices_are_role_scoped(self):
+        """Author lists only package_admins; maintainers only developers."""
+        admin_only = UserFactory(
+            username="zz_admin_only", roles=[Role.find("package_admin")]
+        )
+        dev_only = UserFactory(username="zz_dev_only", roles=[Role.find("developer")])
+        both = UserFactory(
+            username="zz_both",
+            roles=[Role.find("package_admin"), Role.find("developer")],
+        )
+        no_roles = UserFactory(username="zz_no_roles")
+        package = PackageFactory(
+            name="zz_choices_pkg", author=admin_only, maintainers=[dev_only]
+        )
+        db.session.commit()
+
+        with self.logged_user("package_admin"):
+            responses = {
+                "create": self.client.get(url_for("package.create_view")),
+                "edit": self.client.get(
+                    url_for("package.edit_view", id=str(package.id))
+                ),
+            }
+
+        for label, response in responses.items():
+            self.assert200(response)
+            body = response.data.decode()
+            authors = _select_values(body, "author")
+            maintainers = _select_values(body, "maintainers")
+            self.assertIn(admin_only.id, authors, label)
+            self.assertIn(both.id, authors, label)
+            self.assertNotIn(dev_only.id, authors, label)
+            self.assertNotIn(no_roles.id, authors, label)
+            self.assertIn(dev_only.id, maintainers, label)
+            self.assertIn(both.id, maintainers, label)
+            self.assertNotIn(admin_only.id, maintainers, label)
+            self.assertNotIn(no_roles.id, maintainers, label)
 
 
 class UserDefaultSortTestCase(BaseTestCase):

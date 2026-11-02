@@ -63,12 +63,16 @@ cannot create one. (``admin`` alone does not grant it either — admins are
 normally given ``package_admin`` as well.)
 
 The **author** field is informational and grants no access. Via the API it is
-set to the creating user; the admin Packages form can set it to any user.
+set to the creating user; the admin Packages form lists only ``package_admin``
+users as author choices.
 
-Access is controlled entirely by a package's **Maintainers**. A ``developer``
-added as a maintainer can publish new versions/builds for that package and
-sees it in the Versions/Builds lists and the dashboard; a ``developer`` who is
-not a maintainer can do neither.
+Access is controlled entirely by a package's **Maintainers**, and the admin
+Packages form lists only ``developer`` users as maintainer choices. A
+``developer`` added as a maintainer can publish new versions/builds for that
+package and sees it in the Versions/Builds lists and the dashboard; a
+``developer`` who is not a maintainer can do neither. ``package_admin`` (and
+``admin``) users already have access to every package, so they do not need to
+be added as maintainers.
 
 Actions
 -------
