@@ -117,7 +117,7 @@ def _filter_maintainer(q):
     return q.join(Package.maintainers).filter(User.id == current_user.id)
 
 
-def _users_with_role(role_name):
+def _users_with_role(role_name: str) -> list[User]:
     """Return users holding ``role_name``, ordered by username."""
     return (
         db.session.execute(
