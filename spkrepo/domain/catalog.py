@@ -5,6 +5,8 @@ All URL generation stays in the Flask adapter; this module takes
 pre-resolved link/thumbnail/snapshot strings.
 """
 
+from collections.abc import Iterable
+
 
 def firmware_in_range(build: int, min_build: int, max_build: int | None) -> bool:
     """True if device fw ``build`` is served by [min, max] (None = unbounded)."""
@@ -32,7 +34,7 @@ def derive_quick_flags(
     return qinst, qupgrade, qstart
 
 
-def set_if_truthy(entry: dict, key: str, value) -> None:
+def set_if_truthy(entry: dict, key: str, value: object) -> None:
     """Set entry[key] = value only if truthy (pure helper)."""
     if value:
         entry[key] = value
@@ -46,7 +48,7 @@ def _firmware_sort_key(version: str) -> tuple:
     return tuple(int(p) if p.isdigit() else p for p in version.split("."))
 
 
-def group_builds_per_dsm(builds) -> dict:
+def group_builds_per_dsm(builds: Iterable) -> dict:
     """Group builds by DSM/SRM major version, newest-first.
 
     Duck-typed on ``build.firmware_min.version`` so ORM and fakes both work.

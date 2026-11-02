@@ -8,8 +8,10 @@ plan (set ``active``, queue uploads, invalidate caches), and map the result
 to flashes/HTTP.
 """
 
+from collections.abc import Iterable
 
-def plan_activation(builds, storage_configured):
+
+def plan_activation(builds: Iterable[dict], storage_configured: bool) -> dict:
     """Split builds into activate / reject / upload queues.
 
     :param builds: iterable of ``{"id":…, "label":…, "signed": bool,

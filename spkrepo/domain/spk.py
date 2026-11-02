@@ -10,6 +10,7 @@ import binascii
 import hashlib
 import json
 import re
+from collections.abc import Iterable
 from configparser import ConfigParser
 
 from ..exceptions import SPKParseError
@@ -130,7 +131,7 @@ def parse_loose_info_text(raw: str) -> dict:
     return info
 
 
-def has_wizard(names, process: str) -> bool:
+def has_wizard(names: Iterable[str], process: str) -> bool:
     """True if any tar member name is a wizard file for ``process``.
 
     Uses the canonical wizard regex (incl. `_enu` / `.sh` variants),
