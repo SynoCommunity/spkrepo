@@ -165,6 +165,11 @@ def upload_to_storage(self, build_id, build_label):
     Writes a ``<path>.json`` sidecar (INFO + derived flags + hashes) and
     flips ``storage`` to ``remote``. Does not require the build to be active:
     inactive builds may be uploaded to free local disk.
+
+    The sidecar is written atomically through a short, directory-local temp
+    name (rather than ``<sidecar>.tmp``) so the name stays independent of the
+    build path and cannot exceed the filesystem's per-name length limit.
+    ``io.open`` keeps the usual umask-based permissions.
     """
     build = db.session.get(Build, build_id)
     if not build or not build.path:
@@ -266,11 +271,6 @@ def upload_to_storage(self, build_id, build_label):
             },
         }
 
-        # Atomic write: readers never see a half-written sidecar. The temp name
-        # is short and directory-local rather than "<sidecar>.tmp", so it stays
-        # independent of the build path — which can approach the filesystem's
-        # per-name length limit — and cannot push it over that limit. io.open
-        # (not mkstemp) keeps the usual umask-based permissions.
         tmp_sidecar = os.path.join(
             os.path.dirname(sidecar_path), f".sidecar-{uuid.uuid4().hex}.tmp"
         )
