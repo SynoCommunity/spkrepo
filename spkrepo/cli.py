@@ -6,21 +6,25 @@ See the :doc:`cli` page for command usage.
 import logging
 import os
 import shutil
+from datetime import datetime, timezone
 
 import click
 from flask import current_app
 from flask.cli import with_appcontext
+from flask_security import hash_password
 
 from .ext import db
-from .models import Build, Package, Role, User
+from .models import Build, Package, Role, User, user_datastore
 
 
 def _create_user(username, email, password):
-    """Create a user row via test factories (shared with test seeding)."""
-    from spkrepo.tests.common import UserFactory
-
-    with db.session.no_autoflush:
-        UserFactory(username=username, email=email, password=password)
+    """Create a confirmed, active user."""
+    user_datastore.create_user(
+        username=username,
+        email=email,
+        password=hash_password(password),
+        confirmed_at=datetime.now(timezone.utc),
+    )
     db.session.commit()
 
 
@@ -43,10 +47,16 @@ def create_user(username, email, password):
 @spkrepo.command("populate_db")
 @with_appcontext
 def populate_db():
-    """Populate the database with some sample packages."""
+    """Populate the database with some sample packages (development only)."""
 
     from spkrepo.models import Architecture, BuildManifest
-    from spkrepo.tests.common import BuildFactory, PackageFactory, VersionFactory
+
+    try:
+        from spkrepo.tests.common import BuildFactory, PackageFactory, VersionFactory
+    except ImportError as exc:  # pragma: no cover - exercised without dev deps
+        raise click.ClickException(
+            "populate_db needs the development dependencies (run `uv sync`)"
+        ) from exc
 
     def attach_manifest(build, *, dependencies=None):
         """Attach a simple manifest to a build with optional dependencies."""
