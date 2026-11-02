@@ -6,10 +6,20 @@ Operates on duck-typed objects (``spk.info/wizards/license``,
 database. Adapters pass ORM objects or fakes.
 """
 
+from typing import Any, Protocol
+
 from .shared_kernel import derive_startable, map_displaynames, parse_version
 
 
-def extract_version_metadata(spk):
+class _SPKLike(Protocol):
+    """The parsed-SPK attributes used for version-level metadata."""
+
+    info: dict
+    wizards: set[str]
+    license: str | None
+
+
+def extract_version_metadata(spk: _SPKLike) -> dict:
     """Extract all version-level fields from an SPK into a plain dict without
     touching the database. Used to compare builds of the same version for
     consistency before writing anything.
@@ -47,7 +57,7 @@ def extract_version_metadata(spk):
     }
 
 
-def extract_sidecar_metadata(sidecar):
+def extract_sidecar_metadata(sidecar: dict) -> dict:
     """Version-level metadata from a sidecar dict (upload-to-storage output).
 
     Mirrors :func:`extract_version_metadata` for siblings that only have a
@@ -79,7 +89,7 @@ def extract_sidecar_metadata(sidecar):
     return meta
 
 
-def assert_version_metadata_matches_db(version, spk):
+def assert_version_metadata_matches_db(version: Any, spk: _SPKLike) -> None:
     """Raise :exc:`ValueError` if the SPK's version-level metadata conflicts with
     what is already stored on an existing version record.
 
