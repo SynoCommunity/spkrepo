@@ -47,15 +47,15 @@ def is_valid_language(language):
     return Language.find(language) is not None
 
 
-@cache.memoize(timeout=600)
+@cache.memoize(timeout=1800)
 def get_catalog(arch, build, major, language, beta):
     """Build the package catalog for one (arch, build, major, language,
     beta) combination.
 
     Returns a list of package dicts for DSM < 5.1, or a dict with
     "packages" (and "keyrings" for DSM 6 only) otherwise. Memoized for
-    10 minutes; clear_catalog_cache() invalidates all entries when build
-    or version data changes.
+    30 minutes; clear_catalog_cache() invalidates all entries when build,
+    version, or download-count data changes.
 
     Perf notes: work_mem is raised to avoid sort spill; counts come from
     the materialized view (not per-row subqueries); collections use

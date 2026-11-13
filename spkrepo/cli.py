@@ -522,3 +522,9 @@ def ingest_logs():
             logger.info("Refreshed package_download_counts materialized view.")
         except Exception as e:
             logger.error("Failed to refresh package_download_counts: %s", e)
+
+    # The catalog embeds download counts from the materialized view; drop the
+    # memoized entries so the next request observes the refreshed counts.
+    from .views.nas import clear_catalog_cache
+
+    clear_catalog_cache()
