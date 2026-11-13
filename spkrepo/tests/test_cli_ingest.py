@@ -101,6 +101,24 @@ class IngestLogsTestCase(BaseTestCase):
         self.assertEqual(rows[0].package_id, build.version.package_id)
         self.assertEqual(fake.deleted, ["logs/a.jsonl"])
 
+    def test_ingest_clears_catalog_cache(self):
+        """Refreshed counts must not be masked by memoized catalogs."""
+        build = BuildFactory(
+            active=True,
+            architectures=[Architecture.find("88f628x")],
+            firmware_min=Firmware.find(1594),
+        )
+        db.session.commit()
+
+        body = json.dumps(_record("/" + build.path)).encode() + b"\n"
+        fake = _FakeS3({"logs/e.jsonl": body})
+
+        with patch("spkrepo.views.nas.clear_catalog_cache") as clear:
+            result = self._invoke(fake)
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        clear.assert_called_once()
+
     def test_reingest_accumulates_count(self):
         """Upsert path: ingesting the same download twice adds to the count."""
         build = BuildFactory(
