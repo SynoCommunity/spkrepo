@@ -166,8 +166,13 @@ def create_app(config=None, register_blueprints=True, init_admin=True):
     # Jinja2 filters
     register_filters(app)
 
-    # Celery
-    celery.config_from_object(app.config.get("CELERY", {}))
+    # Celery. Deployments may replace the CELERY dict wholesale, so re-assert
+    # the ops routing here (the per-task queue= attribute is deprecated).
+    celery_conf = dict(app.config.get("CELERY", {}))
+    task_routes = dict(celery_conf.get("task_routes") or {})
+    task_routes.setdefault("spkrepo.views.tasks.*", {"queue": "ops"})
+    celery_conf["task_routes"] = task_routes
+    celery.config_from_object(celery_conf)
 
     # The task base (ext.SpkrepoTask) resolves the app from this attribute at
     # call time, so repeated create_app() calls rebind it (see ext.py).

@@ -101,6 +101,7 @@ CELERY = {
         "ops": {},  # admin-triggered background operations (upload, rehome, resync)
     },
     "task_default_queue": "celery",
+    "task_routes": {"spkrepo.views.tasks.*": {"queue": "ops"}},
 }
 
 # Debug Toolbar
