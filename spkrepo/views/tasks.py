@@ -27,7 +27,7 @@ from .frontend import invalidate_packages_cache
 from .nas import clear_catalog_cache
 
 
-@celery.task(bind=True, max_retries=3, default_retry_delay=10, queue="ops")
+@celery.task(bind=True, max_retries=3, default_retry_delay=10)
 def resync_build_metadata(self, build_id, build_label):
     """Re-read build metadata from sidecar or SPK and reapply to DB.
 
@@ -111,7 +111,7 @@ def resync_build_metadata(self, build_id, build_label):
             }
 
 
-@celery.task(bind=True, max_retries=3, default_retry_delay=10, queue="ops")
+@celery.task(bind=True, max_retries=3, default_retry_delay=10)
 def resync_build_file(self, build_id, build_label):
     """Recalculate md5 and size from sidecar or local file."""
     build = db.session.get(Build, build_id)
@@ -158,7 +158,7 @@ def resync_build_file(self, build_id, build_label):
             }
 
 
-@celery.task(bind=True, max_retries=3, default_retry_delay=10, queue="ops")
+@celery.task(bind=True, max_retries=3, default_retry_delay=10)
 def upload_to_storage(self, build_id, build_label):
     """Upload a signed local build to Object Storage and write its sidecar.
 
@@ -323,7 +323,7 @@ def upload_to_storage(self, build_id, build_label):
     }
 
 
-@celery.task(bind=True, max_retries=3, default_retry_delay=10, queue="ops")
+@celery.task(bind=True, max_retries=3, default_retry_delay=10)
 def rehome_from_storage(self, build_id, build_label):
     """Download a build from Object Storage back to local disk for editing."""
     build = db.session.get(Build, build_id)

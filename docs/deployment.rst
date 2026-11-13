@@ -29,13 +29,15 @@ A minimal production config file looks like this:
     SQLALCHEMY_DATABASE_URI = "postgresql+psycopg2://spkrepo:password@db/spkrepo"
 
     # Celery. This dict *replaces* the built-in default, so keep the keys the
-    # admin Task Status page relies on (result_backend) plus the queues.
+    # admin Task Status page relies on (result_backend) plus the queues and
+    # ops task routing.
     CELERY = {
         "broker_url": "redis://redis:6379/1",
         "result_backend": "redis://redis:6379/1",
         "result_expires": 86400,
         "task_queues": {"celery": {}, "ops": {}},
         "task_default_queue": "celery",
+        "task_routes": {"spkrepo.views.tasks.*": {"queue": "ops"}},
     }
 
     # Rate limiting (per-IP counters shared across workers; memory fallback
