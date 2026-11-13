@@ -73,6 +73,13 @@ A minimal production config file looks like this:
     GNUPG_FINGERPRINT = "ABCDEF1234567890"
     GNUPG_TIMESTAMP_URL = "http://timestamp.synology.com/timestamp.php"
 
+Container images
+----------------
+Multi-arch images are published to ``ghcr.io/synocommunity/spkrepo`` by the
+``Publish`` workflow, which runs when a GitHub **Release** is published, not
+when a tag is pushed. Publish the release after merging the version bump so the
+image tag (for example ``v0.9.1``) exists before you deploy it.
+
 Gunicorn
 --------
 Run Gunicorn with enough workers to handle concurrent NAS catalog requests:
